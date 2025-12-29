@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.astral.sh)",
+      "Bash(mkdir:*)",
+      "Bash(pre-commit install:*)",
+      "Bash(pre-commit run:*)"
+    ]
+  }
+}
