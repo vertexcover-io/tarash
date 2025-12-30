@@ -7,13 +7,18 @@ authors = [
     { name = "Ritesh Kadmawala", email = "ritesh@vertexcover.io" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tarash-gateway[all]",
+]
+
+[tool.uv.sources]
+tarash-gateway = { workspace = true }
 
 [project.scripts]
 tarash = "tarash:main"
 
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
+requires = ["uv_build>=0.9.20,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]
@@ -21,6 +26,7 @@ members = ["packages/*"]
 
 [dependency-groups]
 dev = [
+    "ipython>=9.8.0",
     "pre-commit>=4.5.1",
     "ruff>=0.14.10",
 ]

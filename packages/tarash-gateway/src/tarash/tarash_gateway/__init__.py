@@ -1,2 +1,3 @@
-def hello() -> str:
-    return "Hello from tarash-gateway!"
+"""Tarash Gateway - Unified interface for AI generation models."""
+
+__version__ = "0.1.0"
