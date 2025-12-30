@@ -62,7 +62,7 @@ class VideoGenerationResponse(BaseModel):
     request_id: str  # Our unique ID for this request
 
     video_url: str
-    content_type: str
+    content_type: str | None = None
     audio_url: str | None = None
     duration: float | None = None  # seconds
     resolution: str | None = None

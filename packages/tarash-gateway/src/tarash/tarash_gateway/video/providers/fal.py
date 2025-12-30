@@ -2,8 +2,9 @@
 
 import asyncio
 import functools
+import inspect
 import traceback
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
 from fal_client.client import FalClientHTTPError
 from tarash.tarash_gateway.video.exceptions import (
@@ -20,7 +21,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationUpdate,
 )
 
-if TYPE_CHECKING:
+try:
     from fal_client import (
         AsyncClient,
         Status,
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
         Queued,
         InProgress,
     )
+except ImportError:
+    pass
 
 
 def handle_video_generation_errors(func: Callable) -> Callable:
@@ -38,7 +41,7 @@ def handle_video_generation_errors(func: Callable) -> Callable:
     - VideoGenerationError: Re-raise as-is (ensuring model is set)
     - Unknown exceptions: Wrap in VideoGenerationError
     """
-    if asyncio.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func):
 
         @functools.wraps(func)
         async def async_wrapper(
@@ -116,7 +119,9 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
         )
     elif isinstance(status, InProgress):
         return VideoGenerationUpdate(
-            request_id=request_id, status="processing", update=status.update.logs
+            request_id=request_id,
+            status="processing",
+            update={"logs": status.update.logs},
         )
 
     else:

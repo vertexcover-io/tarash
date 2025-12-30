@@ -1,6 +1,6 @@
 """Video generation module."""
 
-from tarash.tarash_gateway.video.api import generate_video, generate_video_stream
+from tarash.tarash_gateway.video.api import generate_video, generate_video_async
 from tarash.tarash_gateway.video.exceptions import (
     ProviderAPIError,
     ValidationError,
@@ -18,7 +18,7 @@ from tarash.tarash_gateway.video.models import (
 __all__ = [
     # API functions
     "generate_video",
-    "generate_video_stream",
+    "generate_video_async",
     # Models
     "VideoGenerationConfig",
     "VideoGenerationRequest",
