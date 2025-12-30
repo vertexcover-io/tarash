@@ -2,11 +2,13 @@
 
 import base64
 from typing import Any, Type
+from urllib.parse import urlparse
 
+import httpx
 from pydantic import TypeAdapter
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.video.exceptions import ValidationError
+from tarash.tarash_gateway.video.exceptions import ProviderAPIError, ValidationError
 
 
 def validate_model_params(
@@ -60,3 +62,56 @@ def convert_to_data_url(media_content: dict[str, Any]) -> str:
     """
     img_base64 = base64.b64encode(media_content["content"]).decode("utf-8")
     return f"data:{media_content['content_type']};base64,{img_base64}"
+
+
+def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes, str]:
+    """
+    Download media (image/video) from URL and return bytes with content type.
+
+    Args:
+        url: URL to download from
+        provider: Provider name for error messages
+
+    Returns:
+        Tuple of (content_bytes, content_type)
+
+    Raises:
+        ProviderAPIError: If download fails
+    """
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(url)
+            response.raise_for_status()
+
+            content_type = response.headers.get(
+                "content-type", "application/octet-stream"
+            )
+            return response.content, content_type
+    except Exception as e:
+        raise ProviderAPIError(
+            f"Failed to download media from URL: {e}",
+            provider=provider,
+            raw_response={"url": url, "error": str(e)},
+        ) from e
+
+
+def get_filename_from_url(url: str) -> str:
+    """
+    Extract filename from URL path.
+
+    Args:
+        url: URL to extract filename from
+
+    Returns:
+        Filename or 'media' if extraction fails
+    """
+    try:
+        parsed = urlparse(url)
+        path = parsed.path
+        if path and "/" in path:
+            filename = path.split("/")[-1]
+            if filename:
+                return filename
+    except Exception:
+        pass
+    return "media"

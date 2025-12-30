@@ -5,6 +5,8 @@ import inspect
 import traceback
 from typing import TYPE_CHECKING, Any, Callable
 
+from pydantic import ValidationError as PydanticValidationError
+
 if TYPE_CHECKING:
     from tarash.tarash_gateway.video.models import (
         VideoGenerationConfig,
@@ -46,7 +48,7 @@ class ValidationError(VideoGenerationError):
 def handle_video_generation_errors(func: Callable) -> Callable:
     """Decorator to handle only truly unhandled exceptions.
 
-    - ValidationError: Let propagate (don't wrap)
+    - ValidationError (both custom and Pydantic): Let propagate (don't wrap)
     - VideoGenerationError: Re-raise as-is (ensuring model is set)
     - Unknown exceptions: Wrap in VideoGenerationError
     """
@@ -62,7 +64,12 @@ def handle_video_generation_errors(func: Callable) -> Callable:
         ):
             try:
                 return await func(self, config, request, *args, **kwargs)
-            except (ValidationError, ProviderAPIError, VideoGenerationError):
+            except (
+                ValidationError,
+                PydanticValidationError,
+                ProviderAPIError,
+                VideoGenerationError,
+            ):
                 # Let validation and provider API errors propagate
                 raise
             except Exception as ex:
@@ -91,7 +98,12 @@ def handle_video_generation_errors(func: Callable) -> Callable:
         ):
             try:
                 return func(self, config, request, *args, **kwargs)
-            except (ValidationError, ProviderAPIError, VideoGenerationError):
+            except (
+                ValidationError,
+                PydanticValidationError,
+                ProviderAPIError,
+                VideoGenerationError,
+            ):
                 # Let validation and provider API errors propagate
                 raise
             except Exception as ex:

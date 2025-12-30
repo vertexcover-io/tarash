@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fal_client.client import FalClientHTTPError
+# from pydantic import ValidationError as Pydantic ValidationError  # Not used with FieldMapper approach
 
 from tarash.tarash_gateway.video.exceptions import (
     ProviderAPIError,
@@ -153,52 +154,6 @@ def test_get_client_creates_different_clients_for_different_configs(
         assert client1 is not client2  # Different instances
 
 
-# ==================== Parameter Validation Tests ====================
-
-
-def test_validate_params_with_empty_model_params(handler, base_config):
-    """Test validation with empty model_params."""
-    request_empty = VideoGenerationRequest(prompt="test", model_params={})
-
-    assert handler._validate_params(base_config, request_empty) == {}
-
-
-def test_validate_params_with_valid_veo_params(handler, base_config):
-    """Test validation with valid VeoVideoParams."""
-    request = VideoGenerationRequest(
-        prompt="test",
-        negative_prompt="bad quality",
-        seed=42,
-        generate_audio=True,
-        model_params={
-            "auto_fix": False,
-        },
-    )
-
-    result = handler._validate_params(base_config, request)
-
-    assert result == {
-        "auto_fix": False,
-    }
-
-
-def test_validate_params_passes_through_for_model_without_schema(handler):
-    """Test params pass through for models without schema."""
-    config = VideoGenerationConfig(
-        model="unknown/model",
-        provider="fal",
-        api_key="test-key",
-    )
-    request = VideoGenerationRequest(
-        prompt="test",
-        model_params={"custom_param": "value", "another": 123},
-    )
-
-    result = handler._validate_params(config, request)
-
-    assert result == {"custom_param": "value", "another": 123}
-
-
 # ==================== Request Conversion Tests ====================
 
 
@@ -219,7 +174,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
         aspect_ratio="16:9",
         image_list=[{"image": "https://example.com/image.jpg", "type": "reference"}],
         video="https://example.com/video.mp4",
-        model_params={"seed": 42, "generate_audio": True},
+        extra_params={"seed": 42, "generate_audio": True},
     )
 
     result = handler._convert_request(base_config, request)
@@ -236,15 +191,23 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     assert "negative_prompt" not in result
 
 
-def test_convert_request_propagates_validation_errors(handler, base_config):
-    """Test that validation errors propagate."""
+def test_convert_request_propagates_validation_errors(handler):
+    """Test that validation errors propagate from Pydantic models."""
+    # Use a model that has specific validation (Minimax with duration limit)
+    config = VideoGenerationConfig(
+        model="fal-ai/minimax-video",
+        provider="fal",
+        api_key="test-key",
+    )
     request = VideoGenerationRequest(
         prompt="test",
-        model_params={"auto_fix": "value"},
+        duration_seconds=15,  # Invalid for Minimax (only supports 6 or 10 seconds)
     )
 
-    with pytest.raises(ValidationError):
-        handler._convert_request(base_config, request)
+    with pytest.raises(
+        ValueError, match="Minimax only supports 6 or 10 second durations"
+    ):
+        handler._convert_request(config, request)
 
 
 # ==================== Response Conversion Tests ====================
@@ -382,13 +345,9 @@ def test_parse_fal_status_queued():
 def test_parse_fal_status_in_progress():
     """Test parsing InProgress status with logs."""
 
-    class MockUpdate:
-        def __init__(self):
-            self.logs = ["Processing...", "Almost done"]
-
     class MockInProgress:
         def __init__(self):
-            self.update = MockUpdate()
+            self.logs = ["Processing...", "Almost done"]
 
     mock_status = MockInProgress()
 
@@ -422,13 +381,9 @@ async def test_generate_video_async_success_with_progress_callbacks(
         def __init__(self):
             self.position = 1
 
-    class MockUpdate:
-        def __init__(self):
-            self.logs = ["Processing"]
-
     class MockInProgress:
         def __init__(self):
-            self.update = MockUpdate()
+            self.logs = ["Processing"]
 
     class MockCompleted:
         def __init__(self):
@@ -497,13 +452,22 @@ async def test_generate_video_async_propagates_known_errors(
     handler, base_config, base_request, mock_async_client
 ):
     """Test that ValidationError and ProviderAPIError propagate without wrapping."""
-    # Test ValidationError propagation
+    # Test Pydantic ValidationError propagation from model validation
+    # Use Minimax model with duration that exceeds limits
+    minimax_config = VideoGenerationConfig(
+        model="fal-ai/minimax-video",
+        provider="fal",
+        api_key="test-key",
+    )
     request_invalid = VideoGenerationRequest(
-        prompt="test", model_params={"auto_fix": "value"}
+        prompt="test",
+        duration_seconds=15,  # Invalid for Minimax (only supports 6 or 10 seconds)
     )
 
-    with pytest.raises(ValidationError):
-        await handler.generate_video_async(base_config, request_invalid)
+    with pytest.raises(
+        VideoGenerationError, match="Minimax only supports 6 or 10 second durations"
+    ):
+        await handler.generate_video_async(minimax_config, request_invalid)
 
     mock_handler = AsyncMock()
     mock_handler.request_id = "req-1"

@@ -15,7 +15,11 @@
       "Bash(uv pip:*)",
       "Bash(python -c:*)",
       "Bash(uv run python:*)",
-      "Skill(superpowers:using-superpowers)"
+      "Skill(superpowers:using-superpowers)",
+      "Bash(uv run pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

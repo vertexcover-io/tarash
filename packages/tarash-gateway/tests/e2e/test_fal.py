@@ -70,9 +70,7 @@ async def test_comprehensive_async_video_generation(fal_api_key):
         seed=42,
         negative_prompt="blur, low quality",
         generate_audio=True,
-        model_params={
-            "auto_fix": True,
-        },
+        auto_fix=True,
     )
 
     # Generate video using API
@@ -140,9 +138,7 @@ def test_sync_video_generation_with_images(fal_api_key):
         prompt="A calm ocean wave rolling onto a sandy beach, inspired by the reference style",
         duration_seconds=5,
         aspect_ratio="9:16",
-        model_params={
-            "image_url": "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
-        },
+        image_url="https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
     )
 
     # Generate video using API (sync)
@@ -155,3 +151,111 @@ def test_sync_video_generation_with_images(fal_api_key):
     assert response.status == "completed"
 
     print(f"✓ Generated video with reference image: {response.request_id}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_minimax_image_to_video(fal_api_key):
+    """
+    Test Minimax image-to-video model.
+
+    This tests:
+    - Minimax-specific model (fal-ai/minimax/hailuo-02-fast/image-to-video)
+    - Field mapping: image_list -> image_url
+    - Prefix matching in registry
+    - Only prompt and image_url fields
+    """
+    minimax_config = VideoGenerationConfig(
+        model="fal-ai/minimax/hailuo-02-fast/image-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A person walking through a bustling city street",
+        image_list=[
+            {
+                "image": "https://fal.media/files/elephant/8kkhB12hEZI2kkbU8pZPA_test.jpeg",
+                "type": "reference",
+            }
+        ],
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(minimax_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated Minimax video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {minimax_config.model}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_kling_motion_control(fal_api_key):
+    """
+    Test Kling motion control model with image and video inputs.
+
+    This tests:
+    - Kling motion control model (fal-ai/kling-video/v2.6/standard/motion-control)
+    - Image-to-video with motion guidance from reference video
+    - Character orientation set to "video"
+    - Keep original sound enabled
+    - Field mapping: image_list -> image_url, video -> video_url
+    """
+    kling_config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v2.6/standard/motion-control",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="An african american woman dancing",
+        image_list=[
+            {
+                "image": "https://v3b.fal.media/files/b/0a875302/8NaxQrQxDNHppHtqcchMm.png",
+                "type": "reference",
+            }
+        ],
+        video="https://v3b.fal.media/files/b/0a8752bc/2xrNS217ngQ3wzXqA7LXr_output.mp4",
+        character_orientation="video",
+        keep_original_sound=True,
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(kling_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated Kling motion-controlled video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {kling_config.model}")
+    print("  Character orientation: video")
+    print("  Keep original sound: True")

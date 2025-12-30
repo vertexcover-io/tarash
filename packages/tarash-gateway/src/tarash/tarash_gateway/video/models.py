@@ -2,7 +2,7 @@
 
 from typing import Any, Awaitable, Callable, Literal, Protocol, TypedDict, Union
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 # ==================== Type Aliases ====================
 
@@ -42,6 +42,7 @@ class VideoGenerationConfig(BaseModel):
     provider: str  # e.g., "fal", "openai", "vertex", "replicate"
     api_key: str
     base_url: str | None = None
+    api_version: str | None = None  # For Azure OpenAI (e.g., "2024-05-01-preview")
     timeout: int = 600  # 10 minutes default
     max_poll_attempts: int = 120
     poll_interval: int = 5  # seconds
@@ -65,9 +66,35 @@ class VideoGenerationRequest(BaseModel):
     seed: int | None = None
     number_of_videos: int = 1
     negative_prompt: str | None = None
+    enhance_prompt: bool | None = None
 
     # Model-specific parameters
-    model_params: dict[str, Any] = Field(default_factory=dict)
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_extra_fields(cls, data: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(data, dict):
+            return data
+
+        extra_params = data.pop("extra_params", {})
+
+        # Get all field names defined in the model
+        known_fields = set(cls.model_fields.keys())
+
+        # Extract extra fields
+        extra = {k: v for k, v in data.items() if k not in known_fields}
+
+        # Remove extra fields from data (so Pydantic doesn't complain)
+        for k in extra.keys():
+            data.pop(k)
+
+        extra_params.update(extra)
+
+        # Store in extra_params
+        data["extra_params"] = extra_params
+
+        return data
 
 
 # ==================== Response ====================

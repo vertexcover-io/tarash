@@ -153,7 +153,7 @@ def test_get_client_creates_different_clients_for_different_configs(
 
 def test_validate_params_with_empty_model_params(handler, base_config):
     """Test validation with empty model_params."""
-    request_empty = VideoGenerationRequest(prompt="test", model_params={})
+    request_empty = VideoGenerationRequest(prompt="test", extra_params={})
 
     assert handler._validate_params(base_config, request_empty) == {}
 
@@ -162,8 +162,7 @@ def test_validate_params_with_valid_veo3_params(handler, base_config):
     """Test validation with valid Veo3VideoParams."""
     request = VideoGenerationRequest(
         prompt="test",
-        model_params={
-            "enhance_prompt": True,
+        extra_params={
             "person_generation": "allow_all",
         },
     )
@@ -171,7 +170,6 @@ def test_validate_params_with_valid_veo3_params(handler, base_config):
     result = handler._validate_params(base_config, request)
 
     assert result == {
-        "enhance_prompt": True,
         "person_generation": "allow_all",
     }
 
@@ -180,7 +178,7 @@ def test_validate_params_with_invalid_person_generation(handler, base_config):
     """Test validation rejects invalid person_generation value."""
     request = VideoGenerationRequest(
         prompt="test",
-        model_params={
+        extra_params={
             "person_generation": "invalid_value",
         },
     )
@@ -213,9 +211,9 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
         generate_audio=True,
         seed=42,
         negative_prompt="bad quality",
+        enhance_prompt=True,
         image_list=[{"image": "https://example.com/image.jpg", "type": "reference"}],
         video="https://example.com/video.mp4",
-        model_params={"enhance_prompt": True},
     )
 
     result = handler._convert_request(base_config, request)
@@ -284,7 +282,7 @@ def test_convert_request_propagates_validation_errors(handler, base_config):
     """Test that validation errors propagate."""
     request = VideoGenerationRequest(
         prompt="test",
-        model_params={"person_generation": "invalid"},
+        extra_params={"person_generation": "invalid"},
     )
 
     with pytest.raises(ValidationError):
@@ -552,7 +550,7 @@ async def test_generate_video_async_propagates_known_errors(
     """Test that ValidationError and ProviderAPIError propagate without wrapping."""
     # Test ValidationError propagation
     request_invalid = VideoGenerationRequest(
-        prompt="test", model_params={"person_generation": "invalid"}
+        prompt="test", extra_params={"person_generation": "invalid"}
     )
 
     with pytest.raises(ValidationError):

@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0.0",
+    "httpx>=0.25.0",
 ]
 
 [project.optional-dependencies]
@@ -51,4 +52,5 @@ addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
+    "-s",  # Show output (print statements) even for passing tests
 ]

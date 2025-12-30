@@ -3,7 +3,7 @@
 import asyncio
 import time
 import traceback
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from google.genai.types import GenerateVideosOperation, VideoGenerationReferenceType
 from typing_extensions import TypedDict
@@ -17,6 +17,7 @@ except ImportError:
 
 from tarash.tarash_gateway.video.exceptions import (
     ProviderAPIError,
+    ValidationError,
     VideoGenerationError,
     handle_video_generation_errors,
 )
@@ -30,11 +31,14 @@ from tarash.tarash_gateway.video.models import (
 )
 from tarash.tarash_gateway.video.utils import validate_model_params
 
+if TYPE_CHECKING:
+    from google.genai.client import AsyncClient, Client
+    from google.genai.types import GenerateVideosConfig
+
 
 class Veo3VideoParams(TypedDict, total=False):
     """Veo3-specific parameters."""
 
-    enhance_prompt: bool
     person_generation: Literal["allow_all", "dont_allow", "allow_adult"]
 
 
@@ -161,13 +165,13 @@ class Veo3ProviderHandler:
         Returns:
             Validated model parameters dict
         """
-        if not request.model_params:
+        if not request.extra_params:
             return {}
 
         # Use Veo3VideoParams schema for validation
         return validate_model_params(
             schema=Veo3VideoParams,
-            data=request.model_params,
+            data=request.extra_params,
             provider=config.provider,
             model=config.model,
         )
@@ -184,6 +188,9 @@ class Veo3ProviderHandler:
 
         Returns:
             Dict with prompt, image, video, and config keys ready for generate_videos(**kwargs)
+
+        Raises:
+            ValidationError: If more than 1 reference/first_frame or last_frame image is provided
         """
         # Start with validated model_params
         model_params = self._validate_params(config, request)
@@ -218,8 +225,33 @@ class Veo3ProviderHandler:
         if request.negative_prompt is not None:
             config_params["negative_prompt"] = request.negative_prompt
 
+        if request.enhance_prompt is not None:
+            config_params["enhance_prompt"] = request.enhance_prompt
+
         if request.video is not None:
             video = _convert_to_video(request.video)
+
+        # Validate image constraints before processing
+        if request.image_list:
+            reference_count = sum(
+                1
+                for img in request.image_list
+                if img["type"] in ("first_frame", "reference")
+            )
+            last_frame_count = sum(
+                1 for img in request.image_list if img["type"] == "last_frame"
+            )
+
+            if reference_count > 1:
+                raise ValidationError(
+                    f"Veo3 only supports 1 reference/first_frame image, got {reference_count}",
+                    provider=config.provider,
+                )
+            if last_frame_count > 1:
+                raise ValidationError(
+                    f"Veo3 only supports 1 last_frame image, got {last_frame_count}",
+                    provider=config.provider,
+                )
 
         for image_item in request.image_list or []:
             match image_item["type"]:

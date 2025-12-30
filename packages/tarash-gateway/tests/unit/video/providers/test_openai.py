@@ -151,7 +151,7 @@ def test_get_client_creates_different_clients_for_different_configs(
 
 def test_validate_params_with_empty_model_params(handler, base_config):
     """Test validation with empty model_params."""
-    request_empty = VideoGenerationRequest(prompt="test", model_params={})
+    request_empty = VideoGenerationRequest(prompt="test", extra_params={})
 
     assert handler._validate_params(base_config, request_empty) == {}
 
@@ -160,7 +160,7 @@ def test_validate_params_with_valid_params(handler, base_config):
     """Test validation with valid OpenAIVideoParams."""
     request = VideoGenerationRequest(
         prompt="test",
-        model_params={},
+        extra_params={},
     )
 
     result = handler._validate_params(base_config, request)

@@ -73,8 +73,8 @@ async def test_comprehensive_async_video_generation(veo3_config):
         seed=42,
         negative_prompt="blur, low quality, distorted",
         generate_audio=True,
-        model_params={
-            "enhance_prompt": True,
+        enhance_prompt=True,
+        extra_params={
             "person_generation": "allow_adult",
         },
     )
