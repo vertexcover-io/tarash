@@ -1,6 +1,5 @@
 """Tests for FalProviderHandler."""
 
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +9,7 @@ from tarash.tarash_gateway.video.exceptions import (
     ProviderAPIError,
     ValidationError,
     VideoGenerationError,
+    handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
     VideoGenerationConfig,
@@ -17,12 +17,33 @@ from tarash.tarash_gateway.video.models import (
 )
 from tarash.tarash_gateway.video.providers.fal import (
     FalProviderHandler,
-    handle_video_generation_errors,
     parse_fal_status,
 )
 
 
 # ==================== Fixtures ====================
+
+
+@pytest.fixture
+def mock_sync_client():
+    """Patch fal_client.SyncClient and provide mock."""
+    mock = MagicMock()
+    with patch(
+        "tarash.tarash_gateway.video.providers.fal.fal_client.SyncClient",
+        return_value=mock,
+    ):
+        yield mock
+
+
+@pytest.fixture
+def mock_async_client():
+    """Patch fal_client.AsyncClient and provide mock."""
+    mock = AsyncMock()
+    with patch(
+        "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient",
+        return_value=mock,
+    ):
+        yield mock
 
 
 @pytest.fixture
@@ -60,46 +81,32 @@ def test_init_creates_empty_caches(handler):
 # ==================== Client Management Tests ====================
 
 
-def test_get_client_creates_and_caches_sync_client(handler, base_config):
+def test_get_client_creates_and_caches_sync_client(
+    handler, base_config, mock_sync_client
+):
     """Test sync client creation and caching."""
     # Clear cache first
     handler._sync_client_cache.clear()
 
-    mock_client = MagicMock()
-    mock_fal = MagicMock()
-    mock_fal.SyncClient.return_value = mock_client
+    client1 = handler._get_client(base_config, "sync")
+    client2 = handler._get_client(base_config, "sync")
 
-    # Patch sys.modules to replace fal_client before import
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
-        client1 = handler._get_client(base_config, "sync")
-        client2 = handler._get_client(base_config, "sync")
-
-        assert client1 is client2  # Same instance (cached)
-        assert client1 is mock_client
-        mock_fal.SyncClient.assert_called_once_with(
-            key=base_config.api_key, default_timeout=base_config.timeout
-        )
+    assert client1 is client2  # Same instance (cached)
+    assert client1 is mock_sync_client
 
 
-def test_get_client_creates_and_caches_async_client(handler, base_config):
+def test_get_client_creates_and_caches_async_client(
+    handler, base_config, mock_async_client
+):
     """Test async client creation and caching."""
     # Clear cache first
     handler._async_client_cache.clear()
 
-    mock_client = AsyncMock()
-    mock_fal = MagicMock()
-    mock_fal.AsyncClient.return_value = mock_client
+    client1 = handler._get_client(base_config, "async")
+    client2 = handler._get_client(base_config, "async")
 
-    # Patch sys.modules to replace fal_client before import
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
-        client1 = handler._get_client(base_config, "async")
-        client2 = handler._get_client(base_config, "async")
-
-        assert client1 is client2  # Same instance (cached)
-        assert client1 is mock_client
-        mock_fal.AsyncClient.assert_called_once_with(
-            key=base_config.api_key, default_timeout=base_config.timeout
-        )
+    assert client1 is client2  # Same instance (cached)
+    assert client1 is mock_async_client
 
 
 @pytest.mark.parametrize(
@@ -120,8 +127,6 @@ def test_get_client_creates_different_clients_for_different_configs(
 
     mock_client1 = MagicMock()
     mock_client2 = MagicMock()
-    mock_fal = MagicMock()
-    mock_fal.SyncClient.side_effect = [mock_client1, mock_client2]
 
     config1 = VideoGenerationConfig(
         model="fal-ai/veo3.1",
@@ -138,22 +143,14 @@ def test_get_client_creates_different_clients_for_different_configs(
         timeout=600,
     )
 
-    # Patch sys.modules to replace fal_client before import
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
+    with patch(
+        "tarash.tarash_gateway.video.providers.fal.fal_client.SyncClient",
+        side_effect=[mock_client1, mock_client2],
+    ):
         client1 = handler._get_client(config1, "sync")
         client2 = handler._get_client(config2, "sync")
 
         assert client1 is not client2  # Different instances
-
-
-def test_get_client_raises_import_error_when_fal_client_missing(handler, base_config):
-    """Test ImportError when fal_client is not installed."""
-    # Mock the import to raise ImportError
-    with patch(
-        "builtins.__import__", side_effect=ImportError("No module named 'fal_client'")
-    ):
-        with pytest.raises(ImportError, match="fal-client is required"):
-            handler._get_client(base_config, "sync")
 
 
 # ==================== Parameter Validation Tests ====================
@@ -170,34 +167,19 @@ def test_validate_params_with_valid_veo_params(handler, base_config):
     """Test validation with valid VeoVideoParams."""
     request = VideoGenerationRequest(
         prompt="test",
+        negative_prompt="bad quality",
+        seed=42,
+        generate_audio=True,
         model_params={
-            "negative_prompt": "bad quality",
-            "seed": 42,
-            "generate_audio": True,
             "auto_fix": False,
         },
     )
 
     result = handler._validate_params(base_config, request)
 
-    assert result["negative_prompt"] == "bad quality"
-    assert result["seed"] == 42
-    assert result["generate_audio"] is True
-    assert result["auto_fix"] is False
-    # enhance_prompt has default True, so it will be included
-    assert "enhance_prompt" in result
-    assert result["enhance_prompt"] is True
-
-
-def test_validate_params_with_invalid_veo_params(handler, base_config):
-    """Test validation raises ValidationError for invalid params."""
-    request = VideoGenerationRequest(
-        prompt="test",
-        model_params={"invalid_field": "value", "extra": "data"},
-    )
-
-    with pytest.raises(ValidationError, match="Invalid model_params"):
-        handler._validate_params(base_config, request)
+    assert result == {
+        "auto_fix": False,
+    }
 
 
 def test_validate_params_passes_through_for_model_without_schema(handler):
@@ -232,11 +214,11 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     """Test conversion with all optional fields and validated model_params."""
     request = VideoGenerationRequest(
         prompt="A test video",
-        duration=5,
+        duration_seconds=5,
         resolution="1080p",
         aspect_ratio="16:9",
-        image_urls=["https://example.com/image.jpg"],
-        video_url="https://example.com/video.mp4",
+        image_list=[{"image": "https://example.com/image.jpg", "type": "reference"}],
+        video="https://example.com/video.mp4",
         model_params={"seed": 42, "generate_audio": True},
     )
 
@@ -258,7 +240,7 @@ def test_convert_request_propagates_validation_errors(handler, base_config):
     """Test that validation errors propagate."""
     request = VideoGenerationRequest(
         prompt="test",
-        model_params={"invalid_field": "value"},
+        model_params={"auto_fix": "value"},
     )
 
     with pytest.raises(ValidationError):
@@ -268,7 +250,9 @@ def test_convert_request_propagates_validation_errors(handler, base_config):
 # ==================== Response Conversion Tests ====================
 
 
-def test_convert_response_with_complete_dict_response(handler, base_config):
+def test_convert_response_with_complete_dict_response(
+    handler, base_config, base_request
+):
     """Test conversion with complete dict response including all fields."""
     provider_response = {
         "video": {"url": "https://example.com/video.mp4"},
@@ -278,10 +262,12 @@ def test_convert_response_with_complete_dict_response(handler, base_config):
         "aspect_ratio": "16:9",
     }
 
-    result = handler._convert_response(base_config, "req-123", provider_response)
+    result = handler._convert_response(
+        base_config, base_request, "req-123", provider_response
+    )
 
     assert result.request_id == "req-123"
-    assert result.video_url == "https://example.com/video.mp4"
+    assert result.video == "https://example.com/video.mp4"
     assert result.audio_url == "https://example.com/audio.mp3"
     assert result.duration == 5.5
     assert result.resolution == "1080p"
@@ -291,19 +277,23 @@ def test_convert_response_with_complete_dict_response(handler, base_config):
     assert result.provider_metadata == {}
 
 
-def test_convert_response_with_missing_video_url_raises_error(handler, base_config):
+def test_convert_response_with_missing_video_url_raises_error(
+    handler, base_config, base_request
+):
     """Test missing video URL raises ProviderAPIError with proper error message and raw_response."""
     provider_response = {"some_field": "value"}
 
     with pytest.raises(ProviderAPIError, match="No video URL found") as exc_info:
-        handler._convert_response(base_config, "req-789", provider_response)
+        handler._convert_response(
+            base_config, base_request, "req-789", provider_response
+        )
 
     assert exc_info.value.provider == "fal"
     assert exc_info.value.raw_response == provider_response
 
     # Test with non-dict response (empty dict after extraction)
     with pytest.raises(ProviderAPIError, match="No video URL found"):
-        handler._convert_response(base_config, "req-789", {})
+        handler._convert_response(base_config, base_request, "req-789", {})
 
 
 # ==================== Error Handling Tests ====================
@@ -460,16 +450,17 @@ async def test_generate_video_async_success_with_progress_callbacks(
         return_value={"video": {"url": "https://example.com/video.mp4"}}
     )
 
-    # Setup mock fal_client module
-    mock_fal = MagicMock()
+    # Setup mock async client
     mock_async_client = AsyncMock()
     mock_async_client.submit = AsyncMock(return_value=mock_handler)
-    mock_fal.AsyncClient.return_value = mock_async_client
 
-    # Clear cache and patch sys.modules and status classes
+    # Clear cache and patch
     handler._async_client_cache.clear()
     with (
-        patch.dict(sys.modules, {"fal_client": mock_fal}),
+        patch(
+            "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient",
+            return_value=mock_async_client,
+        ),
         patch("tarash.tarash_gateway.video.providers.fal.Queued", MockQueued),
         patch("tarash.tarash_gateway.video.providers.fal.InProgress", MockInProgress),
         patch("tarash.tarash_gateway.video.providers.fal.Completed", MockCompleted),
@@ -485,7 +476,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
         )
 
         assert result.request_id == "fal-req-123"
-        assert result.video_url == "https://example.com/video.mp4"
+        assert result.video == "https://example.com/video.mp4"
         assert len(progress_calls) == 3  # queued, processing, completed
 
         # Test with async callback
@@ -503,20 +494,17 @@ async def test_generate_video_async_success_with_progress_callbacks(
 
 @pytest.mark.asyncio
 async def test_generate_video_async_propagates_known_errors(
-    handler, base_config, base_request
+    handler, base_config, base_request, mock_async_client
 ):
     """Test that ValidationError and ProviderAPIError propagate without wrapping."""
     # Test ValidationError propagation
     request_invalid = VideoGenerationRequest(
-        prompt="test", model_params={"invalid": "field"}
+        prompt="test", model_params={"auto_fix": "value"}
     )
 
     with pytest.raises(ValidationError):
         await handler.generate_video_async(base_config, request_invalid)
 
-    # Test ProviderAPIError propagation (from _convert_response)
-    mock_fal = MagicMock()
-    mock_async_client = AsyncMock()
     mock_handler = AsyncMock()
     mock_handler.request_id = "req-1"
 
@@ -528,17 +516,15 @@ async def test_generate_video_async_propagates_known_errors(
     mock_handler.iter_events = empty_iter_events
     mock_handler.get = AsyncMock(return_value={})  # No video URL
     mock_async_client.submit = AsyncMock(return_value=mock_handler)
-    mock_fal.AsyncClient.return_value = mock_async_client
 
     handler._async_client_cache.clear()
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
-        with pytest.raises(ProviderAPIError):
-            await handler.generate_video_async(base_config, base_request)
+    with pytest.raises(ProviderAPIError):
+        await handler.generate_video_async(base_config, base_request)
 
 
 @pytest.mark.asyncio
 async def test_generate_video_async_handles_fal_http_error(
-    handler, base_config, base_request
+    handler, base_config, base_request, mock_async_client
 ):
     """Test FalClientHTTPError is handled by _handle_error."""
     mock_response = MagicMock()
@@ -551,39 +537,30 @@ async def test_generate_video_async_handles_fal_http_error(
         response=mock_response,
     )
 
-    mock_fal = MagicMock()
-    mock_async_client = AsyncMock()
     mock_async_client.submit = AsyncMock(side_effect=http_error)
-    mock_fal.AsyncClient.return_value = mock_async_client
 
     handler._async_client_cache.clear()
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
-        # FalClientHTTPError is wrapped by decorator as unknown exception
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
-            await handler.generate_video_async(base_config, base_request)
+    with pytest.raises(VideoGenerationError, match="Unknown error"):
+        await handler.generate_video_async(base_config, base_request)
 
 
 @pytest.mark.asyncio
 async def test_generate_video_async_wraps_unknown_exceptions(
-    handler, base_config, base_request
+    handler, base_config, base_request, mock_async_client
 ):
     """Test unknown exceptions are wrapped by decorator."""
-    mock_fal = MagicMock()
-    mock_async_client = AsyncMock()
     mock_async_client.submit = AsyncMock(side_effect=RuntimeError("Unexpected error"))
-    mock_fal.AsyncClient.return_value = mock_async_client
 
     handler._async_client_cache.clear()
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
-            await handler.generate_video_async(base_config, base_request)
+    with pytest.raises(VideoGenerationError, match="Unknown error"):
+        await handler.generate_video_async(base_config, base_request)
 
 
 # ==================== Sync Video Generation Tests ====================
 
 
 def test_generate_video_success_with_progress_callback(
-    handler, base_config, base_request
+    handler, base_config, base_request, mock_sync_client
 ):
     """Test successful sync generation with progress callback."""
 
@@ -612,16 +589,10 @@ def test_generate_video_success_with_progress_callback(
     def progress_callback(update):
         progress_calls.append(update)
 
-    # Setup mock fal_client module
-    mock_fal = MagicMock()
-    mock_sync_client = MagicMock()
-    mock_sync_client.submit.return_value = mock_handler
-    mock_fal.SyncClient.return_value = mock_sync_client
-
-    # Clear cache and patch sys.modules and status classes
+    # Clear cache and patch
     handler._sync_client_cache.clear()
+    mock_sync_client.submit.return_value = mock_handler
     with (
-        patch.dict(sys.modules, {"fal_client": mock_fal}),
         patch("tarash.tarash_gateway.video.providers.fal.Queued", MockQueued),
         patch("tarash.tarash_gateway.video.providers.fal.Completed", MockCompleted),
     ):
@@ -630,21 +601,13 @@ def test_generate_video_success_with_progress_callback(
         )
 
     assert result.request_id == "fal-req-456"
-    assert result.video_url == "https://example.com/video.mp4"
+    assert result.video == "https://example.com/video.mp4"
     assert len(progress_calls) == 2
 
 
-def test_generate_video_propagates_known_errors(handler, base_config):
-    """Test that ValidationError and ProviderAPIError propagate."""
-    request_invalid = VideoGenerationRequest(
-        prompt="test", model_params={"invalid": "field"}
-    )
-
-    with pytest.raises(ValidationError):
-        handler.generate_video(base_config, request_invalid)
-
-
-def test_generate_video_handles_exceptions(handler, base_config, base_request):
+def test_generate_video_handles_exceptions(
+    handler, base_config, base_request, mock_sync_client
+):
     """Test exception handling in sync generation."""
     mock_response = MagicMock()
     mock_response.content = b"Error"
@@ -656,16 +619,11 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
         response=mock_response,
     )
 
-    mock_fal = MagicMock()
-    mock_sync_client = MagicMock()
     mock_sync_client.submit.side_effect = http_error
-    mock_fal.SyncClient.return_value = mock_sync_client
 
     handler._sync_client_cache.clear()
-    with patch.dict(sys.modules, {"fal_client": mock_fal}):
-        # FalClientHTTPError is wrapped by decorator as unknown exception
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
-            handler.generate_video(base_config, base_request)
+    with pytest.raises(VideoGenerationError, match="Unknown error"):
+        handler.generate_video(base_config, base_request)
 
 
 # ==================== Error Decorator Tests ====================

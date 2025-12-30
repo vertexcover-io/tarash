@@ -13,11 +13,13 @@ dependencies = [
 
 [project.optional-dependencies]
 fal = ["fal-client>=0.4.0"]
+veo3 = ["google-genai>=1.0.0"]
 openai = ["openai>=1.0.0"]
 replicate = ["replicate>=0.20.0"]
 google = ["google-cloud-aiplatform>=1.38.0"]
 all = [
     "fal-client>=0.4.0",
+    "google-genai>=1.0.0",
     "openai>=1.0.0",
     "replicate>=0.20.0",
     "google-cloud-aiplatform>=1.38.0",
@@ -33,3 +35,20 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "tarash.tarash_gateway"
+
+[tool.pytest.ini_options]
+markers = [
+    "unit: Unit tests that use mocks and don't make real API calls",
+    "e2e: End-to-end tests that make real API calls (run with '--e2e')",
+    "slow: Tests that take a long time to run (deselect with '-m \"not slow\"')",
+]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]

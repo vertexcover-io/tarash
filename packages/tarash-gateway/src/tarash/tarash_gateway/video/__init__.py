@@ -8,6 +8,7 @@ from tarash.tarash_gateway.video.exceptions import (
 )
 from tarash.tarash_gateway.video.models import (
     AspectRatio,
+    ImageType,
     Resolution,
     VideoGenerationConfig,
     VideoGenerationRequest,
@@ -27,6 +28,8 @@ __all__ = [
     # Types
     "Resolution",
     "AspectRatio",
+    "ImageType",
+    "VideoType",
     # Exceptions
     "VideoGenerationError",
     "ProviderAPIError",

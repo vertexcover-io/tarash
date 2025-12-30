@@ -11,6 +11,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationResponse,
 )
 from tarash.tarash_gateway.video.providers.fal import FalProviderHandler
+from tarash.tarash_gateway.video.providers.veo3 import Veo3ProviderHandler
 
 # ==================== Provider Registry ====================
 
@@ -23,6 +24,8 @@ def _get_handler(provider: str) -> ProviderHandler:
     if provider not in _HANDLER_INSTANCES:
         if provider == "fal":
             _HANDLER_INSTANCES[provider] = FalProviderHandler()
+        elif provider == "veo3":
+            _HANDLER_INSTANCES[provider] = Veo3ProviderHandler()
         # Future providers:
         # elif provider == "openai":
         #     _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()

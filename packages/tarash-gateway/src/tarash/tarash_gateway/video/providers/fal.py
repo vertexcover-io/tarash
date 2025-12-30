@@ -1,27 +1,31 @@
 """Fal.ai provider handler."""
 
 import asyncio
-import functools
-import inspect
 import traceback
-from typing import Any, Callable
+from typing import Any, NotRequired
 
 from fal_client.client import FalClientHTTPError
+
 from tarash.tarash_gateway.video.exceptions import (
     ProviderAPIError,
-    ValidationError,
     VideoGenerationError,
+    handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
-    MODEL_PARAMS_SCHEMAS,
+    BaseVideoParams,
     ProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.video.utils import (
+    convert_to_data_url,
+    validate_model_params,
+)
 
 try:
+    import fal_client
     from fal_client import (
         AsyncClient,
         Status,
@@ -34,71 +38,11 @@ except ImportError:
     pass
 
 
-def handle_video_generation_errors(func: Callable) -> Callable:
-    """Decorator to handle only truly unhandled exceptions.
+# Define Fal-specific params schema
+class FalVideoParams(BaseVideoParams):
+    """Fal-specific parameters."""
 
-    - ValidationError: Let propagate (don't wrap)
-    - VideoGenerationError: Re-raise as-is (ensuring model is set)
-    - Unknown exceptions: Wrap in VideoGenerationError
-    """
-    if inspect.iscoroutinefunction(func):
-
-        @functools.wraps(func)
-        async def async_wrapper(
-            self,
-            config: VideoGenerationConfig,
-            request: VideoGenerationRequest,
-            *args,
-            **kwargs,
-        ):
-            try:
-                return await func(self, config, request, *args, **kwargs)
-            except (ValidationError, ProviderAPIError, VideoGenerationError):
-                # Let validation and provider API errors propagate
-                raise
-            except Exception as ex:
-                # Only wrap truly unknown exceptions
-                raise VideoGenerationError(
-                    f"Unknown error while generating video: {ex}",
-                    provider=config.provider,
-                    model=config.model,
-                    raw_response={
-                        "error": str(ex),
-                        "error_type": type(ex).__name__,
-                        "traceback": traceback.format_exc(),
-                    },
-                ) from ex
-
-        return async_wrapper
-    else:
-
-        @functools.wraps(func)
-        def sync_wrapper(
-            self,
-            config: VideoGenerationConfig,
-            request: VideoGenerationRequest,
-            *args,
-            **kwargs,
-        ):
-            try:
-                return func(self, config, request, *args, **kwargs)
-            except (ValidationError, ProviderAPIError, VideoGenerationError):
-                # Let validation and provider API errors propagate
-                raise
-            except Exception as ex:
-                # Only wrap truly unknown exceptions
-                raise VideoGenerationError(
-                    f"Unknown error while generating video: {ex}",
-                    provider=config.provider,
-                    model=config.model,
-                    raw_response={
-                        "error": str(ex),
-                        "error_type": type(ex).__name__,
-                        "traceback": traceback.format_exc(),
-                    },
-                ) from ex
-
-        return sync_wrapper
+    auto_fix: NotRequired["bool"]
 
 
 def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
@@ -121,7 +65,7 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
         return VideoGenerationUpdate(
             request_id=request_id,
             status="processing",
-            update={"logs": status.update.logs},
+            update={"logs": status.logs},
         )
 
     else:
@@ -133,6 +77,15 @@ class FalProviderHandler:
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
+
+        try:
+            import fal_client  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                "fal-client is required for Fal provider. "
+                "Install with: pip install tarash-gateway[fal]"
+            )
+
         self._sync_client_cache: dict[str, Any] = {}
         self._async_client_cache: dict[str, Any] = {}
 
@@ -149,13 +102,6 @@ class FalProviderHandler:
         Returns:
             fal_client.SyncClient or fal_client.AsyncClient instance
         """
-        try:
-            import fal_client
-        except ImportError as e:
-            raise ImportError(
-                "fal-client is required for Fal provider. "
-                "Install with: pip install tarash-gateway[fal]"
-            ) from e
 
         # Use API key + base_url as cache key
         cache_key = f"{config.api_key}:{config.base_url or 'default'}"
@@ -179,7 +125,7 @@ class FalProviderHandler:
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
     ) -> dict[str, Any]:
         """
-        Validate model_params if schema exists.
+        Validate model_params using Fal-specific schema.
 
         Args:
             config: Provider configuration
@@ -191,20 +137,13 @@ class FalProviderHandler:
         if not request.model_params:
             return {}
 
-        # Check if we have a schema for this model
-        params_schema = MODEL_PARAMS_SCHEMAS.get(config.model)
-        if params_schema:
-            try:
-                validated = params_schema(**request.model_params)
-                return validated.model_dump(exclude_none=True)
-            except Exception as e:
-                raise ValidationError(
-                    f"Invalid model_params for {config.model}: {e}",
-                    provider=config.provider,
-                ) from e
-
-        # No schema, pass through as-is
-        return request.model_params
+        # Use FalVideoParams schema for validation
+        return validate_model_params(
+            schema=FalVideoParams,
+            data=request.model_params,
+            provider=config.provider,
+            model=config.model,
+        )
 
     def _convert_request(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
@@ -225,8 +164,8 @@ class FalProviderHandler:
         # Add common parameters
         fal_input["prompt"] = request.prompt
 
-        if request.duration is not None:
-            fal_input["duration"] = request.duration
+        if request.duration_seconds is not None:
+            fal_input["duration"] = request.duration_seconds
 
         if request.resolution is not None:
             fal_input["resolution"] = request.resolution
@@ -234,17 +173,44 @@ class FalProviderHandler:
         if request.aspect_ratio is not None:
             fal_input["aspect_ratio"] = request.aspect_ratio
 
-        if request.image_urls:
-            fal_input["image_urls"] = request.image_urls
+        if request.image_list:
+            # Convert ImageType list to image URLs
+            # ImageType is TypedDict with 'image' (MediaType) and 'type' fields
+            image_urls = []
+            for img in request.image_list:
+                media = img["image"]
+                # Check if it's a MediaContent dict (TypedDict)
+                if (
+                    isinstance(media, dict)
+                    and "content" in media
+                    and "content_type" in media
+                ):
+                    # Convert to base64 data URL
+                    image_urls.append(convert_to_data_url(media))
+                else:
+                    # String URL - pass through as-is
+                    image_urls.append(str(media))
+            fal_input["image_urls"] = image_urls
 
-        if request.video_url:
-            fal_input["video_url"] = request.video_url
+        if request.video:
+            # Check if it's a MediaContent dict (TypedDict)
+            if (
+                isinstance(request.video, dict)
+                and "content" in request.video
+                and "content_type" in request.video
+            ):
+                # Convert to base64 data URL
+                fal_input["video_url"] = convert_to_data_url(request.video)
+            else:
+                # String URL - pass through as-is
+                fal_input["video_url"] = str(request.video)
 
         return fal_input
 
     def _convert_response(
         self,
         config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
         request_id: str,
         provider_response: Any,
     ) -> VideoGenerationResponse:
@@ -253,6 +219,7 @@ class FalProviderHandler:
 
         Args:
             config: Provider configuration
+            request: Original video generation request
             request_id: Our request ID
             provider_response: Raw Fal response
 
@@ -282,7 +249,7 @@ class FalProviderHandler:
 
         if not video_url:
             raise ProviderAPIError(
-                "No video URL found in Fal response",
+                f"No video URL found in Fal response: {provider_response}",
                 provider=config.provider,
                 raw_response=provider_response
                 if isinstance(provider_response, dict)
@@ -291,7 +258,7 @@ class FalProviderHandler:
 
         return VideoGenerationResponse(
             request_id=request_id,
-            video_url=video_url,
+            video=video_url,
             audio_url=audio_url,
             duration=provider_response.get("duration")
             if isinstance(provider_response, dict)
@@ -385,7 +352,7 @@ class FalProviderHandler:
                 if isinstance(result, dict)
                 else (result.data if hasattr(result, "data") else {})
             )
-            response = self._convert_response(config, request_id, fal_result)
+            response = self._convert_response(config, request, request_id, fal_result)
 
             return response
 
@@ -435,7 +402,7 @@ class FalProviderHandler:
                 if isinstance(result, dict)
                 else (result.data if hasattr(result, "data") else {})
             )
-            response = self._convert_response(config, request_id, fal_result)
+            response = self._convert_response(config, request, request_id, fal_result)
 
             return response
 

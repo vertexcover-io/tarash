@@ -1,6 +1,15 @@
 """Exceptions for video generation."""
 
-from typing import Any
+import functools
+import inspect
+import traceback
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from tarash.tarash_gateway.video.models import (
+        VideoGenerationConfig,
+        VideoGenerationRequest,
+    )
 
 
 class VideoGenerationError(Exception):
@@ -32,3 +41,70 @@ class ValidationError(VideoGenerationError):
     """Request validation failed."""
 
     pass
+
+
+def handle_video_generation_errors(func: Callable) -> Callable:
+    """Decorator to handle only truly unhandled exceptions.
+
+    - ValidationError: Let propagate (don't wrap)
+    - VideoGenerationError: Re-raise as-is (ensuring model is set)
+    - Unknown exceptions: Wrap in VideoGenerationError
+    """
+    if inspect.iscoroutinefunction(func):
+
+        @functools.wraps(func)
+        async def async_wrapper(
+            self,
+            config: "VideoGenerationConfig",
+            request: "VideoGenerationRequest",
+            *args,
+            **kwargs,
+        ):
+            try:
+                return await func(self, config, request, *args, **kwargs)
+            except (ValidationError, ProviderAPIError, VideoGenerationError):
+                # Let validation and provider API errors propagate
+                raise
+            except Exception as ex:
+                # Only wrap truly unknown exceptions
+                raise VideoGenerationError(
+                    f"Unknown error while generating video: {ex}",
+                    provider=config.provider,
+                    model=config.model,
+                    raw_response={
+                        "error": str(ex),
+                        "error_type": type(ex).__name__,
+                        "traceback": traceback.format_exc(),
+                    },
+                ) from ex
+
+        return async_wrapper
+    else:
+
+        @functools.wraps(func)
+        def sync_wrapper(
+            self,
+            config: "VideoGenerationConfig",
+            request: "VideoGenerationRequest",
+            *args,
+            **kwargs,
+        ):
+            try:
+                return func(self, config, request, *args, **kwargs)
+            except (ValidationError, ProviderAPIError, VideoGenerationError):
+                # Let validation and provider API errors propagate
+                raise
+            except Exception as ex:
+                # Only wrap truly unknown exceptions
+                raise VideoGenerationError(
+                    f"Unknown error while generating video: {ex}",
+                    provider=config.provider,
+                    model=config.model,
+                    raw_response={
+                        "error": str(ex),
+                        "error_type": type(ex).__name__,
+                        "traceback": traceback.format_exc(),
+                    },
+                ) from ex
+
+        return sync_wrapper

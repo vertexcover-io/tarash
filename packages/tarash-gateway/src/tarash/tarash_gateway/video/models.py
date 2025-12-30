@@ -1,13 +1,30 @@
 """Core data models for video generation."""
 
-from typing import Any, Awaitable, Callable, Literal, Protocol, Union
+from typing import Any, Awaitable, Callable, Literal, Protocol, TypedDict, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 # ==================== Type Aliases ====================
 
 Resolution = Literal["360p", "480p", "720p", "1080p", "4k"]
 AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
+Base64 = str
+
+
+class MediaContent(TypedDict):
+    """Media content as bytes with content type."""
+
+    content: bytes
+    content_type: str
+
+
+MediaType = Union[Base64, HttpUrl, MediaContent]
+
+
+class ImageType(TypedDict):
+    image: MediaType
+    type: Literal["reference", "first_frame", "last_frame", "asset", "style"]
+
 
 # Progress callback can be sync or async
 ProgressCallback = Union[
@@ -39,15 +56,15 @@ class VideoGenerationRequest(BaseModel):
     """Video generation request with common parameters."""
 
     prompt: str
-
-    # Common optional parameters (not all providers support all)
-    duration: int | str | None = None  # Provider-specific format
-    resolution: Resolution | str | None = None
-    aspect_ratio: AspectRatio | str | None = None
-
-    # Image/video inputs for I2V, V2V
-    image_urls: list[str] = Field(default_factory=list)
-    video_url: str | None = None
+    duration_seconds: int | None = None
+    resolution: Resolution | None = None
+    aspect_ratio: AspectRatio | None = None
+    generate_audio: bool | None = None
+    image_list: list[ImageType] = Field(default_factory=list)
+    video: MediaType | None = None
+    seed: int | None = None
+    number_of_videos: int = 1
+    negative_prompt: str | None = None
 
     # Model-specific parameters
     model_params: dict[str, Any] = Field(default_factory=dict)
@@ -61,7 +78,7 @@ class VideoGenerationResponse(BaseModel):
 
     request_id: str  # Our unique ID for this request
 
-    video_url: str
+    video: MediaType
     content_type: str | None = None
     audio_url: str | None = None
     duration: float | None = None  # seconds
@@ -91,28 +108,8 @@ class VideoGenerationUpdate(BaseModel):
 # ==================== Model-Specific Parameters ====================
 
 
-class BaseVideoParams(BaseModel):
-    """Base class for model-specific parameters."""
-
-    model_config = {"extra": "forbid"}
-
-
-# Veo (via Fal)
-class VeoVideoParams(BaseVideoParams):
-    """Veo-specific parameters (beyond common)."""
-
-    negative_prompt: str | None = None
-    seed: int | None = None
-    generate_audio: bool = True
-    auto_fix: bool = True  # Fal-specific
-    enhance_prompt: bool = True  # Fal-specific
-
-
-# Sora
-class SoraVideoParams(BaseVideoParams):
-    """Sora-specific parameters."""
-
-    remix_video_id: str | None = None
+class BaseVideoParams(TypedDict, total=False):
+    __pydantic_config__ = ConfigDict(extra="allow")
 
 
 # Kling Camera Control
@@ -195,22 +192,6 @@ class KlingVideoParams(BaseVideoParams):
     camera_control: KlingCameraControl | None = None
 
 
-# Registry of model parameter schemas
-MODEL_PARAMS_SCHEMAS: dict[str, type[BaseVideoParams]] = {
-    # Fal Veo models
-    "fal-ai/veo3": VeoVideoParams,
-    "fal-ai/veo3.1": VeoVideoParams,
-    "fal-ai/veo3.1/fast": VeoVideoParams,
-    # OpenAI Sora
-    "openai/sora-2": SoraVideoParams,
-    "openai/sora-2-pro": SoraVideoParams,
-    # Kling models
-    "kling/2.6": KlingVideoParams,
-    "kling/2.6-pro": KlingVideoParams,
-    "kling/3.1": KlingVideoParams,
-}
-
-
 # ==================== Provider Handler Protocol ====================
 
 
@@ -265,6 +246,7 @@ class ProviderHandler(Protocol):
     def _convert_response(
         self,
         config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
         request_id: str,
         provider_response: Any,
     ) -> VideoGenerationResponse:
@@ -273,6 +255,7 @@ class ProviderHandler(Protocol):
 
         Args:
             config: Provider configuration
+            request: Original video generation request
             request_id: Our request ID
             provider_response: Raw provider response
 

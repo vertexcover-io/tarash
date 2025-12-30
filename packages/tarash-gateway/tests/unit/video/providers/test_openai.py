@@ -1,0 +1,606 @@
+"""Tests for OpenAIProviderHandler."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from tarash.tarash_gateway.video.exceptions import (
+    ProviderAPIError,
+    VideoGenerationError,
+)
+from tarash.tarash_gateway.video.models import (
+    VideoGenerationConfig,
+    VideoGenerationRequest,
+)
+from tarash.tarash_gateway.video.providers.openai import (
+    OpenAIProviderHandler,
+    parse_openai_video_status,
+)
+
+
+# ==================== Fixtures ====================
+
+
+@pytest.fixture
+def mock_sync_client():
+    """Patch OpenAI and provide mock."""
+    mock = MagicMock()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.OpenAI", return_value=mock
+    ):
+        yield mock
+
+
+@pytest.fixture
+def mock_async_client():
+    """Patch AsyncOpenAI and provide mock."""
+    mock = AsyncMock()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI", return_value=mock
+    ):
+        yield mock
+
+
+@pytest.fixture
+def handler():
+    """Create an OpenAIProviderHandler instance."""
+    return OpenAIProviderHandler()
+
+
+@pytest.fixture
+def base_config():
+    """Create a base VideoGenerationConfig."""
+    return VideoGenerationConfig(
+        model="sora-2",
+        provider="openai",
+        api_key="test-api-key",
+        timeout=600,
+        poll_interval=1,
+    )
+
+
+@pytest.fixture
+def base_request():
+    """Create a base VideoGenerationRequest."""
+    return VideoGenerationRequest(prompt="Test prompt")
+
+
+# ==================== Initialization Tests ====================
+
+
+def test_init_creates_empty_caches(handler):
+    """Test that handler initializes with empty client caches."""
+    assert handler._sync_client_cache == {}
+    assert handler._async_client_cache == {}
+
+
+# ==================== Client Management Tests ====================
+
+
+def test_get_client_creates_and_caches_sync_client(
+    handler, base_config, mock_sync_client
+):
+    """Test sync client creation and caching."""
+    handler._sync_client_cache.clear()
+
+    client1 = handler._get_client(base_config, "sync")
+    client2 = handler._get_client(base_config, "sync")
+
+    assert client1 is client2  # Same instance (cached)
+    assert client1 is mock_sync_client
+
+
+def test_get_client_creates_and_caches_async_client(
+    handler, base_config, mock_async_client
+):
+    """Test async client creation and caching."""
+    handler._async_client_cache.clear()
+
+    client1 = handler._get_client(base_config, "async")
+    client2 = handler._get_client(base_config, "async")
+
+    assert client1 is client2  # Same instance (cached)
+    assert client1 is mock_async_client
+
+
+@pytest.mark.parametrize(
+    "api_key,base_url",
+    [
+        ("key1", None),
+        ("key2", None),
+        ("key1", "https://api1.openai.com/v1"),
+        ("key1", "https://api2.openai.com/v1"),
+    ],
+)
+def test_get_client_creates_different_clients_for_different_configs(
+    handler, api_key, base_url
+):
+    """Test different clients for different API keys and base_urls."""
+    handler._sync_client_cache.clear()
+
+    mock_client1 = MagicMock()
+    mock_client2 = MagicMock()
+
+    config1 = VideoGenerationConfig(
+        model="sora-2",
+        provider="openai",
+        api_key=api_key,
+        base_url=base_url,
+        timeout=600,
+    )
+    config2 = VideoGenerationConfig(
+        model="sora-2",
+        provider="openai",
+        api_key="different-key",
+        base_url="https://different.example.com",
+        timeout=600,
+    )
+
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        side_effect=[mock_client1, mock_client2],
+    ):
+        client1 = handler._get_client(config1, "sync")
+        client2 = handler._get_client(config2, "sync")
+
+        assert client1 is not client2  # Different instances
+
+
+# ==================== Parameter Validation Tests ====================
+
+
+def test_validate_params_with_empty_model_params(handler, base_config):
+    """Test validation with empty model_params."""
+    request_empty = VideoGenerationRequest(prompt="test", model_params={})
+
+    assert handler._validate_params(base_config, request_empty) == {}
+
+
+def test_validate_params_with_valid_params(handler, base_config):
+    """Test validation with valid OpenAIVideoParams."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        model_params={},
+    )
+
+    result = handler._validate_params(base_config, request)
+    assert result == {}
+
+
+# ==================== Request Conversion Tests ====================
+
+
+def test_convert_request_with_minimal_fields(handler, base_config):
+    """Test conversion with only prompt."""
+    request = VideoGenerationRequest(prompt="A test video")
+    result = handler._convert_request(base_config, request)
+
+    assert result["model"] == "sora-2"
+    assert result["prompt"] == "A test video"
+
+
+def test_convert_request_with_duration(handler, base_config):
+    """Test conversion with duration."""
+    request = VideoGenerationRequest(prompt="A test video", duration_seconds=8)
+    result = handler._convert_request(base_config, request)
+
+    assert result["seconds"] == 8
+
+
+def test_convert_request_with_aspect_ratio(handler, base_config):
+    """Test conversion with aspect ratio to size mapping."""
+    request = VideoGenerationRequest(prompt="A test video", aspect_ratio="16:9")
+    result = handler._convert_request(base_config, request)
+
+    assert result["size"] == "1280x720"
+
+    # Test portrait
+    request = VideoGenerationRequest(prompt="A test video", aspect_ratio="9:16")
+    result = handler._convert_request(base_config, request)
+    assert result["size"] == "720x1280"
+
+    # Test square
+    request = VideoGenerationRequest(prompt="A test video", aspect_ratio="1:1")
+    result = handler._convert_request(base_config, request)
+    assert result["size"] == "1024x1024"
+
+
+def test_convert_request_with_all_optional_fields(handler, base_config):
+    """Test conversion with all optional fields."""
+    request = VideoGenerationRequest(
+        prompt="A test video",
+        duration_seconds=10,
+        aspect_ratio="16:9",
+    )
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["model"] == "sora-2"
+    assert result["prompt"] == "A test video"
+    assert result["seconds"] == 10
+    assert result["size"] == "1280x720"
+
+
+# ==================== Response Conversion Tests ====================
+
+
+def test_convert_response_with_completed_video(handler, base_config, base_request):
+    """Test conversion with completed video including URL."""
+    mock_video = MagicMock()
+    mock_video.id = "video-123"
+    mock_video.status = "completed"
+    mock_video.url = "https://example.com/video.mp4"
+    mock_video.seconds = "8"
+    mock_video.size = "1280x720"
+    mock_video.model_dump.return_value = {
+        "id": "video-123",
+        "status": "completed",
+        "url": "https://example.com/video.mp4",
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "video-123", mock_video
+    )
+
+    assert result.request_id == "video-123"
+    assert result.video == "https://example.com/video.mp4"
+    assert result.content_type == "video/mp4"
+    assert result.duration == 8.0
+    assert result.resolution == "1280x720"
+    assert result.status == "completed"
+
+
+def test_convert_response_with_failed_video(handler, base_config, base_request):
+    """Test conversion with failed video raises VideoGenerationError."""
+    mock_error = MagicMock()
+    mock_error.message = "Content policy violation"
+
+    mock_video = MagicMock()
+    mock_video.id = "video-456"
+    mock_video.status = "failed"
+    mock_video.error = mock_error
+    mock_video.model_dump.return_value = {"id": "video-456", "status": "failed"}
+
+    with pytest.raises(VideoGenerationError, match="Content policy violation"):
+        handler._convert_response(base_config, base_request, "video-456", mock_video)
+
+
+def test_convert_response_with_incomplete_video_raises_error(
+    handler, base_config, base_request
+):
+    """Test incomplete video raises ProviderAPIError."""
+    mock_video = MagicMock()
+    mock_video.id = "video-789"
+    mock_video.status = "in_progress"
+    mock_video.model_dump.return_value = {"id": "video-789", "status": "in_progress"}
+
+    with pytest.raises(ProviderAPIError, match="Video is not completed"):
+        handler._convert_response(base_config, base_request, "video-789", mock_video)
+
+
+def test_convert_response_with_no_url_raises_error(handler, base_config, base_request):
+    """Test missing video URL raises ProviderAPIError."""
+    mock_video = MagicMock()
+    mock_video.id = "video-000"
+    mock_video.status = "completed"
+    mock_video.url = None
+    mock_video.model_dump.return_value = {"id": "video-000", "status": "completed"}
+
+    with pytest.raises(ProviderAPIError, match="No video URL found"):
+        handler._convert_response(base_config, base_request, "video-000", mock_video)
+
+
+# ==================== Error Handling Tests ====================
+
+
+def test_handle_error_with_video_generation_error(handler, base_config, base_request):
+    """Test VideoGenerationError is returned as-is."""
+    error = VideoGenerationError("Test error", provider="openai", model="sora-2")
+    result = handler._handle_error(base_config, base_request, "req-1", error)
+
+    assert result is error
+
+
+def test_handle_error_with_unknown_exception(handler, base_config, base_request):
+    """Test unknown exception is converted to VideoGenerationError."""
+    unknown_error = ValueError("Something went wrong")
+
+    result = handler._handle_error(base_config, base_request, "req-3", unknown_error)
+
+    assert isinstance(result, VideoGenerationError)
+    assert "Error while generating video" in result.message
+    assert result.provider == "openai"
+    assert result.raw_response["error_type"] == "ValueError"
+
+
+# ==================== Status Parsing Tests ====================
+
+
+def test_parse_openai_video_status_queued():
+    """Test parsing video with queued status."""
+    mock_video = MagicMock()
+    mock_video.id = "video-123"
+    mock_video.status = "queued"
+    mock_video.progress = 0
+    mock_video.model = "sora-2"
+    mock_video.size = "1280x720"
+    mock_video.seconds = "8"
+
+    result = parse_openai_video_status(mock_video)
+
+    assert result.request_id == "video-123"
+    assert result.status == "queued"
+    assert result.progress_percent == 0
+
+
+def test_parse_openai_video_status_in_progress():
+    """Test parsing video with in_progress status."""
+    mock_video = MagicMock()
+    mock_video.id = "video-456"
+    mock_video.status = "in_progress"
+    mock_video.progress = 50
+    mock_video.model = "sora-2"
+    mock_video.size = "1280x720"
+    mock_video.seconds = "8"
+
+    result = parse_openai_video_status(mock_video)
+
+    assert result.request_id == "video-456"
+    assert result.status == "processing"
+    assert result.progress_percent == 50
+
+
+def test_parse_openai_video_status_completed():
+    """Test parsing video with completed status."""
+    mock_video = MagicMock()
+    mock_video.id = "video-789"
+    mock_video.status = "completed"
+    mock_video.progress = 100
+    mock_video.model = "sora-2"
+    mock_video.size = "1280x720"
+    mock_video.seconds = "8"
+
+    result = parse_openai_video_status(mock_video)
+
+    assert result.request_id == "video-789"
+    assert result.status == "completed"
+    assert result.progress_percent == 100
+
+
+def test_parse_openai_video_status_unknown_defaults_to_processing():
+    """Test parsing video with unknown status defaults to processing."""
+    mock_video = MagicMock()
+    mock_video.id = "video-000"
+    mock_video.status = "unknown_status"
+    mock_video.progress = None
+    mock_video.model = "sora-2"
+    mock_video.size = None
+    mock_video.seconds = None
+
+    result = parse_openai_video_status(mock_video)
+
+    assert result.request_id == "video-000"
+    assert result.status == "processing"
+    assert result.progress_percent is None
+
+
+# ==================== Async Video Generation Tests ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_success_with_progress_callbacks(
+    handler, base_config, base_request
+):
+    """Test successful async generation with sync and async progress callbacks."""
+    # Create mock video objects
+    mock_video_processing = MagicMock()
+    mock_video_processing.id = "video-async-123"
+    mock_video_processing.status = "in_progress"
+    mock_video_processing.progress = 50
+    mock_video_processing.model = "sora-2"
+    mock_video_processing.size = "1280x720"
+    mock_video_processing.seconds = "8"
+
+    mock_video_completed = MagicMock()
+    mock_video_completed.id = "video-async-123"
+    mock_video_completed.status = "completed"
+    mock_video_completed.url = "https://example.com/async-video.mp4"
+    mock_video_completed.progress = 100
+    mock_video_completed.model = "sora-2"
+    mock_video_completed.size = "1280x720"
+    mock_video_completed.seconds = "8"
+    mock_video_completed.model_dump.return_value = {
+        "id": "video-async-123",
+        "status": "completed",
+    }
+
+    # Setup mock async client
+    mock_async_client = AsyncMock()
+    mock_async_client.videos.create = AsyncMock(return_value=mock_video_processing)
+    mock_async_client.videos.retrieve = AsyncMock(return_value=mock_video_completed)
+
+    # Clear cache and patch
+    handler._async_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+        return_value=mock_async_client,
+    ):
+        # Test with sync callback
+        progress_calls = []
+
+        def sync_callback(update):
+            progress_calls.append(update)
+
+        result = await handler.generate_video_async(
+            base_config, base_request, on_progress=sync_callback
+        )
+
+        assert result.request_id == "video-async-123"
+        assert result.video == "https://example.com/async-video.mp4"
+        assert len(progress_calls) >= 1
+
+        # Test with async callback
+        async_progress_calls = []
+
+        async def async_callback(update):
+            async_progress_calls.append(update)
+
+        handler._async_client_cache.clear()
+        mock_video_processing.status = "in_progress"
+
+        with patch(
+            "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+            return_value=mock_async_client,
+        ):
+            await handler.generate_video_async(
+                base_config, base_request, on_progress=async_callback
+            )
+
+        assert len(async_progress_calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_handles_timeout(handler, base_config, base_request):
+    """Test async generation handles timeout after max poll attempts."""
+    mock_video = MagicMock()
+    mock_video.id = "video-timeout"
+    mock_video.status = "in_progress"
+    mock_video.progress = 50
+    mock_video.model = "sora-2"
+    mock_video.size = "1280x720"
+    mock_video.seconds = "8"
+
+    mock_async_client = AsyncMock()
+    mock_async_client.videos.create = AsyncMock(return_value=mock_video)
+    mock_async_client.videos.retrieve = AsyncMock(return_value=mock_video)
+
+    timeout_config = VideoGenerationConfig(
+        model="sora-2",
+        provider="openai",
+        api_key="test-api-key",
+        max_poll_attempts=2,
+        poll_interval=1,
+    )
+
+    handler._async_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+        return_value=mock_async_client,
+    ):
+        with pytest.raises(VideoGenerationError, match="timed out"):
+            await handler.generate_video_async(timeout_config, base_request)
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_wraps_unknown_exceptions(
+    handler, base_config, base_request
+):
+    """Test unknown exceptions are wrapped by decorator."""
+    mock_async_client = AsyncMock()
+    mock_async_client.videos.create = AsyncMock(
+        side_effect=RuntimeError("Unexpected error")
+    )
+
+    handler._async_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+        return_value=mock_async_client,
+    ):
+        with pytest.raises(VideoGenerationError, match="Unknown error"):
+            await handler.generate_video_async(base_config, base_request)
+
+
+# ==================== Sync Video Generation Tests ====================
+
+
+def test_generate_video_success_with_progress_callback(
+    handler, base_config, base_request
+):
+    """Test successful sync generation with progress callback."""
+    mock_video_queued = MagicMock()
+    mock_video_queued.id = "video-sync-456"
+    mock_video_queued.status = "queued"
+    mock_video_queued.progress = 0
+    mock_video_queued.model = "sora-2"
+    mock_video_queued.size = "1280x720"
+    mock_video_queued.seconds = "8"
+
+    mock_video_completed = MagicMock()
+    mock_video_completed.id = "video-sync-456"
+    mock_video_completed.status = "completed"
+    mock_video_completed.url = "https://example.com/sync-video.mp4"
+    mock_video_completed.progress = 100
+    mock_video_completed.model = "sora-2"
+    mock_video_completed.size = "1280x720"
+    mock_video_completed.seconds = "8"
+    mock_video_completed.model_dump.return_value = {
+        "id": "video-sync-456",
+        "status": "completed",
+    }
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.videos.create.return_value = mock_video_queued
+    mock_sync_client.videos.retrieve.return_value = mock_video_completed
+
+    progress_calls = []
+
+    def progress_callback(update):
+        progress_calls.append(update)
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        return_value=mock_sync_client,
+    ):
+        result = handler.generate_video(
+            base_config, base_request, on_progress=progress_callback
+        )
+
+    assert result.request_id == "video-sync-456"
+    assert result.video == "https://example.com/sync-video.mp4"
+    assert len(progress_calls) >= 1
+
+
+def test_generate_video_handles_exceptions(handler, base_config, base_request):
+    """Test exception handling in sync generation."""
+    mock_sync_client = MagicMock()
+    mock_sync_client.videos.create.side_effect = RuntimeError("Server error")
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        return_value=mock_sync_client,
+    ):
+        with pytest.raises(VideoGenerationError, match="Unknown error"):
+            handler.generate_video(base_config, base_request)
+
+
+def test_generate_video_handles_timeout(handler, base_config, base_request):
+    """Test sync generation handles timeout after max poll attempts."""
+    mock_video = MagicMock()
+    mock_video.id = "video-timeout-sync"
+    mock_video.status = "in_progress"
+    mock_video.progress = 50
+    mock_video.model = "sora-2"
+    mock_video.size = "1280x720"
+    mock_video.seconds = "8"
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.videos.create.return_value = mock_video
+    mock_sync_client.videos.retrieve.return_value = mock_video
+
+    timeout_config = VideoGenerationConfig(
+        model="sora-2",
+        provider="openai",
+        api_key="test-api-key",
+        max_poll_attempts=2,
+        poll_interval=1,
+    )
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        return_value=mock_sync_client,
+    ):
+        with pytest.raises(VideoGenerationError, match="timed out"):
+            handler.generate_video(timeout_config, base_request)
