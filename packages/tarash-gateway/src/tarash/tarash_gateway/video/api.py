@@ -10,6 +10,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
+from tarash.tarash_gateway.video.providers import OpenAIProviderHandler
 from tarash.tarash_gateway.video.providers.fal import FalProviderHandler
 from tarash.tarash_gateway.video.providers.veo3 import Veo3ProviderHandler
 
@@ -44,11 +45,8 @@ def _get_handler(provider: str) -> ProviderHandler:
                     provider=provider,
                 )
             _HANDLER_INSTANCES[provider] = ReplicateProviderHandler()
-        # Future providers:
-        # elif provider == "openai":
-        #     _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
-        # elif provider == "vertex":
-        #     _HANDLER_INSTANCES[provider] = VertexProviderHandler()
+        elif provider == "openai":
+            _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
         else:
             raise VideoGenerationError(
                 f"Unsupported provider: {provider}",
