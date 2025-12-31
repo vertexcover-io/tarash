@@ -23,6 +23,7 @@ from tarash.tarash_gateway.video.models import (
 from tarash.tarash_gateway.video.utils import (
     download_media_from_url,
     get_filename_from_url,
+    validate_duration,
     validate_model_params,
 )
 
@@ -33,6 +34,17 @@ except ImportError:
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI, OpenAI
+
+
+# Supported video sizes for OpenAI Sora
+# Maps aspect ratios to size strings in "WIDTHxHEIGHT" format
+ASPECT_RATIO_TO_SIZE: dict[str, str] = {
+    "16:9": "1280x720",
+    "9:16": "720x1280",
+    "1:1": "1024x1024",
+    "16:10": "1792x1024",  # Landscape widescreen
+    "10:16": "1024x1792",  # Portrait widescreen
+}
 
 
 class OpenAIVideoParams(TypedDict, total=False):
@@ -177,21 +189,27 @@ class OpenAIProviderHandler:
         openai_params["prompt"] = request.prompt
 
         # Duration: OpenAI uses 'seconds' parameter
+        # Sora 2: 4, 8, 12 seconds
+        # Sora 2 Pro: 10, 15, 25 seconds
         if request.duration_seconds is not None:
-            openai_params["seconds"] = request.duration_seconds
+            allowed_durations = [4, 8, 12]
+            validated_duration = validate_duration(
+                request.duration_seconds,
+                allowed_durations,
+                config.provider,
+                config.model,
+            )
+            openai_params["seconds"] = validated_duration
 
         # Size/resolution: OpenAI uses 'size' in format "WIDTHxHEIGHT"
         # Convert aspect_ratio to size if provided
         if request.aspect_ratio is not None:
-            aspect_to_size = {
-                "16:9": "1280x720",
-                "9:16": "720x1280",
-                "1:1": "1024x1024",
-            }
-            size = aspect_to_size.get(request.aspect_ratio)
+            size = ASPECT_RATIO_TO_SIZE.get(request.aspect_ratio)
             if not size:
+                supported_ratios = ", ".join(ASPECT_RATIO_TO_SIZE.keys())
                 raise ValidationError(
-                    f"Invalid aspect ratio: {request.aspect_ratio}",
+                    f"Invalid aspect ratio: {request.aspect_ratio}. "
+                    f"Supported ratios: {supported_ratios}",
                     provider=config.provider,
                 )
             openai_params["size"] = size

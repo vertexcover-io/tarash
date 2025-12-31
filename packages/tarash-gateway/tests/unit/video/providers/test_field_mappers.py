@@ -2,6 +2,7 @@
 
 import pytest
 
+from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import VideoGenerationRequest
 from tarash.tarash_gateway.video.providers.fal import (
     FieldMapper,
@@ -258,10 +259,12 @@ def test_duration_field_mapper_string_format_with_validation_failure():
 
     request = VideoGenerationRequest(prompt="test", duration_seconds=5)
 
-    with pytest.raises(
-        ValueError, match="Minimax only supports 6 or 10 second durations, got 5"
-    ):
+    with pytest.raises(ValidationError) as exc_info:
         mapper.converter(request, 5)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "5 seconds" in str(exc_info.value)
+    assert "6, 10" in str(exc_info.value)
 
 
 def test_duration_field_mapper_int_format_with_validation_success():
@@ -283,8 +286,12 @@ def test_duration_field_mapper_int_format_with_validation_failure():
 
     request = VideoGenerationRequest(prompt="test", duration_seconds=7)
 
-    with pytest.raises(ValueError, match="Duration must be one of .* got 7"):
+    with pytest.raises(ValidationError) as exc_info:
         mapper.converter(request, 7)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "7 seconds" in str(exc_info.value)
+    assert "5, 10, 15" in str(exc_info.value)
 
 
 def test_duration_field_mapper_handles_none_value():
@@ -334,10 +341,11 @@ def test_duration_field_mapper_integration_validation_error_propagates():
         "duration": duration_field_mapper("str", allowed_values=["6s", "10s"]),
     }
 
-    with pytest.raises(
-        ValueError, match="Minimax only supports 6 or 10 second durations, got 5"
-    ):
+    with pytest.raises(ValidationError) as exc_info:
         apply_field_mappers(field_mappers, request)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "5 seconds" in str(exc_info.value)
 
 
 def test_multiple_field_mappers_with_different_types():

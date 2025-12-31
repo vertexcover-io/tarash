@@ -115,3 +115,42 @@ def get_filename_from_url(url: str) -> str:
     except Exception:
         pass
     return "media"
+
+
+def validate_duration(
+    duration_seconds: int | None,
+    allowed_values: list[int],
+    provider: str,
+    model: str | None = None,
+) -> int | None:
+    """
+    Validate duration against allowed values.
+
+    Args:
+        duration_seconds: Duration in seconds to validate
+        allowed_values: List of allowed duration values
+        provider: Provider name for error messages
+        model: Optional model name for error messages
+
+    Returns:
+        The validated duration value or None if input is None
+
+    Raises:
+        ValidationError: If duration is not in allowed values
+
+    Example:
+        >>> validate_duration(5, [4, 8, 12], "openai", "sora-2")
+        ValidationError: Invalid duration for openai (sora-2): 5 seconds. Allowed values: 4, 8, 12
+    """
+    if duration_seconds is None:
+        return None
+
+    if duration_seconds not in allowed_values:
+        model_info = f" ({model})" if model else ""
+        raise ValidationError(
+            f"Invalid duration for {provider}{model_info}: {duration_seconds} seconds. "
+            f"Allowed values: {', '.join(map(str, allowed_values))}",
+            provider=provider,
+        )
+
+    return duration_seconds

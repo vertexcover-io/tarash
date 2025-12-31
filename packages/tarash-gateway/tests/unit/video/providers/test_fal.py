@@ -204,10 +204,12 @@ def test_convert_request_propagates_validation_errors(handler):
         duration_seconds=15,  # Invalid for Minimax (only supports 6 or 10 seconds)
     )
 
-    with pytest.raises(
-        ValueError, match="Minimax only supports 6 or 10 second durations"
-    ):
+    with pytest.raises(ValidationError) as exc_info:
         handler._convert_request(config, request)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "15 seconds" in str(exc_info.value)
+    assert "6, 10" in str(exc_info.value)
 
 
 # ==================== Response Conversion Tests ====================
@@ -464,10 +466,11 @@ async def test_generate_video_async_propagates_known_errors(
         duration_seconds=15,  # Invalid for Minimax (only supports 6 or 10 seconds)
     )
 
-    with pytest.raises(
-        VideoGenerationError, match="Minimax only supports 6 or 10 second durations"
-    ):
+    with pytest.raises(VideoGenerationError) as exc_info:
         await handler.generate_video_async(minimax_config, request_invalid)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "15 seconds" in str(exc_info.value)
 
     mock_handler = AsyncMock()
     mock_handler.request_id = "req-1"

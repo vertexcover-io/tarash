@@ -2,8 +2,7 @@
 
 import asyncio
 import traceback
-from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any
 
 from fal_client.client import FalClientHTTPError
 
@@ -13,14 +12,22 @@ from tarash.tarash_gateway.video.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
-    ImageType,
     ProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.video.utils import convert_to_data_url
+from tarash.tarash_gateway.video.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    duration_field_mapper,
+    extra_params_field_mapper,
+    image_list_field_mapper,
+    passthrough_field_mapper,
+    single_image_field_mapper,
+    video_url_field_mapper,
+)
 
 try:
     import fal_client
@@ -36,241 +43,15 @@ except ImportError:
     pass
 
 
-# ==================== Field Mapping Framework ====================
-
-
-@dataclass
-class FieldMapper:
-    """Maps a VideoGenerationRequest field to an API field with conversion.
-
-    Attributes:
-        source_field: Field name in VideoGenerationRequest
-        converter: Function that takes (request, field_value) and returns converted value
-        required: Whether this field is required (default: False)
-    """
-
-    source_field: str
-    converter: Callable[[VideoGenerationRequest, Any], Any]
-    required: bool = False
-
-
-def apply_field_mappers(
-    field_mappers: dict[str, FieldMapper],
-    request: VideoGenerationRequest,
-) -> dict[str, Any]:
-    """Apply field mappers to convert VideoGenerationRequest to API format.
-
-    Args:
-        field_mappers: Dict mapping API field names to FieldMapper objects
-        request: The video generation request
-
-    Returns:
-        Dict with API field names and converted values (None values excluded)
-
-    Raises:
-        ValueError: If a required field is None or missing
-    """
-    result = {}
-
-    for api_field_name, mapper in field_mappers.items():
-        # Get the source value from the request
-        source_value = getattr(request, mapper.source_field, None)
-
-        # Check if required field is missing
-        if mapper.required and source_value is None:
-            raise ValueError(
-                f"Required field '{mapper.source_field}' is missing or None"
-            )
-
-        # Apply converter
-        converted_value = mapper.converter(request, source_value)
-
-        # Check if required field converter returned None
-        if mapper.required and converted_value is None:
-            raise ValueError(
-                f"Required field '{api_field_name}' cannot be None after conversion"
-            )
-
-        # Only include non-None values and non-empty collections
-        if (
-            converted_value is not None
-            and converted_value != []
-            and converted_value != {}
-        ):
-            result[api_field_name] = converted_value
-
-    return result
-
-
-# ==================== Utility Functions for FieldMappers ====================
-
-
-def duration_field_mapper(
-    field_type: Literal["str", "int"],
-    allowed_values: list[str] | list[int] | None = None,
-) -> FieldMapper:
-    """Create a FieldMapper for duration field.
-
-    Args:
-        field_type: Output type - "str" for "5s" format, "int" for integer seconds
-        allowed_values: Optional list of allowed values for validation
-
-    Returns:
-        FieldMapper for duration_seconds -> duration
-
-    Examples:
-        >>> # String format with validation
-        >>> duration_field_mapper("str", ["6s", "10s"])
-
-        >>> # Integer format without validation
-        >>> duration_field_mapper("int")
-    """
-
-    def converter(
-        request: VideoGenerationRequest, value: int | None
-    ) -> str | int | None:
-        if value is None:
-            return None
-
-        # Validate allowed values
-        if allowed_values:
-            if field_type == "str":
-                # For string type, convert first then validate
-                str_value = f"{value}s"
-                if str_value not in allowed_values:
-                    # Extract seconds for better error messages
-                    allowed_seconds = [
-                        int(v.rstrip("s")) for v in allowed_values if isinstance(v, str)
-                    ]
-                    raise ValueError(
-                        f"Minimax only supports {' or '.join(map(str, allowed_seconds))} second durations, got {value}"
-                    )
-                return str_value
-            else:  # int
-                if value not in allowed_values:
-                    raise ValueError(
-                        f"Duration must be one of {allowed_values}, got {value}"
-                    )
-                return value
-
-        # No validation, just convert
-        if field_type == "str":
-            return f"{value}s"
-        else:
-            return value
-
-    return FieldMapper(source_field="duration_seconds", converter=converter)
-
-
-def single_image_field_mapper(
-    required: bool = False,
-    image_type: Literal[
-        "reference", "first_frame", "last_frame", "asset", "style"
-    ] = "reference",
-) -> FieldMapper:
-    """Create a FieldMapper for extracting single image from image_list.
-
-    Validates that only 1 image of the specified type is provided and converts it to a URL string.
-
-    Args:
-        required: Whether this field is required (default: False)
-        image_type: Type of image to extract (default: "reference")
-
-    Returns:
-        FieldMapper for image_list -> image_url (single string)
-    """
-
-    def converter(
-        request: VideoGenerationRequest, value: list[ImageType] | None
-    ) -> str | None:
-        if not value or len(value) == 0:
-            return None
-
-        # Filter images by the specified type
-        # For "reference", also accept "first_frame" for backward compatibility
-        if image_type == "reference":
-            filtered_images = [
-                img for img in value if img["type"] in ("reference", "first_frame")
-            ]
-        else:
-            filtered_images = [img for img in value if img["type"] == image_type]
-
-        if len(filtered_images) == 0:
-            return None
-
-        if len(filtered_images) > 1:
-            raise ValueError(
-                f"Only 1 {image_type} image allowed, got {len(filtered_images)} images",
-            )
-
-        # Extract the image
-        target_image = filtered_images[0]
-        if isinstance(target_image, dict) and "image" in target_image:
-            media = target_image["image"]
-            if isinstance(media, dict) and "content" in media:
-                return convert_to_data_url(media)
-            return str(media)
-        elif isinstance(target_image, str):
-            return target_image
-
-        return None
-
-    return FieldMapper(
-        source_field="image_list", converter=converter, required=required
-    )
-
-
-def image_list_field_mapper() -> FieldMapper:
-    """Create a FieldMapper for converting image_list to list of URLs.
-
-    Returns:
-        FieldMapper for image_list -> image_urls (list of strings)
-    """
-
-    def converter(request: VideoGenerationRequest, value: list | None) -> list[str]:
-        if not value:
-            return []
-
-        urls = []
-        for item in value:
-            if isinstance(item, dict) and "image" in item:
-                media = item["image"]
-                if isinstance(media, dict) and "content" in media:
-                    urls.append(convert_to_data_url(media))
-                else:
-                    urls.append(str(media))
-            elif isinstance(item, str):
-                urls.append(item)
-
-        return urls
-
-    return FieldMapper(source_field="image_list", converter=converter)
-
-
-def passthrough_field_mapper(source_field: str, required: bool = False) -> FieldMapper:
-    """Create a FieldMapper that passes through the value unchanged.
-
-    Args:
-        source_field: Field name in VideoGenerationRequest
-        required: Whether this field is required (default: False)
-
-    Returns:
-        FieldMapper that returns the value as-is
-    """
-    return FieldMapper(
-        source_field=source_field,
-        converter=lambda req, val: val,
-        required=required,
-    )
-
-
 # ==================== Model Field Mappings ====================
 
 
 # Minimax models field mappings
 MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
-    "duration": duration_field_mapper(field_type="str", allowed_values=["6s", "10s"]),
+    "duration": duration_field_mapper(
+        field_type="str", allowed_values=["6s", "10s"], provider="fal", model="minimax"
+    ),
     "image_url": single_image_field_mapper(),
     "prompt_optimizer": passthrough_field_mapper("enhance_prompt"),
 }
@@ -288,44 +69,12 @@ KLING_VIDEO_V26_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "tail_image_url": single_image_field_mapper(
         required=False, image_type="last_frame"
     ),
-    "cfg_scale": FieldMapper(
-        source_field="extra_params",
-        converter=lambda req, val: val.get("cfg_scale")
-        if isinstance(val, dict)
-        else None,
-        required=False,
-    ),
-    "voice_ids": FieldMapper(
-        source_field="extra_params",
-        converter=lambda req, val: val.get("voice_ids")
-        if isinstance(val, dict)
-        else None,
-        required=False,
-    ),
+    "cfg_scale": extra_params_field_mapper("cfg_scale"),
+    "voice_ids": extra_params_field_mapper("voice_ids"),
     # Motion control specific fields
-    "video_url": FieldMapper(
-        source_field="video",
-        converter=lambda req, val: convert_to_data_url(val)
-        if isinstance(val, dict) and "content" in val
-        else str(val)
-        if val
-        else None,
-        required=False,
-    ),
-    "character_orientation": FieldMapper(
-        source_field="extra_params",
-        converter=lambda req, val: val.get("character_orientation")
-        if isinstance(val, dict)
-        else None,
-        required=False,
-    ),
-    "keep_original_sound": FieldMapper(
-        source_field="extra_params",
-        converter=lambda req, val: val.get("keep_original_sound")
-        if isinstance(val, dict)
-        else None,
-        required=False,
-    ),
+    "video_url": video_url_field_mapper(),
+    "character_orientation": extra_params_field_mapper("character_orientation"),
+    "keep_original_sound": extra_params_field_mapper("keep_original_sound"),
 }
 
 # Generic fallback field mappings
@@ -335,15 +84,7 @@ GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "resolution": passthrough_field_mapper("resolution"),
     "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
     "image_urls": image_list_field_mapper(),
-    "video_url": FieldMapper(
-        source_field="video",
-        converter=lambda req, val: convert_to_data_url(val)
-        if isinstance(val, dict) and "content" in val
-        else str(val)
-        if val
-        else None,
-        required=False,
-    ),
+    "video_url": video_url_field_mapper(),
     "seed": passthrough_field_mapper("seed"),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "generate_audio": passthrough_field_mapper("generate_audio"),

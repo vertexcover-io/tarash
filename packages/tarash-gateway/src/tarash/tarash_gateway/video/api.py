@@ -13,6 +13,15 @@ from tarash.tarash_gateway.video.models import (
 from tarash.tarash_gateway.video.providers.fal import FalProviderHandler
 from tarash.tarash_gateway.video.providers.veo3 import Veo3ProviderHandler
 
+# Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
+try:
+    from tarash.tarash_gateway.video.providers.replicate import ReplicateProviderHandler
+
+    _REPLICATE_AVAILABLE = True
+except Exception:
+    ReplicateProviderHandler = None  # type: ignore
+    _REPLICATE_AVAILABLE = False
+
 # ==================== Provider Registry ====================
 
 # Singleton instances of handlers (stateless)
@@ -26,6 +35,15 @@ def _get_handler(provider: str) -> ProviderHandler:
             _HANDLER_INSTANCES[provider] = FalProviderHandler()
         elif provider == "veo3":
             _HANDLER_INSTANCES[provider] = Veo3ProviderHandler()
+        elif provider == "replicate":
+            if not _REPLICATE_AVAILABLE or ReplicateProviderHandler is None:
+                raise VideoGenerationError(
+                    "Replicate provider is not available. This may be due to "
+                    "pydantic v1 incompatibility with Python 3.14+. "
+                    "Install with: pip install tarash-gateway[replicate]",
+                    provider=provider,
+                )
+            _HANDLER_INSTANCES[provider] = ReplicateProviderHandler()
         # Future providers:
         # elif provider == "openai":
         #     _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()

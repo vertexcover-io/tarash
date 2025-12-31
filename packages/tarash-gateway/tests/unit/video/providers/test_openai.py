@@ -6,6 +6,7 @@ import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
     ProviderAPIError,
+    ValidationError,
     VideoGenerationError,
 )
 from tarash.tarash_gateway.video.models import (
@@ -187,6 +188,62 @@ def test_convert_request_with_duration(handler, base_config):
     assert result["seconds"] == 8
 
 
+def test_convert_request_with_valid_sora2_durations(handler, base_config):
+    """Test that Sora 2 accepts valid durations: 4, 8, 12 seconds."""
+    for duration in [4, 8, 12]:
+        request = VideoGenerationRequest(
+            prompt="A test video", duration_seconds=duration
+        )
+        result = handler._convert_request(base_config, request)
+        assert result["seconds"] == duration
+
+
+def test_convert_request_with_valid_sora2_pro_durations(handler):
+    """Test that Sora 2 Pro accepts valid durations: 10, 15, 25 seconds."""
+    config = VideoGenerationConfig(
+        provider="openai",
+        model="sora-2-pro",
+        api_key="test-key",
+    )
+
+    for duration in [10, 15, 25]:
+        request = VideoGenerationRequest(
+            prompt="A test video", duration_seconds=duration
+        )
+        result = handler._convert_request(config, request)
+        assert result["seconds"] == duration
+
+
+def test_convert_request_with_invalid_sora2_duration(handler, base_config):
+    """Test that Sora 2 rejects invalid durations."""
+    request = VideoGenerationRequest(prompt="A test video", duration_seconds=5)
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(base_config, request)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "5 seconds" in str(exc_info.value)
+    assert "4, 8, 12" in str(exc_info.value)
+
+
+def test_convert_request_with_invalid_sora2_pro_duration(handler):
+    """Test that Sora 2 Pro rejects invalid durations."""
+    config = VideoGenerationConfig(
+        provider="openai",
+        model="sora-2-pro",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(prompt="A test video", duration_seconds=8)
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(config, request)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "8 seconds" in str(exc_info.value)
+    assert "10, 15, 25" in str(exc_info.value)
+
+
 def test_convert_request_with_aspect_ratio(handler, base_config):
     """Test conversion with aspect ratio to size mapping."""
     request = VideoGenerationRequest(prompt="A test video", aspect_ratio="16:9")
@@ -209,7 +266,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     """Test conversion with all optional fields."""
     request = VideoGenerationRequest(
         prompt="A test video",
-        duration_seconds=10,
+        duration_seconds=8,
         aspect_ratio="16:9",
     )
 
@@ -217,7 +274,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
 
     assert result["model"] == "sora-2"
     assert result["prompt"] == "A test video"
-    assert result["seconds"] == 10
+    assert result["seconds"] == 8
     assert result["size"] == "1280x720"
 
 
