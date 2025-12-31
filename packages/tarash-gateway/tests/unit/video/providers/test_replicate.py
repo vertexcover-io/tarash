@@ -5,8 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
-    VideoGenerationError,
+    GenerationFailedError,
 )
 from tarash.tarash_gateway.video.models import (
     VideoGenerationConfig,
@@ -412,16 +411,16 @@ def test_convert_response_with_file_output_object(handler, base_config, base_req
 def test_convert_response_with_none_output_raises_error(
     handler, base_config, base_request
 ):
-    """Test that None output raises ProviderAPIError."""
-    with pytest.raises(ProviderAPIError, match="no output was returned"):
+    """Test that None output raises GenerationFailedError."""
+    with pytest.raises(GenerationFailedError, match="no output was returned"):
         handler._convert_response(base_config, base_request, "pred-null", None)
 
 
 def test_convert_response_with_invalid_output_raises_error(
     handler, base_config, base_request
 ):
-    """Test that unrecognized output format raises ProviderAPIError."""
-    with pytest.raises(ProviderAPIError, match="Could not extract video URL"):
+    """Test that unrecognized output format raises GenerationFailedError."""
+    with pytest.raises(GenerationFailedError, match="Could not extract video URL"):
         handler._convert_response(
             base_config, base_request, "pred-invalid", {"unrelated": "data"}
         )
@@ -431,19 +430,21 @@ def test_convert_response_with_invalid_output_raises_error(
 
 
 def test_handle_error_with_video_generation_error(handler, base_config, base_request):
-    """Test VideoGenerationError is returned as-is."""
-    error = VideoGenerationError("Test error", provider="replicate", model="test-model")
+    """Test GenerationFailedError is returned as-is."""
+    error = GenerationFailedError(
+        "Test error", provider="replicate", model="test-model"
+    )
     result = handler._handle_error(base_config, base_request, "pred-1", error)
 
     assert result is error
 
 
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
-    """Test unknown exception is converted to VideoGenerationError."""
+    """Test unknown exception is converted to GenerationFailedError."""
     unknown_error = RuntimeError("Something went wrong")
     result = handler._handle_error(base_config, base_request, "pred-2", unknown_error)
 
-    assert isinstance(result, VideoGenerationError)
+    assert isinstance(result, GenerationFailedError)
     assert "Replicate API error" in result.message
     assert result.provider == "replicate"
     assert result.request_id == "pred-2"
@@ -529,7 +530,7 @@ def test_generate_video_handles_failure(
 
     handler._client_cache.clear()
 
-    with pytest.raises(VideoGenerationError, match="Model crashed"):
+    with pytest.raises(GenerationFailedError, match="Model crashed"):
         handler.generate_video(base_config, base_request, on_progress=lambda x: None)
 
 
@@ -556,7 +557,7 @@ def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
     handler._client_cache.clear()
 
     with patch("time.sleep"):
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(GenerationFailedError, match="timed out"):
             handler.generate_video(config, base_request, on_progress=lambda x: None)
 
 
@@ -643,7 +644,7 @@ async def test_generate_video_async_handles_failure(
 
     handler._client_cache.clear()
 
-    with pytest.raises(VideoGenerationError, match="Async model crashed"):
+    with pytest.raises(GenerationFailedError, match="Async model crashed"):
         await handler.generate_video_async(
             base_config, base_request, on_progress=lambda x: None
         )
@@ -662,7 +663,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
         )
 
         # Error is wrapped by _handle_error which creates "Replicate API error" message
-        with pytest.raises(VideoGenerationError, match="Replicate API error"):
+        with pytest.raises(GenerationFailedError, match="Replicate API error"):
             await handler.generate_video_async(base_config, base_request)
 
 

@@ -8,7 +8,7 @@ import httpx
 from pydantic import TypeAdapter
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.video.exceptions import ProviderAPIError, ValidationError
+from tarash.tarash_gateway.video.exceptions import HTTPError, ValidationError
 
 
 def validate_model_params(
@@ -76,7 +76,7 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
         Tuple of (content_bytes, content_type)
 
     Raises:
-        ProviderAPIError: If download fails
+        HTTPError: If download fails
     """
     try:
         with httpx.Client(timeout=30.0) as client:
@@ -87,8 +87,15 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
                 "content-type", "application/octet-stream"
             )
             return response.content, content_type
+    except httpx.HTTPStatusError as e:
+        raise HTTPError(
+            f"Failed to download media from URL: HTTP {e.response.status_code}",
+            provider=provider,
+            raw_response={"url": url, "error": str(e)},
+            status_code=e.response.status_code,
+        ) from e
     except Exception as e:
-        raise ProviderAPIError(
+        raise HTTPError(
             f"Failed to download media from URL: {e}",
             provider=provider,
             raw_response={"url": url, "error": str(e)},

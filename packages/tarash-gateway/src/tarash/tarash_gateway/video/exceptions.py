@@ -14,33 +14,55 @@ if TYPE_CHECKING:
     )
 
 
-class VideoGenerationError(Exception):
-    """Base exception for video generation errors."""
+class TarashException(Exception):
+    """Base exception for all Tarash video generation errors."""
 
     def __init__(
         self,
         message: str,
-        provider: str,
-        raw_response: dict[str, Any] | None = None,
-        request_id: str | None = None,
+        provider: str | None = None,
         model: str | None = None,
+        request_id: str | None = None,
+        raw_response: dict[str, Any] | None = None,
     ):
         self.message = message
         self.provider = provider
-        self.raw_response = raw_response
-        self.request_id = request_id
         self.model = model
+        self.request_id = request_id
+        self.raw_response = raw_response
         super().__init__(message)
 
 
-class ProviderAPIError(VideoGenerationError):
-    """Provider API returned an error."""
+class ValidationError(TarashException):
+    """Input validation failed (client error, 400-level)."""
 
     pass
 
 
-class ValidationError(VideoGenerationError):
-    """Request validation failed."""
+class ContentModerationError(TarashException):
+    """Content violates provider's content policy."""
+
+    pass
+
+
+class HTTPError(TarashException):
+    """HTTP-level error from provider API."""
+
+    def __init__(
+        self,
+        message: str,
+        provider: str | None = None,
+        model: str | None = None,
+        request_id: str | None = None,
+        raw_response: dict[str, Any] | None = None,
+        status_code: int | None = None,
+    ):
+        super().__init__(message, provider, model, request_id, raw_response)
+        self.status_code = status_code
+
+
+class GenerationFailedError(TarashException):
+    """Video generation failed on provider side (includes timeouts, cancellations)."""
 
     pass
 
@@ -48,9 +70,10 @@ class ValidationError(VideoGenerationError):
 def handle_video_generation_errors(func: Callable) -> Callable:
     """Decorator to handle only truly unhandled exceptions.
 
-    - ValidationError (both custom and Pydantic): Let propagate (don't wrap)
-    - VideoGenerationError: Re-raise as-is (ensuring model is set)
-    - Unknown exceptions: Wrap in VideoGenerationError
+    - ValidationError, ContentModerationError, HTTPError, GenerationFailedError: Let propagate
+    - PydanticValidationError: Let propagate (Pydantic's validation errors)
+    - TarashException: Let propagate (our base exception)
+    - Unknown exceptions: Wrap in TarashException
     """
     if inspect.iscoroutinefunction(func):
 
@@ -65,16 +88,14 @@ def handle_video_generation_errors(func: Callable) -> Callable:
             try:
                 return await func(self, config, request, *args, **kwargs)
             except (
-                ValidationError,
                 PydanticValidationError,
-                ProviderAPIError,
-                VideoGenerationError,
+                TarashException,
             ):
-                # Let validation and provider API errors propagate
+                # Let all Tarash exceptions and Pydantic validation errors propagate
                 raise
             except Exception as ex:
                 # Only wrap truly unknown exceptions
-                raise VideoGenerationError(
+                raise TarashException(
                     f"Unknown error while generating video: {ex}",
                     provider=config.provider,
                     model=config.model,
@@ -99,16 +120,14 @@ def handle_video_generation_errors(func: Callable) -> Callable:
             try:
                 return func(self, config, request, *args, **kwargs)
             except (
-                ValidationError,
                 PydanticValidationError,
-                ProviderAPIError,
-                VideoGenerationError,
+                TarashException,
             ):
-                # Let validation and provider API errors propagate
+                # Let all Tarash exceptions and Pydantic validation errors propagate
                 raise
             except Exception as ex:
                 # Only wrap truly unknown exceptions
-                raise VideoGenerationError(
+                raise TarashException(
                     f"Unknown error while generating video: {ex}",
                     provider=config.provider,
                     model=config.model,

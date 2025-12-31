@@ -1,7 +1,7 @@
 """End-to-end tests for Replicate provider.
 
 These tests make actual API calls to the Replicate service.
-Requires REPLICATE_API_TOKEN environment variable to be set.
+Requires REPLICATE_API_KEY environment variable to be set.
 
 Run with: pytest tests/e2e/test_replicate.py -v -m e2e
 Skip with: pytest tests/e2e/test_replicate.py -v -m "not e2e"
@@ -25,9 +25,9 @@ from tarash.tarash_gateway.video.models import (
 @pytest.fixture(scope="module")
 def replicate_api_key():
     """Get Replicate API key from environment."""
-    api_key = os.getenv("REPLICATE_API_TOKEN")
+    api_key = os.getenv("REPLICATE_API_KEY")
     if not api_key:
-        pytest.skip("REPLICATE_API_TOKEN environment variable not set")
+        pytest.skip("REPLICATE_API_KEY environment variable not set")
     return api_key
 
 
@@ -251,3 +251,55 @@ def test_replicate_direct_handler_usage(replicate_api_key):
     assert isinstance(response, VideoGenerationResponse)
     assert response.status == "completed"
     print(f"Video URL: {response.video}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_minimax_image_to_video(replicate_api_key):
+    """
+    Test Minimax image-to-video model.
+
+    This tests:
+    - Minimax-specific model (minimax/video-01)
+    - Field mapping: image_list -> image_url
+    - Prefix matching in registry
+    - Image-to-video generation with duration
+    """
+    minimax_config = VideoGenerationConfig(
+        model="minimax/video-01",
+        provider="replicate",
+        api_key=replicate_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A person walking through a bustling city street",
+        duration="6",
+        image_list=[
+            {
+                "image": "https://fal.media/files/elephant/8kkhB12hEZI2kkbU8pZPA_test.jpeg",
+                "type": "reference",
+            }
+        ],
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(minimax_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated Minimax video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {minimax_config.model}")

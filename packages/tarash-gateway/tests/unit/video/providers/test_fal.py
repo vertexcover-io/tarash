@@ -7,9 +7,9 @@ from fal_client.client import FalClientHTTPError
 # from pydantic import ValidationError as Pydantic ValidationError  # Not used with FieldMapper approach
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
+    GenerationFailedError,
+    TarashException,
     ValidationError,
-    VideoGenerationError,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
@@ -245,10 +245,10 @@ def test_convert_response_with_complete_dict_response(
 def test_convert_response_with_missing_video_url_raises_error(
     handler, base_config, base_request
 ):
-    """Test missing video URL raises ProviderAPIError with proper error message and raw_response."""
+    """Test missing video URL raises GenerationFailedError with proper error message and raw_response."""
     provider_response = {"some_field": "value"}
 
-    with pytest.raises(ProviderAPIError, match="No video URL found") as exc_info:
+    with pytest.raises(GenerationFailedError, match="No video URL found") as exc_info:
         handler._convert_response(
             base_config, base_request, "req-789", provider_response
         )
@@ -257,7 +257,7 @@ def test_convert_response_with_missing_video_url_raises_error(
     assert exc_info.value.raw_response == provider_response
 
     # Test with non-dict response (empty dict after extraction)
-    with pytest.raises(ProviderAPIError, match="No video URL found"):
+    with pytest.raises(GenerationFailedError, match="No video URL found"):
         handler._convert_response(base_config, base_request, "req-789", {})
 
 
@@ -265,15 +265,15 @@ def test_convert_response_with_missing_video_url_raises_error(
 
 
 def test_handle_error_with_video_generation_error(handler, base_config, base_request):
-    """Test VideoGenerationError is returned as-is."""
-    error = VideoGenerationError("Test error", provider="fal", model="test-model")
+    """Test TarashException is returned as-is."""
+    error = TarashException("Test error", provider="fal", model="test-model")
     result = handler._handle_error(base_config, base_request, "req-1", error)
 
     assert result is error
 
 
 def test_handle_error_with_fal_client_http_error(handler, base_config, base_request):
-    """Test FalClientHTTPError is converted to VideoGenerationError."""
+    """Test FalClientHTTPError is converted to TarashException."""
     mock_response = MagicMock()
     mock_response.content = b"Error response"
 
@@ -286,7 +286,7 @@ def test_handle_error_with_fal_client_http_error(handler, base_config, base_requ
 
     result = handler._handle_error(base_config, base_request, "req-2", http_error)
 
-    assert isinstance(result, VideoGenerationError)
+    assert isinstance(result, TarashException)
     assert "status code 500" in result.message
     assert result.provider == "fal"
     assert result.raw_response["status_code"] == 500
@@ -296,10 +296,10 @@ def test_handle_error_with_fal_client_http_error(handler, base_config, base_requ
 
 
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
-    """Test unknown exception is converted to VideoGenerationError."""
+    """Test unknown exception is converted to TarashException."""
     unknown_error = ValueError("Something went wrong")
 
-    with pytest.raises(VideoGenerationError, match="Unknown Error"):
+    with pytest.raises(TarashException, match="Unknown Error"):
         handler._handle_error(base_config, base_request, "req-3", unknown_error)
 
 
@@ -453,7 +453,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
 async def test_generate_video_async_propagates_known_errors(
     handler, base_config, base_request, mock_async_client
 ):
-    """Test that ValidationError and ProviderAPIError propagate without wrapping."""
+    """Test that ValidationError and GenerationFailedError propagate without wrapping."""
     # Test Pydantic ValidationError propagation from model validation
     # Use Minimax model with duration that exceeds limits
     minimax_config = VideoGenerationConfig(
@@ -466,7 +466,7 @@ async def test_generate_video_async_propagates_known_errors(
         duration_seconds=15,  # Invalid for Minimax (only supports 6 or 10 seconds)
     )
 
-    with pytest.raises(VideoGenerationError) as exc_info:
+    with pytest.raises(TarashException) as exc_info:
         await handler.generate_video_async(minimax_config, request_invalid)
 
     assert "Invalid duration" in str(exc_info.value)
@@ -485,7 +485,7 @@ async def test_generate_video_async_propagates_known_errors(
     mock_async_client.submit = AsyncMock(return_value=mock_handler)
 
     handler._async_client_cache.clear()
-    with pytest.raises(ProviderAPIError):
+    with pytest.raises(GenerationFailedError):
         await handler.generate_video_async(base_config, base_request)
 
 
@@ -507,7 +507,7 @@ async def test_generate_video_async_handles_fal_http_error(
     mock_async_client.submit = AsyncMock(side_effect=http_error)
 
     handler._async_client_cache.clear()
-    with pytest.raises(VideoGenerationError, match="Unknown error"):
+    with pytest.raises(TarashException, match="Unknown error"):
         await handler.generate_video_async(base_config, base_request)
 
 
@@ -519,7 +519,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
     mock_async_client.submit = AsyncMock(side_effect=RuntimeError("Unexpected error"))
 
     handler._async_client_cache.clear()
-    with pytest.raises(VideoGenerationError, match="Unknown error"):
+    with pytest.raises(TarashException, match="Unknown error"):
         await handler.generate_video_async(base_config, base_request)
 
 
@@ -589,7 +589,7 @@ def test_generate_video_handles_exceptions(
     mock_sync_client.submit.side_effect = http_error
 
     handler._sync_client_cache.clear()
-    with pytest.raises(VideoGenerationError, match="Unknown error"):
+    with pytest.raises(TarashException, match="Unknown error"):
         handler.generate_video(base_config, base_request)
 
 
@@ -598,16 +598,16 @@ def test_generate_video_handles_exceptions(
 
 @pytest.mark.asyncio
 async def test_handle_video_generation_errors_async_propagates_known_errors():
-    """Test decorator propagates ValidationError, ProviderAPIError, VideoGenerationError."""
+    """Test decorator propagates ValidationError, GenerationFailedError, TarashException."""
 
     @handle_video_generation_errors
     async def async_func(self, config, request):
         if request.prompt == "validation":
             raise ValidationError("Invalid", provider="fal")
         elif request.prompt == "provider":
-            raise ProviderAPIError("API error", provider="fal")
+            raise GenerationFailedError("API error", provider="fal")
         elif request.prompt == "video":
-            raise VideoGenerationError("Gen error", provider="fal")
+            raise TarashException("Gen error", provider="fal")
         else:
             raise RuntimeError("Unknown")
 
@@ -617,16 +617,16 @@ async def test_handle_video_generation_errors_async_propagates_known_errors():
     with pytest.raises(ValidationError):
         await async_func(None, config, VideoGenerationRequest(prompt="validation"))
 
-    # Test ProviderAPIError propagates
-    with pytest.raises(ProviderAPIError):
+    # Test GenerationFailedError propagates
+    with pytest.raises(GenerationFailedError):
         await async_func(None, config, VideoGenerationRequest(prompt="provider"))
 
-    # Test VideoGenerationError propagates
-    with pytest.raises(VideoGenerationError):
+    # Test TarashException propagates
+    with pytest.raises(TarashException):
         await async_func(None, config, VideoGenerationRequest(prompt="video"))
 
     # Test unknown exception is wrapped
-    with pytest.raises(VideoGenerationError, match="Unknown error") as exc_info:
+    with pytest.raises(TarashException, match="Unknown error") as exc_info:
         await async_func(None, config, VideoGenerationRequest(prompt="unknown"))
 
     assert exc_info.value.provider == "fal"
@@ -651,5 +651,5 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
         sync_func(None, config, VideoGenerationRequest(prompt="validation"))
 
     # Test unknown exception is wrapped
-    with pytest.raises(VideoGenerationError, match="Unknown error"):
+    with pytest.raises(TarashException, match="Unknown error"):
         sync_func(None, config, VideoGenerationRequest(prompt="unknown"))

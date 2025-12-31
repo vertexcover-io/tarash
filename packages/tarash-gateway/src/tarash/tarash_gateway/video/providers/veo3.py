@@ -16,9 +16,9 @@ except ImportError:
     genai = None  # type: ignore
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
+    GenerationFailedError,
+    TarashException,
     ValidationError,
-    VideoGenerationError,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
@@ -310,14 +310,14 @@ class Veo3ProviderHandler:
             Normalized VideoGenerationResponse
         """
         if not operation.done:
-            raise ProviderAPIError(
+            raise GenerationFailedError(
                 "Operation is not completed",
                 provider=config.provider,
                 raw_response={"operation": str(operation)},
             )
 
         if operation.error:
-            raise VideoGenerationError(
+            raise GenerationFailedError(
                 f"Video generation failed: {operation.error}",
                 provider=config.provider,
                 model=config.model,
@@ -327,7 +327,7 @@ class Veo3ProviderHandler:
 
         # Extract video from operation.response
         if not operation.response:
-            raise ProviderAPIError(
+            raise GenerationFailedError(
                 "No response in completed operation",
                 provider=config.provider,
                 raw_response={"operation": str(operation)},
@@ -335,7 +335,7 @@ class Veo3ProviderHandler:
 
         generated_videos = operation.response.generated_videos
         if not generated_videos or len(generated_videos) == 0:
-            raise ProviderAPIError(
+            raise GenerationFailedError(
                 "No generated videos in response",
                 provider=config.provider,
                 raw_response={"operation": str(operation)},
@@ -365,16 +365,16 @@ class Veo3ProviderHandler:
         request: VideoGenerationRequest,
         request_id: str,
         ex: Exception,
-    ) -> VideoGenerationError:
+    ) -> TarashException:
         """Handle errors from google-genai API."""
-        if isinstance(ex, VideoGenerationError):
+        if isinstance(ex, TarashException):
             return ex
 
         # Check for google-genai specific errors
         error_type = type(ex).__name__
         error_msg = str(ex)
 
-        return VideoGenerationError(
+        return TarashException(
             f"Error while generating video: {error_msg}",
             provider=config.provider,
             model=config.model,
@@ -437,7 +437,7 @@ class Veo3ProviderHandler:
                 poll_attempts += 1
 
             if not operation.done:
-                raise VideoGenerationError(
+                raise GenerationFailedError(
                     f"Video generation timed out after {config.max_poll_attempts} attempts",
                     provider=config.provider,
                     model=config.model,
@@ -450,7 +450,7 @@ class Veo3ProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex) from ex
 
     @handle_video_generation_errors
     def generate_video(
@@ -502,7 +502,7 @@ class Veo3ProviderHandler:
                 poll_attempts += 1
 
             if not operation.done:
-                raise VideoGenerationError(
+                raise GenerationFailedError(
                     f"Video generation timed out after {config.max_poll_attempts} attempts",
                     provider=config.provider,
                     model=config.model,
@@ -515,4 +515,4 @@ class Veo3ProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex) from ex

@@ -1135,17 +1135,20 @@ wheels = [
 
 [[package]]
 name = "replicate"
-version = "1.0.7"
+version = "2.0.0b4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
     { name = "httpx" },
     { name = "packaging" },
     { name = "pydantic" },
+    { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/fd/caf6c59a6b8007366bd52ab5a320bf8d828f3860a60039309cfc0e375ec9/replicate-1.0.7.tar.gz", hash = "sha256:d88cb2c37ba39fb370c87fc3291601c67aae64bb918a20a85b5ce399c23ee84c", size = 62226, upload-time = "2025-05-27T11:29:08.111Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/e4/c8f132e1ef03b23521318b7d9e98dfa2d6ab92fffbc6a93a642d5c39d655/replicate-2.0.0b4.tar.gz", hash = "sha256:265e6aaa266388ddfff1aa30acb7d065bb41a5f17d1ff251732080f7a1140490", size = 304552, upload-time = "2025-12-18T19:51:39.506Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/5a/b3aa02a11a33de08e7771579154af3193decfb9d923b30b14c17b4e8bbce/replicate-1.0.7-py3-none-any.whl", hash = "sha256:667c50a9eb83be17de6278ff89483102b3b50f49a2c7fbcaa2e2b14df13816f9", size = 48626, upload-time = "2025-05-27T11:29:06.801Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/a3/b26bdd152268d4954de573e5d0aaa0d85b293de1a79b1a5facd850e8446a/replicate-2.0.0b4-py3-none-any.whl", hash = "sha256:b065dd58a1f13278ebec575fedf4038960d3f6d569a92f912b5411720190268e", size = 175976, upload-time = "2025-12-18T19:51:37.78Z" },
 ]
 
 [[package]]
@@ -1360,8 +1363,8 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "replicate", marker = "extra == 'all'", specifier = ">=0.20.0" },
-    { name = "replicate", marker = "extra == 'replicate'", specifier = ">=0.20.0" },
+    { name = "replicate", marker = "extra == 'all'", specifier = ">=2.0.0b1" },
+    { name = "replicate", marker = "extra == 'replicate'", specifier = ">=2.0.0b1" },
 ]
 provides-extras = ["fal", "veo3", "openai", "replicate", "google", "all", "dev"]
 

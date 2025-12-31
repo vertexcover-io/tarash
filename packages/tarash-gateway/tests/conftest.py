@@ -37,7 +37,7 @@ def pytest_collection_modifyitems(config, items):
     # Check for API keys
     fal_key_available = bool(os.getenv("FAL_KEY"))
     openai_key_available = bool(os.getenv("OPENAI_API_KEY"))
-    replicate_key_available = bool(os.getenv("REPLICATE_API_TOKEN"))
+    replicate_key_available = bool(os.getenv("REPLICATE_API_KEY"))
 
     # Get --e2e flag value
     run_e2e = config.getoption("--e2e")
@@ -78,7 +78,7 @@ def pytest_collection_modifyitems(config, items):
             if "replicate" in item.nodeid.lower() and not replicate_key_available:
                 item.add_marker(
                     pytest.mark.skip(
-                        reason="REPLICATE_API_TOKEN environment variable not set"
+                        reason="REPLICATE_API_KEY environment variable not set"
                     )
                 )
 

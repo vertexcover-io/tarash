@@ -4,7 +4,7 @@ from typing import Any
 
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.video.exceptions import ProviderAPIError
+from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import VideoGenerationConfig
 from tarash.tarash_gateway.video.providers.openai import OpenAIProviderHandler
 from tarash.tarash_gateway.video.providers.openai import parse_openai_video_status
@@ -68,13 +68,14 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
             Dict with Azure-specific client kwargs
 
         Raises:
-            ProviderAPIError: If base_url is not provided
+            ValidationError: If base_url is not provided
         """
         if not config.base_url:
-            raise ProviderAPIError(
+            raise ValidationError(
                 "Azure OpenAI requires base_url to be set to your Azure endpoint "
                 "(e.g., https://my-resource.openai.azure.com/)",
                 provider=config.provider,
+                model=config.model,
             )
 
         # Use api_version from config, or extract from base_url, or use default

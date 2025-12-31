@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
+    GenerationFailedError,
+    TarashException,
     ValidationError,
-    VideoGenerationError,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
@@ -355,32 +355,32 @@ def test_convert_response_with_video_bytes(handler, base_config, base_request):
 def test_convert_response_with_incomplete_operation_raises_error(
     handler, base_config, base_request
 ):
-    """Test incomplete operation raises ProviderAPIError."""
+    """Test incomplete operation raises GenerationFailedError."""
     mock_operation = MagicMock()
     mock_operation.done = False
     mock_operation.model_dump.return_value = {"done": False}
 
-    with pytest.raises(ProviderAPIError, match="Operation is not completed"):
+    with pytest.raises(GenerationFailedError, match="Operation is not completed"):
         handler._convert_response(base_config, base_request, "req-789", mock_operation)
 
 
 def test_convert_response_with_operation_error_raises_error(
     handler, base_config, base_request
 ):
-    """Test operation with error raises VideoGenerationError."""
+    """Test operation with error raises TarashException."""
     mock_operation = MagicMock()
     mock_operation.done = True
     mock_operation.error = "Something went wrong"
     mock_operation.model_dump.return_value = {"error": "Something went wrong"}
 
-    with pytest.raises(VideoGenerationError, match="Video generation failed"):
+    with pytest.raises(TarashException, match="Video generation failed"):
         handler._convert_response(base_config, base_request, "req-999", mock_operation)
 
 
 def test_convert_response_with_no_videos_raises_error(
     handler, base_config, base_request
 ):
-    """Test operation with no generated videos raises ProviderAPIError."""
+    """Test operation with no generated videos raises GenerationFailedError."""
     mock_response = MagicMock()
     mock_response.generated_videos = []
 
@@ -389,7 +389,7 @@ def test_convert_response_with_no_videos_raises_error(
     mock_operation.error = None
     mock_operation.response = mock_response
 
-    with pytest.raises(ProviderAPIError, match="No generated videos"):
+    with pytest.raises(GenerationFailedError, match="No generated videos"):
         handler._convert_response(base_config, base_request, "req-000", mock_operation)
 
 
@@ -397,20 +397,20 @@ def test_convert_response_with_no_videos_raises_error(
 
 
 def test_handle_error_with_video_generation_error(handler, base_config, base_request):
-    """Test VideoGenerationError is returned as-is."""
-    error = VideoGenerationError("Test error", provider="veo3", model="test-model")
+    """Test TarashException is returned as-is."""
+    error = TarashException("Test error", provider="veo3", model="test-model")
     result = handler._handle_error(base_config, base_request, "req-1", error)
 
     assert result is error
 
 
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
-    """Test unknown exception is converted to VideoGenerationError."""
+    """Test unknown exception is converted to TarashException."""
     unknown_error = ValueError("Something went wrong")
 
     result = handler._handle_error(base_config, base_request, "req-3", unknown_error)
 
-    assert isinstance(result, VideoGenerationError)
+    assert isinstance(result, TarashException)
     assert "Error while generating video" in result.message
     assert result.provider == "veo3"
     assert result.raw_response["error_type"] == "ValueError"
@@ -547,7 +547,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
 async def test_generate_video_async_propagates_known_errors(
     handler, base_config, base_request
 ):
-    """Test that ValidationError and ProviderAPIError propagate without wrapping."""
+    """Test that ValidationError and GenerationFailedError propagate without wrapping."""
     # Test ValidationError propagation
     request_invalid = VideoGenerationRequest(
         prompt="test", extra_params={"person_generation": "invalid"}
@@ -586,7 +586,7 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(TarashException, match="timed out"):
             await handler.generate_video_async(timeout_config, base_request)
 
 
@@ -608,7 +608,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
+        with pytest.raises(TarashException, match="Unknown error"):
             await handler.generate_video_async(base_config, base_request)
 
 
@@ -678,7 +678,7 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
+        with pytest.raises(TarashException, match="Unknown error"):
             handler.generate_video(base_config, base_request)
 
 
@@ -705,7 +705,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(TarashException, match="timed out"):
             handler.generate_video(timeout_config, base_request)
 
 
@@ -714,16 +714,16 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
 @pytest.mark.asyncio
 async def test_handle_video_generation_errors_async_propagates_known_errors():
-    """Test decorator propagates ValidationError, ProviderAPIError, VideoGenerationError."""
+    """Test decorator propagates ValidationError, GenerationFailedError, TarashException."""
 
     @handle_video_generation_errors
     async def async_func(self, config, request):
         if request.prompt == "validation":
             raise ValidationError("Invalid", provider="veo3")
         elif request.prompt == "provider":
-            raise ProviderAPIError("API error", provider="veo3")
+            raise GenerationFailedError("API error", provider="veo3")
         elif request.prompt == "video":
-            raise VideoGenerationError("Gen error", provider="veo3")
+            raise TarashException("Gen error", provider="veo3")
         else:
             raise RuntimeError("Unknown")
 
@@ -733,16 +733,16 @@ async def test_handle_video_generation_errors_async_propagates_known_errors():
     with pytest.raises(ValidationError):
         await async_func(None, config, VideoGenerationRequest(prompt="validation"))
 
-    # Test ProviderAPIError propagates
-    with pytest.raises(ProviderAPIError):
+    # Test GenerationFailedError propagates
+    with pytest.raises(GenerationFailedError):
         await async_func(None, config, VideoGenerationRequest(prompt="provider"))
 
-    # Test VideoGenerationError propagates
-    with pytest.raises(VideoGenerationError):
+    # Test TarashException propagates
+    with pytest.raises(TarashException):
         await async_func(None, config, VideoGenerationRequest(prompt="video"))
 
     # Test unknown exception is wrapped
-    with pytest.raises(VideoGenerationError, match="Unknown error") as exc_info:
+    with pytest.raises(TarashException, match="Unknown error") as exc_info:
         await async_func(None, config, VideoGenerationRequest(prompt="unknown"))
 
     assert exc_info.value.provider == "veo3"
@@ -767,5 +767,5 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
         sync_func(None, config, VideoGenerationRequest(prompt="validation"))
 
     # Test unknown exception is wrapped
-    with pytest.raises(VideoGenerationError, match="Unknown error"):
+    with pytest.raises(TarashException, match="Unknown error"):
         sync_func(None, config, VideoGenerationRequest(prompt="unknown"))

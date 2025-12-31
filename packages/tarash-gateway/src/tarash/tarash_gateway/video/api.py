@@ -2,7 +2,7 @@
 
 # from typing import AsyncIterator
 
-from tarash.tarash_gateway.video.exceptions import VideoGenerationError
+from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import (
     ProgressCallback,
     ProviderHandler,
@@ -13,16 +13,9 @@ from tarash.tarash_gateway.video.models import (
 from tarash.tarash_gateway.video.providers import OpenAIProviderHandler
 from tarash.tarash_gateway.video.providers.fal import FalProviderHandler
 from tarash.tarash_gateway.video.providers.veo3 import Veo3ProviderHandler
+from tarash.tarash_gateway.video.providers.replicate import ReplicateProviderHandler
 
 # Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
-try:
-    from tarash.tarash_gateway.video.providers.replicate import ReplicateProviderHandler
-
-    _REPLICATE_AVAILABLE = True
-except Exception:
-    ReplicateProviderHandler = None  # type: ignore
-    _REPLICATE_AVAILABLE = False
-
 # ==================== Provider Registry ====================
 
 # Singleton instances of handlers (stateless)
@@ -37,18 +30,11 @@ def _get_handler(provider: str) -> ProviderHandler:
         elif provider == "veo3":
             _HANDLER_INSTANCES[provider] = Veo3ProviderHandler()
         elif provider == "replicate":
-            if not _REPLICATE_AVAILABLE or ReplicateProviderHandler is None:
-                raise VideoGenerationError(
-                    "Replicate provider is not available. This may be due to "
-                    "pydantic v1 incompatibility with Python 3.14+. "
-                    "Install with: pip install tarash-gateway[replicate]",
-                    provider=provider,
-                )
             _HANDLER_INSTANCES[provider] = ReplicateProviderHandler()
         elif provider == "openai":
             _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
         else:
-            raise VideoGenerationError(
+            raise ValidationError(
                 f"Unsupported provider: {provider}",
                 provider=provider,
             )
@@ -76,7 +62,7 @@ async def generate_video_async(
         Final VideoGenerationResponse when complete
 
     Raises:
-        VideoGenerationError: If generation fails
+        TarashException: If generation fails
     """
     # Get handler for provider
     handler = _get_handler(config.provider)
@@ -102,7 +88,7 @@ def generate_video(
         Final VideoGenerationResponse when complete
 
     Raises:
-        VideoGenerationError: If generation fails
+        TarashException: If generation fails
     """
     # Get handler for provider
     handler = _get_handler(config.provider)

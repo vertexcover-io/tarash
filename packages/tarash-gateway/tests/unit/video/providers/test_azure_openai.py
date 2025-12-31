@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
-    VideoGenerationError,
+    GenerationFailedError,
+    ValidationError,
 )
 from tarash.tarash_gateway.video.models import (
     VideoGenerationConfig,
@@ -87,7 +87,7 @@ def test_parse_azure_config_with_api_version_in_url(handler):
 
 
 def test_parse_azure_config_missing_base_url_raises_error(handler):
-    """Test that missing base_url raises ProviderAPIError."""
+    """Test that missing base_url raises ValidationError."""
     config = VideoGenerationConfig(
         model="sora-deployment",
         provider="azure_openai",
@@ -96,7 +96,7 @@ def test_parse_azure_config_missing_base_url_raises_error(handler):
         timeout=600,
     )
 
-    with pytest.raises(ProviderAPIError, match="base_url to be set"):
+    with pytest.raises(ValidationError, match="base_url to be set"):
         handler._parse_azure_config(config)
 
 
@@ -289,7 +289,7 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
         "tarash.tarash_gateway.video.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
     ):
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(GenerationFailedError, match="timed out"):
             await handler.generate_video_async(base_config, base_request)
 
 
@@ -308,7 +308,7 @@ async def test_generate_video_async_handles_network_error(
         "tarash.tarash_gateway.video.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
     ):
-        with pytest.raises(VideoGenerationError, match="Connection failed"):
+        with pytest.raises(GenerationFailedError, match="Connection failed"):
             await handler.generate_video_async(base_config, base_request)
 
 
@@ -408,7 +408,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(GenerationFailedError, match="timed out"):
             handler.generate_video(base_config, base_request)
 
 
@@ -422,5 +422,5 @@ def test_generate_video_handles_network_error(handler, base_config, base_request
         "tarash.tarash_gateway.video.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(VideoGenerationError, match="Server error"):
+        with pytest.raises(GenerationFailedError, match="Server error"):
             handler.generate_video(base_config, base_request)

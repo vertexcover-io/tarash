@@ -5,12 +5,12 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Any
 
-from openai.types import Video
 from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.video.exceptions import (
+    GenerationFailedError,
+    TarashException,
     ValidationError,
-    VideoGenerationError,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
@@ -28,7 +28,7 @@ from tarash.tarash_gateway.video.utils import (
 )
 
 try:
-    from openai import AsyncOpenAI, BadRequestError, OpenAI
+    from openai import AsyncOpenAI, OpenAI
 except ImportError:
     pass
 
@@ -52,17 +52,6 @@ class OpenAIVideoParams(TypedDict, total=False):
 
     # Additional parameters can be added here as OpenAI expands the API
     pass
-
-
-class OpenAIVideoResponse(TypedDict):
-    """Response data for OpenAI video conversion.
-
-    Contains the Video object and the HttpxBinaryResponseContent response object.
-    """
-
-    video: Video  # OpenAI Video object
-    content: bytes
-    content_type: str
 
 
 def parse_openai_video_status(video: Any) -> VideoGenerationUpdate:
@@ -92,7 +81,11 @@ def parse_openai_video_status(video: Any) -> VideoGenerationUpdate:
         request_id=video.id,
         status=normalized_status,
         progress_percent=progress,
-        update={},
+        update={
+            "model": getattr(video, "model", None),
+            "size": getattr(video, "size", None),
+            "seconds": getattr(video, "seconds", None),
+        },
     )
 
 
@@ -196,7 +189,8 @@ class OpenAIProviderHandler:
         openai_params["prompt"] = request.prompt
 
         # Duration: OpenAI uses 'seconds' parameter
-        # Sora 2 and Sora 2 Pro: 4, 8, 12 seconds
+        # Sora 2: 4, 8, 12 seconds
+        # Sora 2 Pro: 10, 15, 25 seconds
         if request.duration_seconds is not None:
             allowed_durations = [4, 8, 12]
             validated_duration = validate_duration(
@@ -205,7 +199,7 @@ class OpenAIProviderHandler:
                 config.provider,
                 config.model,
             )
-            openai_params["seconds"] = str(validated_duration)
+            openai_params["seconds"] = validated_duration
 
         # Size/resolution: OpenAI uses 'size' in format "WIDTHxHEIGHT"
         # Convert aspect_ratio to size if provided
@@ -269,7 +263,8 @@ class OpenAIProviderHandler:
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
         request_id: str,
-        provider_response: OpenAIVideoResponse,
+        video: Any,
+        video_content: Any | None = None,
     ) -> VideoGenerationResponse:
         """
         Convert OpenAI video response to VideoGenerationResponse.
@@ -278,14 +273,12 @@ class OpenAIProviderHandler:
             config: Provider configuration
             request: Original video generation request
             request_id: Our request ID
-            response_data: TypedDict containing video object and optional content
+            video: OpenAI Video object
+            video_content: Optional video content response
 
         Returns:
             Normalized VideoGenerationResponse
         """
-        video = provider_response["video"]
-        video_content = provider_response.get("content")
-
         if video.status == "failed":
             error = getattr(video, "error", None)
             error_msg = (
@@ -293,7 +286,7 @@ class OpenAIProviderHandler:
                 if error
                 else "Video generation failed"
             )
-            raise VideoGenerationError(
+            raise GenerationFailedError(
                 error_msg,
                 provider=config.provider,
                 model=config.model,
@@ -304,28 +297,66 @@ class OpenAIProviderHandler:
                     else str(video)
                 },
             )
-        elif video_content is None or len(video_content) == 0:
-            raise VideoGenerationError(
-                "No video content found in response",
+
+        if video.status != "completed":
+            raise GenerationFailedError(
+                f"Video is not completed, status: {video.status}",
                 provider=config.provider,
-                model=config.model,
-                request_id=request_id,
-                raw_response=video.model_dump(),
+                raw_response={
+                    "video": video.model_dump()
+                    if hasattr(video, "model_dump")
+                    else str(video)
+                },
+            )
+
+        # Get video URL - it may be on the video object or from content download
+        video_url = getattr(video, "url", None)
+        if not video_url and video_content:
+            # video_content might be a binary response or have a URL
+            if hasattr(video_content, "url"):
+                video_url = video_content.url
+            elif hasattr(video_content, "content"):
+                # Return as MediaContent
+                return VideoGenerationResponse(
+                    request_id=request_id,
+                    video={
+                        "content": video_content.content,
+                        "content_type": "video/mp4",
+                    },
+                    content_type="video/mp4",
+                    duration=float(getattr(video, "seconds", 0))
+                    if hasattr(video, "seconds")
+                    else None,
+                    status="completed",
+                    raw_response=video.model_dump()
+                    if hasattr(video, "model_dump")
+                    else {"id": video.id},
+                    provider_metadata={},
+                )
+
+        if not video_url:
+            raise GenerationFailedError(
+                "No video URL found in response",
+                provider=config.provider,
+                raw_response={
+                    "video": video.model_dump()
+                    if hasattr(video, "model_dump")
+                    else str(video)
+                },
             )
 
         return VideoGenerationResponse(
             request_id=request_id,
-            video={
-                "content": video_content,
-                "content_type": provider_response["content_type"],
-            },
-            content_type=provider_response["content_type"],
+            video=video_url,
+            content_type="video/mp4",
             duration=float(getattr(video, "seconds", 0))
             if hasattr(video, "seconds")
             else None,
             resolution=getattr(video, "size", None),
             status="completed",
-            raw_response=video.model_dump(),
+            raw_response=video.model_dump()
+            if hasattr(video, "model_dump")
+            else {"id": video.id},
             provider_metadata={},
         )
 
@@ -335,17 +366,21 @@ class OpenAIProviderHandler:
         request: VideoGenerationRequest,
         request_id: str,
         ex: Exception,
-    ) -> VideoGenerationError:
+    ) -> TarashException:
         """Handle errors from OpenAI API."""
-        if isinstance(ex, VideoGenerationError):
+        if isinstance(ex, TarashException):
             return ex
 
-        # Handle OpenAI 400 Bad Request errors as ValidationError
+        # Handle OpenAI specific errors
+        from openai import BadRequestError
+
         if BadRequestError is not None and isinstance(ex, BadRequestError):
             error_msg = str(ex)
             return ValidationError(
                 f"Invalid request parameters: {error_msg}",
                 provider=config.provider,
+                model=config.model,
+                request_id=request_id,
                 raw_response={
                     "error": error_msg,
                     "status_code": 400,
@@ -356,7 +391,7 @@ class OpenAIProviderHandler:
         error_type = type(ex).__name__
         error_msg = str(ex)
 
-        return VideoGenerationError(
+        return TarashException(
             f"Error while generating video: {error_msg}",
             provider=config.provider,
             model=config.model,
@@ -388,13 +423,12 @@ class OpenAIProviderHandler:
         """
         client: AsyncOpenAI = self._get_client(config, "async")
         openai_params = self._convert_request(config, request)
-        request_id = None
+
+        # Create video job
+        video = await client.videos.create(**openai_params)
+        request_id = video.id
 
         try:
-            # Create video job
-            video = await client.videos.create(**openai_params)
-            request_id = video.id
-
             # Poll for completion
             poll_attempts = 0
             while poll_attempts < config.max_poll_attempts:
@@ -417,7 +451,7 @@ class OpenAIProviderHandler:
                 poll_attempts += 1
 
             if video.status not in ("completed", "failed"):
-                raise VideoGenerationError(
+                raise GenerationFailedError(
                     f"Video generation timed out after {config.max_poll_attempts} attempts",
                     provider=config.provider,
                     model=config.model,
@@ -425,23 +459,12 @@ class OpenAIProviderHandler:
                     raw_response={"status": "timeout"},
                 )
 
-            if video.status == "completed":
-                video_response = await client.videos.download_content(video.id)
-                content = await video_response.response.aread()
-                content_type = "video/mp4"
-            else:
-                content = None
-                content_type = None
-
-            response_data: OpenAIVideoResponse = {
-                "video": video,
-                "content": content,
-                "content_type": content_type,
-            }
-            return self._convert_response(config, request, request_id, response_data)
+            # Convert final response
+            response = self._convert_response(config, request, request_id, video)
+            return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex) from ex
 
     @handle_video_generation_errors
     def generate_video(
@@ -463,13 +486,12 @@ class OpenAIProviderHandler:
         """
         client = self._get_client(config, "sync")
         openai_params = self._convert_request(config, request)
-        request_id = None
+
+        # Create video job
+        video = client.videos.create(**openai_params)
+        request_id = video.id
 
         try:
-            # Create video job
-            video = client.videos.create(**openai_params)
-            request_id = video.id
-
             # Poll for completion
             poll_attempts = 0
             while poll_attempts < config.max_poll_attempts:
@@ -490,31 +512,17 @@ class OpenAIProviderHandler:
                 poll_attempts += 1
 
             if video.status not in ("completed", "failed"):
-                raise VideoGenerationError(
+                raise GenerationFailedError(
                     f"Video generation timed out after {config.max_poll_attempts} attempts",
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
                     raw_response={"status": "timeout"},
                 )
-            elif video.status == "failed":
-                content = None
-                content_type = None
-            else:
-                video_response = client.videos.download_content(video.id)
-                content = video_response.read()
-                content_type = "video/mp4"
 
-            response_data: OpenAIVideoResponse = {
-                "video": video,
-                "content": content,
-                "content_type": content_type,
-            }
             # Convert final response
-            response = self._convert_response(
-                config, request, request_id, response_data
-            )
+            response = self._convert_response(config, request, request_id, video)
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex) from ex

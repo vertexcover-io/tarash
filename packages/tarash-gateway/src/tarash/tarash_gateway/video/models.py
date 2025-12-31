@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 # ==================== Type Aliases ====================
 
 Resolution = Literal["360p", "480p", "720p", "1080p", "4k"]
-AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9", "16:10", "10:16"]
+AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
 Base64 = str
 
 

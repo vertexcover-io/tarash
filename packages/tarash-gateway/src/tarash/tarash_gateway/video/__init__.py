@@ -2,9 +2,11 @@
 
 from tarash.tarash_gateway.video.api import generate_video, generate_video_async
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
+    ContentModerationError,
+    GenerationFailedError,
+    HTTPError,
+    TarashException,
     ValidationError,
-    VideoGenerationError,
 )
 from tarash.tarash_gateway.video.models import (
     AspectRatio,
@@ -31,7 +33,9 @@ __all__ = [
     "ImageType",
     "VideoType",
     # Exceptions
-    "VideoGenerationError",
-    "ProviderAPIError",
+    "TarashException",
     "ValidationError",
+    "ContentModerationError",
+    "HTTPError",
+    "GenerationFailedError",
 ]

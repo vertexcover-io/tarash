@@ -7,8 +7,11 @@ from typing import Any
 from fal_client.client import FalClientHTTPError
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
-    VideoGenerationError,
+    ContentModerationError,
+    GenerationFailedError,
+    HTTPError,
+    TarashException,
+    ValidationError,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
@@ -307,9 +310,10 @@ class FalProviderHandler:
                 audio_url = provider_response["audio_url"]
 
         if not video_url:
-            raise ProviderAPIError(
+            raise GenerationFailedError(
                 f"No video URL found in Fal response: {provider_response}",
                 provider=config.provider,
+                model=config.model,
                 raw_response=provider_response
                 if isinstance(provider_response, dict)
                 else {},
@@ -341,26 +345,54 @@ class FalProviderHandler:
         request: VideoGenerationRequest,
         request_id: str,
         ex: Exception,
-    ) -> VideoGenerationResponse:
+    ) -> TarashException:
         """Handle errors during video generation."""
-        if isinstance(ex, VideoGenerationError):
+        if isinstance(ex, TarashException):
             return ex
 
         elif isinstance(ex, FalClientHTTPError):
-            return VideoGenerationError(
-                f"Request Failed with status code {ex.status_code}: {ex.message}",
-                provider=config.provider,
-                raw_response={
-                    "status_code": ex.status_code,
-                    "response_headers": ex.response_headers,
-                    "response": ex.response.content,
-                    "traceback": traceback.format_exc(),
-                },
-            )
+            # Map HTTP status codes to appropriate exception types
+            raw_response = {
+                "status_code": ex.status_code,
+                "response_headers": ex.response_headers,
+                "response": ex.response.content,
+                "traceback": traceback.format_exc(),
+            }
+
+            if ex.status_code == 400:
+                # Bad request - validation error
+                return ValidationError(
+                    f"Invalid request: {ex.message}",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+            elif ex.status_code == 403:
+                # Content moderation / policy violation
+                return ContentModerationError(
+                    f"Content policy violation: {ex.message}",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+            else:
+                # Other HTTP errors (401, 429, 500, 503, etc.)
+                return HTTPError(
+                    f"HTTP {ex.status_code}: {ex.message}",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                    status_code=ex.status_code,
+                )
         else:
-            raise VideoGenerationError(
-                f"Unknown Error while generating video: {ex}",
+            raise TarashException(
+                f"Unknown error while generating video: {ex}",
                 provider=config.provider,
+                model=config.model,
+                request_id=request_id,
                 raw_response={
                     "error": str(ex),
                     "traceback": traceback.format_exc(),
@@ -417,7 +449,7 @@ class FalProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex) from ex
 
     @handle_video_generation_errors
     def generate_video(
@@ -467,4 +499,4 @@ class FalProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex) from ex
