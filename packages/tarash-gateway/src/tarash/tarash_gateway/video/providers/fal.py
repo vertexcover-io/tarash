@@ -1,11 +1,13 @@
 """Fal.ai provider handler."""
 
 import asyncio
+import time
 import traceback
 from typing import Any
 
 from fal_client.client import FalClientHTTPError
 
+from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import (
     ContentModerationError,
     GenerationFailedError,
@@ -45,6 +47,8 @@ try:
 except ImportError:
     pass
 
+# Logger name constant
+_LOGGER_NAME = "tarash.tarash_gateway.video.providers.fal"
 
 # ==================== Model Field Mappings ====================
 
@@ -223,6 +227,15 @@ class FalProviderHandler:
 
         if client_type == "async":
             if cache_key not in self._async_client_cache:
+                log_debug(
+                    "Creating new async Fal client",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "base_url": config.base_url or "default",
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
                 self._async_client_cache[cache_key] = fal_client.AsyncClient(
                     key=config.api_key,
                     default_timeout=config.timeout,
@@ -230,6 +243,15 @@ class FalProviderHandler:
             return self._async_client_cache[cache_key]
         else:  # sync
             if cache_key not in self._sync_client_cache:
+                log_debug(
+                    "Creating new sync Fal client",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "base_url": config.base_url or "default",
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
                 self._sync_client_cache[cache_key] = fal_client.SyncClient(
                     key=config.api_key,
                     default_timeout=config.timeout,
@@ -260,6 +282,18 @@ class FalProviderHandler:
         """
         # Get model-specific field mappers (with prefix matching)
         field_mappers = get_field_mappers(config.model)
+
+        log_debug(
+            "Converting request to Fal format",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "has_image": len(request.image_list) > 0,
+                "duration_seconds": request.duration_seconds,
+                "aspect_ratio": request.aspect_ratio,
+            },
+            logger_name=_LOGGER_NAME,
+        )
 
         # Apply field mappers to convert request
         api_payload = apply_field_mappers(field_mappers, request)
@@ -351,6 +385,17 @@ class FalProviderHandler:
             return ex
 
         elif isinstance(ex, FalClientHTTPError):
+            log_error(
+                "Fal API HTTP error",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "status_code": ex.status_code,
+                    "error_message": ex.message,
+                },
+                logger_name=_LOGGER_NAME,
+            )
             # Map HTTP status codes to appropriate exception types
             raw_response = {
                 "status_code": ex.status_code,
@@ -388,8 +433,19 @@ class FalProviderHandler:
                     status_code=ex.status_code,
                 )
         else:
+            log_error(
+                "Unknown error in Fal video generation",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "error_type": type(ex).__name__,
+                },
+                logger_name=_LOGGER_NAME,
+                exc_info=True,
+            )
             raise TarashException(
-                f"Unknown error while generating video: {ex}",
+                f"Unknown Error while generating video: {ex}",
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
@@ -398,6 +454,103 @@ class FalProviderHandler:
                     "traceback": traceback.format_exc(),
                 },
             )
+
+    def _process_event(
+        self,
+        config: VideoGenerationConfig,
+        request_id: str,
+        event: Status,
+        start_time: float,
+    ) -> VideoGenerationUpdate:
+        """Process a single event and log it with elapsed time.
+
+        Args:
+            config: Provider configuration
+            request_id: Request ID
+            event: Fal status event
+            start_time: Start time for elapsed time calculation
+
+        Returns:
+            VideoGenerationUpdate object
+        """
+        update = parse_fal_status(request_id, event)
+        elapsed_time = time.time() - start_time
+
+        # Log every event (not just status changes)
+        log_info(
+            "Fal video generation status update",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+                "status": update.status,
+                "progress_percent": update.progress_percent,
+                "time_elapsed_seconds": round(elapsed_time, 2),
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        return update
+
+    async def _process_events_async(
+        self,
+        config: VideoGenerationConfig,
+        request_id: str,
+        handler: Any,
+        on_progress: ProgressCallback | None = None,
+    ) -> Any:
+        """Process events asynchronously and return final result.
+
+        Args:
+            config: Provider configuration
+            request_id: Request ID
+            handler: Fal async handler
+            on_progress: Optional async progress callback
+
+        Returns:
+            Final result from handler.get()
+        """
+        start_time = time.time()
+
+        async for event in handler.iter_events(
+            with_logs=True, interval=config.poll_interval
+        ):
+            update = self._process_event(config, request_id, event, start_time)
+
+            if on_progress:
+                result = on_progress(update)
+                if asyncio.iscoroutine(result):
+                    await result
+
+        return await handler.get()
+
+    def _process_events_sync(
+        self,
+        config: VideoGenerationConfig,
+        request_id: str,
+        handler: Any,
+        on_progress: Any | None = None,
+    ) -> Any:
+        """Process events synchronously and return final result.
+
+        Args:
+            config: Provider configuration
+            request_id: Request ID
+            handler: Fal sync handler
+            on_progress: Optional progress callback
+
+        Returns:
+            Final result from handler.get()
+        """
+        start_time = time.time()
+
+        for event in handler.iter_events(with_logs=True, interval=config.poll_interval):
+            update = self._process_event(config, request_id, event, start_time)
+
+            if on_progress:
+                on_progress(update)
+
+        return handler.get()
 
     @handle_video_generation_errors
     async def generate_video_async(
@@ -421,6 +574,27 @@ class FalProviderHandler:
         # Build Fal input (let validation errors propagate)
         fal_input = self._convert_request(config, request)
 
+        log_info(
+            "Starting Fal video generation (async)",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        # Log sanitized request before API call
+        log_debug(
+            "Calling Fal API with request",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_params": fal_input,
+            },
+            logger_name=_LOGGER_NAME,
+            sanitize=True,
+        )
+
         # Submit to Fal using async API
         handler = await client.submit(
             config.model,
@@ -429,14 +603,30 @@ class FalProviderHandler:
 
         request_id = handler.request_id
 
-        try:
-            async for event in handler.iter_events(with_logs=True):
-                if on_progress:
-                    result = on_progress(parse_fal_status(request_id, event))
-                    if asyncio.iscoroutine(result):
-                        await result
+        log_info(
+            "Fal video job submitted",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
 
-            result = await handler.get()
+        try:
+            result = await self._process_events_async(
+                config, request_id, handler, on_progress
+            )
+
+            log_info(
+                "Fal video generation completed",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                },
+                logger_name=_LOGGER_NAME,
+            )
 
             # Parse response
             fal_result = (
@@ -449,7 +639,7 @@ class FalProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex) from ex
+            raise self._handle_error(config, request, request_id, ex)
 
     @handle_video_generation_errors
     def generate_video(
@@ -474,6 +664,18 @@ class FalProviderHandler:
         # Build Fal input (let validation errors propagate)
         fal_input = self._convert_request(config, request)
 
+        # Log sanitized request before API call
+        log_info(
+            "Calling Fal API with parsed request",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_params": fal_input,
+            },
+            logger_name=_LOGGER_NAME,
+            sanitize=True,
+        )
+
         # Submit to Fal
         handler = client.submit(
             config.model,
@@ -481,12 +683,28 @@ class FalProviderHandler:
         )
         request_id = handler.request_id
 
-        try:
-            for event in handler.iter_events(with_logs=True):
-                if on_progress:
-                    on_progress(parse_fal_status(request_id, event))
+        log_info(
+            "Fal video job submitted",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
 
-            result = handler.get()
+        try:
+            result = self._process_events_sync(config, request_id, handler, on_progress)
+
+            log_info(
+                "Fal video generation completed",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                },
+                logger_name=_LOGGER_NAME,
+            )
 
             # Parse response
             fal_result = (
@@ -499,4 +717,4 @@ class FalProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex) from ex
+            raise self._handle_error(config, request, request_id, ex)

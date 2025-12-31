@@ -15,6 +15,7 @@ try:
 except ImportError:
     genai = None  # type: ignore
 
+from tarash.tarash_gateway.logging import log_debug
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     TarashException,
@@ -34,6 +35,9 @@ from tarash.tarash_gateway.video.utils import validate_model_params
 if TYPE_CHECKING:
     from google.genai.client import AsyncClient, Client
     from google.genai.types import GenerateVideosConfig
+
+# Logger name constant
+_LOGGER_NAME = "tarash.tarash_gateway.video.providers.veo3"
 
 
 class Veo3VideoParams(TypedDict, total=False):
@@ -407,6 +411,19 @@ class Veo3ProviderHandler:
         client = self._get_client(config, "async")
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
+
+        # Log sanitized request before API call
+        log_debug(
+            "Calling Veo3 API with request",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_params": veo3_kwargs,
+            },
+            logger_name=_LOGGER_NAME,
+            sanitize=True,
+        )
+
         operation = await client.models.generate_videos(
             model=config.model,
             **veo3_kwargs,
@@ -474,6 +491,19 @@ class Veo3ProviderHandler:
 
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
+
+        # Log sanitized request before API call
+        log_debug(
+            "Calling Veo3 API with request",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_params": veo3_kwargs,
+            },
+            logger_name=_LOGGER_NAME,
+            sanitize=True,
+        )
+
         operation = client.models.generate_videos(
             model=config.model,
             **veo3_kwargs,

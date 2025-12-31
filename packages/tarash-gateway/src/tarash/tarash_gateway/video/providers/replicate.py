@@ -4,9 +4,9 @@ import asyncio
 import traceback
 from typing import Any
 
+from tarash.tarash_gateway.logging import log_debug
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
-    HTTPError,
     TarashException,
     handle_video_generation_errors,
 )
@@ -28,16 +28,16 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
 
 try:
     import replicate
-    from replicate import AsyncReplicate, Replicate
-    from replicate.exceptions import (
-        APIError,
-        BadRequestError,
-        NotFoundError,
-        RateLimitError,
-    )
+    from replicate import Client
+    from replicate.prediction import Prediction
 except (ImportError, Exception):
-    pass
+    # Handle both ImportError and potential pydantic compatibility issues
+    replicate = None  # type: ignore
+    Client = None  # type: ignore
+    Prediction = None  # type: ignore
 
+# Logger name constant
+_LOGGER_NAME = "tarash.tarash_gateway.video.providers.replicate"
 
 # ==================== Model Field Mappings ====================
 
@@ -245,36 +245,24 @@ class ReplicateProviderHandler:
                 "Install with: pip install tarash-gateway[replicate]"
             )
 
-        self._sync_client_cache: dict[str, Replicate] = {}
-        self._async_client_cache: dict[str, AsyncReplicate] = {}
+        self._client_cache: dict[str, Client] = {}
 
-    def _get_client(
-        self, config: VideoGenerationConfig, client_type: str
-    ) -> Replicate | AsyncReplicate:
+    def _get_client(self, config: VideoGenerationConfig) -> Client:
         """Get or create Replicate client for the given config.
 
         Args:
             config: Provider configuration
-            client_type: Type of client to return ("sync" or "async")
 
         Returns:
-            Replicate (sync) or AsyncReplicate (async) client instance
+            replicate.Client instance
         """
         # Use API key as cache key
         cache_key = config.api_key
 
-        if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                self._async_client_cache[cache_key] = AsyncReplicate(
-                    bearer_token=config.api_key
-                )
-            return self._async_client_cache[cache_key]
-        else:  # sync
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = Replicate(
-                    bearer_token=config.api_key
-                )
-            return self._sync_client_cache[cache_key]
+        if cache_key not in self._client_cache:
+            self._client_cache[cache_key] = Client(api_token=config.api_key)
+
+        return self._client_cache[cache_key]
 
     def _convert_request(
         self,
@@ -392,7 +380,7 @@ class ReplicateProviderHandler:
         if isinstance(ex, TarashException):
             return ex
 
-        # Build raw response
+        # Handle Replicate-specific errors
         error_message = str(ex)
         raw_response: dict[str, Any] = {
             "error": error_message,
@@ -403,50 +391,8 @@ class ReplicateProviderHandler:
         if prediction_id:
             raw_response["prediction_id"] = prediction_id
 
-        # Handle Replicate v2 specific errors
-        from tarash.tarash_gateway.video.exceptions import ValidationError
-
-        if BadRequestError is not None and isinstance(ex, BadRequestError):
-            return ValidationError(
-                f"Invalid request parameters: {error_message}",
-                provider=config.provider,
-                model=config.model,
-                request_id=prediction_id,
-                raw_response=raw_response,
-            )
-        elif NotFoundError is not None and isinstance(ex, NotFoundError):
-            return ValidationError(
-                f"Model or prediction not found: {error_message}",
-                provider=config.provider,
-                model=config.model,
-                request_id=prediction_id,
-                raw_response=raw_response,
-            )
-        elif RateLimitError is not None and isinstance(ex, RateLimitError):
-            return HTTPError(
-                f"Rate limit exceeded: {error_message}",
-                provider=config.provider,
-                model=config.model,
-                request_id=prediction_id,
-                raw_response=raw_response,
-                status_code=429,
-            )
-        elif APIError is not None and isinstance(ex, APIError):
-            # Generic API error - check if it has a status code
-            status_code = getattr(ex, "status_code", None)
-            if status_code:
-                return HTTPError(
-                    f"Replicate API error: {error_message}",
-                    provider=config.provider,
-                    model=config.model,
-                    request_id=prediction_id,
-                    raw_response=raw_response,
-                    status_code=status_code,
-                )
-
-        # Fallback to generic TarashException
         return TarashException(
-            f"Replicate error: {error_message}",
+            f"Replicate API error: {error_message}",
             provider=config.provider,
             raw_response=raw_response,
             request_id=prediction_id,
@@ -470,35 +416,46 @@ class ReplicateProviderHandler:
         Returns:
             Final VideoGenerationResponse when complete
         """
-        client = self._get_client(config, "async")
-
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
+
+        # Log sanitized request before API call
+        log_debug(
+            "Calling Replicate API with request",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_params": replicate_input,
+            },
+            logger_name=_LOGGER_NAME,
+            sanitize=True,
+        )
 
         prediction_id = ""
 
         try:
-            # Parse model name into owner/name (format: "owner/model-name" or "owner/model-name:version")
-            model_parts = config.model.split(":")
-            model_base = model_parts[0]  # Remove version if present
-            owner, model_name = model_base.split("/", 1)
-
-            # For simple case without progress, use client.run()
+            # Use async_run for simple case without progress
             if on_progress is None:
-                output = await client.run(
-                    model_base,
+                output = await replicate.async_run(
+                    config.model,
                     input=replicate_input,
                 )
-                # Generate a pseudo prediction ID since run() doesn't return one
+                # Generate a pseudo prediction ID since async_run doesn't return one
                 prediction_id = f"replicate-{id(output)}"
                 return self._convert_response(config, request, prediction_id, output)
 
-            # For progress tracking, use predictions.create and poll
-            prediction = await client.models.predictions.create(
-                model_owner=owner,
-                model_name=model_name,
-                input=replicate_input,
-            )
+            # For progress tracking, we need to use predictions.create and poll
+            # Run the sync prediction creation in a thread pool
+            loop = asyncio.get_event_loop()
+
+            def create_prediction():
+                client = self._get_client(config)
+                return client.predictions.create(
+                    model=config.model,
+                    input=replicate_input,
+                )
+
+            prediction = await loop.run_in_executor(None, create_prediction)
             prediction_id = prediction.id
 
             # Poll for status updates
@@ -506,8 +463,8 @@ class ReplicateProviderHandler:
             max_attempts = config.max_poll_attempts
 
             for _ in range(max_attempts):
-                # Get updated prediction status (replaces prediction.reload())
-                prediction = await client.predictions.get(prediction_id=prediction.id)
+                # Reload prediction status
+                await loop.run_in_executor(None, prediction.reload)
 
                 # Send progress update
                 if on_progress:
@@ -522,18 +479,14 @@ class ReplicateProviderHandler:
                         config, request, prediction_id, prediction.output
                     )
                 elif prediction.status in ("failed", "canceled"):
-                    error_msg = (
-                        getattr(prediction, "error", None)
-                        or f"Prediction {prediction.status}"
-                    )
-                    logs = getattr(prediction, "logs", None)
+                    error_msg = prediction.error or f"Prediction {prediction.status}"
                     raise GenerationFailedError(
                         error_msg,
                         provider=config.provider,
                         raw_response={
                             "status": prediction.status,
-                            "error": error_msg,
-                            "logs": logs,
+                            "error": prediction.error,
+                            "logs": prediction.logs,
                         },
                         request_id=prediction_id,
                         model=config.model,
@@ -552,7 +505,7 @@ class ReplicateProviderHandler:
             )
 
         except Exception as ex:
-            raise self._handle_error(config, request, prediction_id, ex) from ex
+            raise self._handle_error(config, request, prediction_id, ex)
 
     @handle_video_generation_errors
     def generate_video(
@@ -571,32 +524,39 @@ class ReplicateProviderHandler:
         Returns:
             Final VideoGenerationResponse
         """
-        client = self._get_client(config, "sync")
+        client = self._get_client(config)
 
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
 
+        # Log sanitized request before API call
+        log_debug(
+            "Calling Replicate API with request",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_params": replicate_input,
+            },
+            logger_name=_LOGGER_NAME,
+            sanitize=True,
+        )
+
         prediction_id = ""
 
         try:
-            # Parse model name into owner/name (format: "owner/model-name" or "owner/model-name:version")
-            model_parts = config.model.split(":")
-            model_base = model_parts[0]  # Remove version if present
-            owner, model_name = model_base.split("/", 1)
-
-            # For simple case without progress, use client.run()
+            # For simple case without progress, use run()
             if on_progress is None:
-                output = client.run(
-                    model_base,
+                output = replicate.run(
+                    config.model,
                     input=replicate_input,
                 )
                 prediction_id = f"replicate-{id(output)}"
                 return self._convert_response(config, request, prediction_id, output)
 
             # For progress tracking, use predictions.create and poll
-            prediction = client.models.predictions.create(
-                model_owner=owner,
-                model_name=model_name,
+            # Note: Logging already done above for the request
+            prediction = client.predictions.create(
+                model=config.model,
                 input=replicate_input,
             )
             prediction_id = prediction.id
@@ -608,8 +568,8 @@ class ReplicateProviderHandler:
             import time
 
             for _ in range(max_attempts):
-                # Get updated prediction status (replaces prediction.reload())
-                prediction = client.predictions.get(prediction_id=prediction.id)
+                # Reload prediction status
+                prediction.reload()
 
                 # Send progress update
                 if on_progress:
@@ -622,18 +582,14 @@ class ReplicateProviderHandler:
                         config, request, prediction_id, prediction.output
                     )
                 elif prediction.status in ("failed", "canceled"):
-                    error_msg = (
-                        getattr(prediction, "error", None)
-                        or f"Prediction {prediction.status}"
-                    )
-                    logs = getattr(prediction, "logs", None)
+                    error_msg = prediction.error or f"Prediction {prediction.status}"
                     raise GenerationFailedError(
                         error_msg,
                         provider=config.provider,
                         raw_response={
                             "status": prediction.status,
-                            "error": error_msg,
-                            "logs": logs,
+                            "error": prediction.error,
+                            "logs": prediction.logs,
                         },
                         request_id=prediction_id,
                         model=config.model,
@@ -652,4 +608,4 @@ class ReplicateProviderHandler:
             )
 
         except Exception as ex:
-            raise self._handle_error(config, request, prediction_id, ex) from ex
+            raise self._handle_error(config, request, prediction_id, ex)

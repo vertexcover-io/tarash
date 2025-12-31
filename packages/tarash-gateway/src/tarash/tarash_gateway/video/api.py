@@ -2,6 +2,7 @@
 
 # from typing import AsyncIterator
 
+from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import (
     ProgressCallback,
@@ -10,10 +11,12 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.video.providers import OpenAIProviderHandler
-from tarash.tarash_gateway.video.providers.fal import FalProviderHandler
-from tarash.tarash_gateway.video.providers.veo3 import Veo3ProviderHandler
-from tarash.tarash_gateway.video.providers.replicate import ReplicateProviderHandler
+from tarash.tarash_gateway.video.providers import (
+    OpenAIProviderHandler,
+    FalProviderHandler,
+    Veo3ProviderHandler,
+    ReplicateProviderHandler,
+)
 
 # Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
 # ==================== Provider Registry ====================
@@ -25,6 +28,11 @@ _HANDLER_INSTANCES: dict[str, ProviderHandler] = {}
 def _get_handler(provider: str) -> ProviderHandler:
     """Get or create handler instance for provider."""
     if provider not in _HANDLER_INSTANCES:
+        log_debug(
+            "Creating new handler instance",
+            context={"provider": provider},
+            logger_name="tarash.tarash_gateway.video.api",
+        )
         if provider == "fal":
             _HANDLER_INSTANCES[provider] = FalProviderHandler()
         elif provider == "veo3":
@@ -34,6 +42,11 @@ def _get_handler(provider: str) -> ProviderHandler:
         elif provider == "openai":
             _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
         else:
+            log_error(
+                "Unsupported provider",
+                context={"provider": provider},
+                logger_name="tarash.tarash_gateway.video.api",
+            )
             raise ValidationError(
                 f"Unsupported provider: {provider}",
                 provider=provider,
@@ -64,11 +77,36 @@ async def generate_video_async(
     Raises:
         TarashException: If generation fails
     """
+    log_debug(
+        "Video generation request received (async)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        logger_name="tarash.tarash_gateway.video.api",
+        sanitize=True,
+    )
+
     # Get handler for provider
     handler = _get_handler(config.provider)
 
     # Generate using handler with async callback support
-    return await handler.generate_video_async(config, request, on_progress=on_progress)
+    # Errors are logged by the handle_video_generation_errors decorator
+    response = await handler.generate_video_async(
+        config, request, on_progress=on_progress
+    )
+    log_info(
+        "Video generation completed successfully (async)",
+        context={
+            "provider": config.provider,
+            "model": config.model,
+            "request_id": response.request_id,
+            "response": response,
+        },
+        sanitize=True,
+        logger_name="tarash.tarash_gateway.video.api",
+    )
+    return response
 
 
 def generate_video(
@@ -90,8 +128,31 @@ def generate_video(
     Raises:
         TarashException: If generation fails
     """
+    log_info(
+        "Video generation request received (sync)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        sanitize=True,
+        logger_name="tarash.tarash_gateway.video.api",
+    )
+
     # Get handler for provider
     handler = _get_handler(config.provider)
 
     # Generate using handler with callback support
-    return handler.generate_video(config, request, on_progress=on_progress)
+    # Errors are logged by the handle_video_generation_errors decorator
+    response = handler.generate_video(config, request, on_progress=on_progress)
+    log_info(
+        "Video generation completed successfully (sync)",
+        context={
+            "provider": config.provider,
+            "model": config.model,
+            "request_id": response.request_id,
+            "response": response,
+        },
+        sanitize=True,
+        logger_name="tarash.tarash_gateway.video.api",
+    )
+    return response

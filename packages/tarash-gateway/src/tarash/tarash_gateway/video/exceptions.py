@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from pydantic import ValidationError as PydanticValidationError
 
+from tarash.tarash_gateway.logging import log_error
+
 if TYPE_CHECKING:
     from tarash.tarash_gateway.video.models import (
         VideoGenerationConfig,
@@ -95,6 +97,15 @@ def handle_video_generation_errors(func: Callable) -> Callable:
                 raise
             except Exception as ex:
                 # Only wrap truly unknown exceptions
+                log_error(
+                    f"Unknown error while generating video: {ex}",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                    },
+                    logger_name="tarash.tarash_gateway.video.exceptions",
+                    exc_info=True,
+                )
                 raise TarashException(
                     f"Unknown error while generating video: {ex}",
                     provider=config.provider,
@@ -127,6 +138,15 @@ def handle_video_generation_errors(func: Callable) -> Callable:
                 raise
             except Exception as ex:
                 # Only wrap truly unknown exceptions
+                log_error(
+                    f"Unknown error while generating video: {ex}",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                    },
+                    logger_name="tarash.tarash_gateway.video.exceptions",
+                    exc_info=True,
+                )
                 raise TarashException(
                     f"Unknown error while generating video: {ex}",
                     provider=config.provider,

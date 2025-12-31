@@ -1,5 +1,6 @@
 """Shared pytest configuration and fixtures for all tests."""
 
+import logging
 import os
 import warnings
 
@@ -94,3 +95,27 @@ def suppress_warnings():
     """Suppress specific warnings during tests."""
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def configure_logging(request):
+    """Configure logging to show only tarash_gateway logs, suppress third-party libraries."""
+    # Get the configured log level from pytest config (CLI overrides config file)
+    # Try CLI option first (--log-cli-level=DEBUG)
+    config_level = request.config.getoption("--log-cli-level", default=None)
+
+    # If not set via CLI, fall back to pyproject.toml value
+    if config_level is None:
+        config_level = request.config.getini("log_cli_level")
+
+    # Convert string level to logging constant (e.g., "INFO" -> logging.INFO)
+    if config_level:
+        level = getattr(logging, str(config_level).upper(), logging.INFO)
+    else:
+        level = logging.INFO
+
+    # Set root logger to ERROR to suppress third-party libraries
+    logging.getLogger().setLevel(logging.ERROR)
+
+    # Enable configured level for tarash_gateway specifically
+    logging.getLogger("tarash.tarash_gateway").setLevel(level)

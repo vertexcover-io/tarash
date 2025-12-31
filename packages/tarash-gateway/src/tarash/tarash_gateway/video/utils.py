@@ -8,7 +8,12 @@ import httpx
 from pydantic import TypeAdapter
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.video.exceptions import HTTPError, ValidationError
+from tarash.tarash_gateway.logging import log_debug, log_error
+from tarash.tarash_gateway.video.exceptions import (
+    HTTPError,
+    TarashException,
+    ValidationError,
+)
 
 
 def validate_model_params(
@@ -76,8 +81,13 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
         Tuple of (content_bytes, content_type)
 
     Raises:
-        HTTPError: If download fails
+        ProviderAPIError: If download fails
     """
+    log_debug(
+        "Downloading media from URL",
+        context={"provider": provider, "url": url},
+        logger_name="tarash.tarash_gateway.video.utils",
+    )
     try:
         with httpx.Client(timeout=30.0) as client:
             response = client.get(url)
@@ -86,19 +96,45 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
             content_type = response.headers.get(
                 "content-type", "application/octet-stream"
             )
+            content_size = len(response.content)
+            log_debug(
+                "Media downloaded successfully",
+                context={
+                    "provider": provider,
+                    "url": url,
+                    "content_type": content_type,
+                    "content_size_bytes": content_size,
+                },
+                logger_name="tarash.tarash_gateway.video.utils",
+            )
             return response.content, content_type
     except httpx.HTTPStatusError as e:
-        raise HTTPError(
-            f"Failed to download media from URL: HTTP {e.response.status_code}",
-            provider=provider,
-            raw_response={"url": url, "error": str(e)},
-            status_code=e.response.status_code,
-        ) from e
-    except Exception as e:
+        log_error(
+            f"Failed to download media from URL - HTTP error with status code {e.response.status_code}: {e}",
+            context={
+                "provider": provider,
+                "url": url,
+                "status_code": e.response.status_code,
+            },
+            logger_name="tarash.tarash_gateway.video.utils",
+        )
         raise HTTPError(
             f"Failed to download media from URL: {e}",
             provider=provider,
-            raw_response={"url": url, "error": str(e)},
+            raw_response={"url": url, "response": e.response.content},
+            status_code=e.response.status_code,
+        ) from e
+    except Exception as e:
+        log_error(
+            "Failed to download media from URL",
+            context={"provider": provider, "url": url},
+            logger_name="tarash.tarash_gateway.video.utils",
+            exc_info=True,
+        )
+        raise TarashException(
+            f"Failed to download media from URL: {e}",
+            provider=provider,
+            raw_response={"url": url, "exception": str(e)},
         ) from e
 
 

@@ -54,3 +54,7 @@ addopts = [
     "--tb=short",
     "-s",  # Show output (print statements) even for passing tests
 ]
+log_cli = true  # Enable live logging to console
+log_cli_level = "INFO"  # Minimum level to display
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s - %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"

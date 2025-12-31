@@ -52,8 +52,7 @@ async def test_comprehensive_async_video_generation(fal_api_key):
         print(f"  Progress: {update.status}")
 
     # Test with various parameters
-
-    fal_config = VideoGenerationConfig(
+    config = VideoGenerationConfig(
         model="fal-ai/veo3.1/fast",
         provider="fal",
         api_key=fal_api_key,
@@ -62,7 +61,7 @@ async def test_comprehensive_async_video_generation(fal_api_key):
         poll_interval=5,
     )
 
-    request = VideoGenerationRequest(
+    req = VideoGenerationRequest(
         prompt="A serene lake at sunset with mountains in the background, cinematic quality",
         duration_seconds=4,
         aspect_ratio="16:9",
@@ -75,7 +74,7 @@ async def test_comprehensive_async_video_generation(fal_api_key):
 
     # Generate video using API
     response = await api.generate_video_async(
-        fal_config, request, on_progress=progress_callback
+        config, req, on_progress=progress_callback
     )
 
     # Validate response
