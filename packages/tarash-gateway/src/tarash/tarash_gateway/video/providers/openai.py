@@ -274,11 +274,8 @@ class OpenAIProviderHandler:
                 # Extract extension from content type (e.g., "image/jpeg" -> "jpeg")
                 ext = content_type.split("/")[-1] if "/" in content_type else "bin"
                 filename = f"reference.{ext}"
-                openai_params["input_reference"] = (
-                    filename,
-                    io.BytesIO(content_bytes),
-                    content_type,
-                )
+                openai_params["input_reference"] = io.BytesIO(content_bytes)
+                openai_params["input_reference"].name = filename
             else:
                 # String URL - download the image first
                 url = str(media)
