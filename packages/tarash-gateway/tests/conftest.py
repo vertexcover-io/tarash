@@ -117,5 +117,10 @@ def configure_logging(request):
     # Set root logger to ERROR to suppress third-party libraries
     logging.getLogger().setLevel(logging.ERROR)
 
+    # Suppress all existing loggers except tarash.tarash_gateway
+    for logger_name in logging.root.manager.loggerDict:
+        if not logger_name.startswith("tarash.tarash_gateway"):
+            logging.getLogger(logger_name).setLevel(logging.ERROR)
+
     # Enable configured level for tarash_gateway specifically
     logging.getLogger("tarash.tarash_gateway").setLevel(level)

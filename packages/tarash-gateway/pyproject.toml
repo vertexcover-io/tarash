@@ -28,6 +28,7 @@ all = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-xdist>=3.0.0",
 ]
 
 [build-system]
@@ -51,8 +52,7 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
     "--strict-markers",
-    "--tb=short",
-    "-s",  # Show output (print statements) even for passing tests
+    "--tb=short",    
 ]
 log_cli = true  # Enable live logging to console
 log_cli_level = "INFO"  # Minimum level to display

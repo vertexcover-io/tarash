@@ -19,7 +19,8 @@
       "Bash(uv run pytest:*)",
       "Bash(python -m pytest:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(python3:*)"
     ]
   }
 }

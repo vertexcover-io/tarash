@@ -5,9 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
-    ProviderAPIError,
+    GenerationFailedError,
     ValidationError,
-    VideoGenerationError,
 )
 from tarash.tarash_gateway.video.models import (
     VideoGenerationConfig,
@@ -295,12 +294,22 @@ def test_convert_response_with_completed_video(handler, base_config, base_reques
         "url": "https://example.com/video.mp4",
     }
 
+    # Create OpenAIVideoResponse dict with content
+    response_data = {
+        "video": mock_video,
+        "content": b"fake video content",
+        "content_type": "video/mp4",
+    }
+
     result = handler._convert_response(
-        base_config, base_request, "video-123", mock_video
+        base_config, base_request, "video-123", response_data
     )
 
     assert result.request_id == "video-123"
-    assert result.video == "https://example.com/video.mp4"
+    assert result.video == {
+        "content": b"fake video content",
+        "content_type": "video/mp4",
+    }
     assert result.content_type == "video/mp4"
     assert result.duration == 8.0
     assert result.resolution == "1280x720"
@@ -308,7 +317,7 @@ def test_convert_response_with_completed_video(handler, base_config, base_reques
 
 
 def test_convert_response_with_failed_video(handler, base_config, base_request):
-    """Test conversion with failed video raises VideoGenerationError."""
+    """Test conversion with failed video raises GenerationFailedError."""
     mock_error = MagicMock()
     mock_error.message = "Content policy violation"
 
@@ -318,53 +327,74 @@ def test_convert_response_with_failed_video(handler, base_config, base_request):
     mock_video.error = mock_error
     mock_video.model_dump.return_value = {"id": "video-456", "status": "failed"}
 
-    with pytest.raises(VideoGenerationError, match="Content policy violation"):
-        handler._convert_response(base_config, base_request, "video-456", mock_video)
+    # Create OpenAIVideoResponse dict (content not needed for failed status)
+    response_data = {
+        "video": mock_video,
+        "content": b"",
+        "content_type": "video/mp4",
+    }
+
+    with pytest.raises(GenerationFailedError, match="Content policy violation"):
+        handler._convert_response(base_config, base_request, "video-456", response_data)
 
 
 def test_convert_response_with_incomplete_video_raises_error(
     handler, base_config, base_request
 ):
-    """Test incomplete video raises ProviderAPIError."""
+    """Test incomplete video raises GenerationFailedError."""
     mock_video = MagicMock()
     mock_video.id = "video-789"
     mock_video.status = "in_progress"
     mock_video.model_dump.return_value = {"id": "video-789", "status": "in_progress"}
 
-    with pytest.raises(ProviderAPIError, match="Video is not completed"):
-        handler._convert_response(base_config, base_request, "video-789", mock_video)
+    # Create OpenAIVideoResponse dict with empty content (incomplete video)
+    response_data = {
+        "video": mock_video,
+        "content": b"",
+        "content_type": "video/mp4",
+    }
+
+    with pytest.raises(GenerationFailedError, match="No video content found"):
+        handler._convert_response(base_config, base_request, "video-789", response_data)
 
 
 def test_convert_response_with_no_url_raises_error(handler, base_config, base_request):
-    """Test missing video URL raises ProviderAPIError."""
+    """Test missing video content raises GenerationFailedError."""
     mock_video = MagicMock()
     mock_video.id = "video-000"
     mock_video.status = "completed"
     mock_video.url = None
     mock_video.model_dump.return_value = {"id": "video-000", "status": "completed"}
 
-    with pytest.raises(ProviderAPIError, match="No video URL found"):
-        handler._convert_response(base_config, base_request, "video-000", mock_video)
+    # Create OpenAIVideoResponse dict with no content
+    response_data = {
+        "video": mock_video,
+        "content": None,
+        "content_type": "video/mp4",
+    }
+
+    with pytest.raises(GenerationFailedError, match="No video content found"):
+        handler._convert_response(base_config, base_request, "video-000", response_data)
 
 
 # ==================== Error Handling Tests ====================
 
 
 def test_handle_error_with_video_generation_error(handler, base_config, base_request):
-    """Test VideoGenerationError is returned as-is."""
-    error = VideoGenerationError("Test error", provider="openai", model="sora-2")
+    """Test GenerationFailedError is returned as-is."""
+    error = GenerationFailedError("Test error", provider="openai", model="sora-2")
     result = handler._handle_error(base_config, base_request, "req-1", error)
 
     assert result is error
 
 
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
-    """Test unknown exception is converted to VideoGenerationError."""
+    """Test unknown exception is converted to GenerationFailedError."""
     unknown_error = ValueError("Something went wrong")
 
     result = handler._handle_error(base_config, base_request, "req-3", unknown_error)
 
-    assert isinstance(result, VideoGenerationError)
+    assert isinstance(result, GenerationFailedError)
     assert "Error while generating video" in result.message
     assert result.provider == "openai"
     assert result.raw_response["error_type"] == "ValueError"
@@ -471,10 +501,19 @@ async def test_generate_video_async_success_with_progress_callbacks(
         "status": "completed",
     }
 
+    # Mock download response
+    mock_download_response = AsyncMock()
+    mock_download_response.response.aread = AsyncMock(
+        return_value=b"fake video content"
+    )
+
     # Setup mock async client
     mock_async_client = AsyncMock()
     mock_async_client.videos.create = AsyncMock(return_value=mock_video_processing)
     mock_async_client.videos.retrieve = AsyncMock(return_value=mock_video_completed)
+    mock_async_client.videos.download_content = AsyncMock(
+        return_value=mock_download_response
+    )
 
     # Clear cache and patch
     handler._async_client_cache.clear()
@@ -493,7 +532,10 @@ async def test_generate_video_async_success_with_progress_callbacks(
         )
 
         assert result.request_id == "video-async-123"
-        assert result.video == "https://example.com/async-video.mp4"
+        assert result.video == {
+            "content": b"fake video content",
+            "content_type": "video/mp4",
+        }
         assert len(progress_calls) >= 1
 
         # Test with async callback
@@ -544,7 +586,7 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
         "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
     ):
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(GenerationFailedError, match="timed out"):
             await handler.generate_video_async(timeout_config, base_request)
 
 
@@ -563,7 +605,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
         "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
     ):
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
+        with pytest.raises(GenerationFailedError, match="Error while generating video"):
             await handler.generate_video_async(base_config, base_request)
 
 
@@ -595,9 +637,14 @@ def test_generate_video_success_with_progress_callback(
         "status": "completed",
     }
 
+    # Mock download response
+    mock_download_response = MagicMock()
+    mock_download_response.read.return_value = b"fake video content"
+
     mock_sync_client = MagicMock()
     mock_sync_client.videos.create.return_value = mock_video_queued
     mock_sync_client.videos.retrieve.return_value = mock_video_completed
+    mock_sync_client.videos.download_content.return_value = mock_download_response
 
     progress_calls = []
 
@@ -614,7 +661,10 @@ def test_generate_video_success_with_progress_callback(
         )
 
     assert result.request_id == "video-sync-456"
-    assert result.video == "https://example.com/sync-video.mp4"
+    assert result.video == {
+        "content": b"fake video content",
+        "content_type": "video/mp4",
+    }
     assert len(progress_calls) >= 1
 
 
@@ -628,7 +678,7 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.openai.OpenAI",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(VideoGenerationError, match="Unknown error"):
+        with pytest.raises(GenerationFailedError, match="Error while generating video"):
             handler.generate_video(base_config, base_request)
 
 
@@ -659,5 +709,5 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.openai.OpenAI",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(VideoGenerationError, match="timed out"):
+        with pytest.raises(GenerationFailedError, match="timed out"):
             handler.generate_video(timeout_config, base_request)

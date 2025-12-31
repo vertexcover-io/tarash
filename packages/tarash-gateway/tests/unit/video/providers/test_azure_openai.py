@@ -218,9 +218,9 @@ async def test_generate_video_async_with_duration(handler, base_config):
         result = await handler.generate_video_async(base_config, request)
 
         assert result.duration == 8.0
-        # Verify the API was called with correct duration (as string)
+        # Verify the API was called with correct duration (as integer)
         call_args = mock_async_client.videos.create.call_args[1]
-        assert call_args["seconds"] == "8"
+        assert call_args["seconds"] == 8
 
 
 @pytest.mark.asyncio

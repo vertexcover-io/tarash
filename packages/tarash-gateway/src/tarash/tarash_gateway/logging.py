@@ -17,40 +17,70 @@ _SENSITIVE_FIELDS = {
 }
 
 
-def _sanitize_value(value: Any) -> Any:
-    """Sanitize a value by replacing sensitive data with redacted markers."""
+def _redact_value(value: Any) -> Any:
+    """Redact a value by replacing sensitive data with safe representations.
+
+    Handles:
+    - Bytes: Shows length instead of content
+    - Dicts: Recursively processes each value
+    - Lists/Tuples: Recursively processes each item
+    - Pydantic models: Converts to dict first
+    - Long strings: Truncates with ellipsis
+    """
+    # Handle None, numbers, booleans
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+
+    # Handle bytes - show length instead of content
+    if isinstance(value, bytes):
+        return f"<bytes: length={len(value)}>"
+
+    # Handle Pydantic models - convert to dict
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    elif hasattr(value, "dict"):
+        value = value.dict()
+
+    # Handle dicts - recursively process each value
     if isinstance(value, dict):
-        return {k: _sanitize_value(v) for k, v in value.items()}
-    elif isinstance(value, list):
-        return [_sanitize_value(item) for item in value]
-    elif isinstance(value, str) and len(value) > 20:
-        # For long strings (likely API keys or tokens), redact
-        return f"{value[:4]}...{value[-4:]}" if len(value) > 8 else "***"
+        return {k: _redact_value(v) for k, v in value.items()}
+
+    # Handle lists and tuples - recursively process each item
+    if isinstance(value, (list, tuple)):
+        redacted = [_redact_value(item) for item in value]
+        return redacted if isinstance(value, list) else tuple(redacted)
+
+    # Handle long strings - truncate with ellipsis
+    if isinstance(value, str) and len(value) > 100:
+        return f"{value[:50]}...{value[-50:]}" if len(value) > 100 else value
+
+    # Return as-is for other types (str, etc.)
     return value
 
 
-def _sanitize_context(context: dict[str, Any] | None) -> dict[str, Any]:
-    """Sanitize context dictionary by redacting sensitive fields."""
+def _redact_context(context: dict[str, Any] | None) -> dict[str, Any]:
+    """Redact sensitive fields in context dictionary.
+
+    Checks field names against known sensitive patterns and redacts values.
+    Also recursively processes all values to handle bytes, large strings, etc.
+    """
     if not context:
         return {}
 
-    sanitized = {}
+    redacted = {}
     for key, value in context.items():
         key_lower = key.lower()
         # Check if any sensitive field is in the key name
         is_sensitive = any(sensitive in key_lower for sensitive in _SENSITIVE_FIELDS)
 
         if is_sensitive:
-            if isinstance(value, str):
-                sanitized[key] = "***REDACTED***"
-            elif isinstance(value, dict):
-                sanitized[key] = _sanitize_value(value)
-            else:
-                sanitized[key] = "***REDACTED***"
+            # Fully redact sensitive fields
+            redacted[key] = "***REDACTED***"
         else:
-            sanitized[key] = _sanitize_value(value)
+            # Process value to handle bytes, long strings, nested structures
+            redacted[key] = _redact_value(value)
 
-    return sanitized
+    return redacted
 
 
 def _get_logger(logger_name: str) -> logging.Logger:
@@ -62,7 +92,7 @@ def log_debug(
     message: str,
     context: dict[str, Any] | None = None,
     logger_name: str = "tarash.tarash_gateway",
-    sanitize: bool = False,
+    redact: bool = False,
 ) -> None:
     """
     Log a debug message with optional context.
@@ -71,13 +101,13 @@ def log_debug(
         message: The log message
         context: Optional dictionary of context data
         logger_name: Name of the logger to use
-        sanitize: If True, sanitize sensitive fields in context
+        redact: If True, redact sensitive fields in context
     """
     logger = _get_logger(logger_name)
 
     if context:
-        if sanitize:
-            context = _sanitize_context(context)
+        if redact:
+            context = _redact_context(context)
         logger.debug(f"{message} | Context: {context}")
     else:
         logger.debug(message)
@@ -87,7 +117,7 @@ def log_info(
     message: str,
     context: dict[str, Any] | None = None,
     logger_name: str = "tarash.tarash_gateway",
-    sanitize: bool = False,
+    redact: bool = False,
 ) -> None:
     """
     Log an info message with optional context.
@@ -96,13 +126,13 @@ def log_info(
         message: The log message
         context: Optional dictionary of context data
         logger_name: Name of the logger to use
-        sanitize: If True, sanitize sensitive fields in context
+        redact: If True, redact sensitive fields in context
     """
     logger = _get_logger(logger_name)
 
     if context:
-        if sanitize:
-            context = _sanitize_context(context)
+        if redact:
+            context = _redact_context(context)
         logger.info(f"{message} | Context: {context}")
     else:
         logger.info(message)
@@ -112,7 +142,7 @@ def log_warning(
     message: str,
     context: dict[str, Any] | None = None,
     logger_name: str = "tarash.tarash_gateway",
-    sanitize: bool = False,
+    redact: bool = False,
 ) -> None:
     """
     Log a warning message with optional context.
@@ -121,13 +151,13 @@ def log_warning(
         message: The log message
         context: Optional dictionary of context data
         logger_name: Name of the logger to use
-        sanitize: If True, sanitize sensitive fields in context
+        redact: If True, redact sensitive fields in context
     """
     logger = _get_logger(logger_name)
 
     if context:
-        if sanitize:
-            context = _sanitize_context(context)
+        if redact:
+            context = _redact_context(context)
         logger.warning(f"{message} | Context: {context}")
     else:
         logger.warning(message)
@@ -137,7 +167,7 @@ def log_error(
     message: str,
     context: dict[str, Any] | None = None,
     logger_name: str = "tarash.tarash_gateway",
-    sanitize: bool = False,
+    redact: bool = False,
     exc_info: bool = False,
 ) -> None:
     """
@@ -147,14 +177,14 @@ def log_error(
         message: The log message
         context: Optional dictionary of context data
         logger_name: Name of the logger to use
-        sanitize: If True, sanitize sensitive fields in context
+        redact: If True, redact sensitive fields in context
         exc_info: If True, include exception traceback information
     """
     logger = _get_logger(logger_name)
 
     if context:
-        if sanitize:
-            context = _sanitize_context(context)
+        if redact:
+            context = _redact_context(context)
         logger.error(f"{message} | Context: {context}", exc_info=exc_info)
     else:
         logger.error(message, exc_info=exc_info)

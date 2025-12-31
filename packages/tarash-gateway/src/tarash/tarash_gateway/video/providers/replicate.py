@@ -4,7 +4,7 @@ import asyncio
 import traceback
 from typing import Any
 
-from tarash.tarash_gateway.logging import log_debug
+from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     TarashException,
@@ -287,6 +287,17 @@ class ReplicateProviderHandler:
         # Merge with extra_params (allows manual overrides)
         api_payload.update(request.extra_params)
 
+        log_info(
+            "Mapped request to provider format",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "converted_request": api_payload,
+            },
+            logger_name=_LOGGER_NAME,
+            redact=True,
+        )
+
         return api_payload
 
     def _convert_response(
@@ -391,7 +402,7 @@ class ReplicateProviderHandler:
         if prediction_id:
             raw_response["prediction_id"] = prediction_id
 
-        return TarashException(
+        return GenerationFailedError(
             f"Replicate API error: {error_message}",
             provider=config.provider,
             raw_response=raw_response,
@@ -419,16 +430,13 @@ class ReplicateProviderHandler:
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
 
-        # Log sanitized request before API call
         log_debug(
-            "Calling Replicate API with request",
+            "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
-                "request_params": replicate_input,
             },
             logger_name=_LOGGER_NAME,
-            sanitize=True,
         )
 
         prediction_id = ""
@@ -458,6 +466,16 @@ class ReplicateProviderHandler:
             prediction = await loop.run_in_executor(None, create_prediction)
             prediction_id = prediction.id
 
+            log_debug(
+                "Request submitted",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": prediction_id,
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
             # Poll for status updates
             poll_interval = config.poll_interval
             max_attempts = config.max_poll_attempts
@@ -473,11 +491,49 @@ class ReplicateProviderHandler:
                     if asyncio.iscoroutine(result):
                         await result
 
+                # Log progress
+                log_info(
+                    "Progress status update",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "request_id": prediction_id,
+                        "status": prediction.status,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
                 # Check if completed
                 if prediction.status == "succeeded":
-                    return self._convert_response(
+                    log_debug(
+                        "Request complete",
+                        context={
+                            "provider": config.provider,
+                            "model": config.model,
+                            "request_id": prediction_id,
+                            "response": prediction.output,
+                        },
+                        logger_name=_LOGGER_NAME,
+                        redact=True,
+                    )
+
+                    response = self._convert_response(
                         config, request, prediction_id, prediction.output
                     )
+
+                    log_info(
+                        "Final generated response",
+                        context={
+                            "provider": config.provider,
+                            "model": config.model,
+                            "request_id": prediction_id,
+                            "response": response,
+                        },
+                        logger_name=_LOGGER_NAME,
+                        redact=True,
+                    )
+
+                    return response
                 elif prediction.status in ("failed", "canceled"):
                     error_msg = prediction.error or f"Prediction {prediction.status}"
                     raise GenerationFailedError(
@@ -529,16 +585,13 @@ class ReplicateProviderHandler:
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
 
-        # Log sanitized request before API call
         log_debug(
-            "Calling Replicate API with request",
+            "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
-                "request_params": replicate_input,
             },
             logger_name=_LOGGER_NAME,
-            sanitize=True,
         )
 
         prediction_id = ""
@@ -554,12 +607,21 @@ class ReplicateProviderHandler:
                 return self._convert_response(config, request, prediction_id, output)
 
             # For progress tracking, use predictions.create and poll
-            # Note: Logging already done above for the request
             prediction = client.predictions.create(
                 model=config.model,
                 input=replicate_input,
             )
             prediction_id = prediction.id
+
+            log_debug(
+                "Request submitted",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": prediction_id,
+                },
+                logger_name=_LOGGER_NAME,
+            )
 
             # Poll for status updates
             poll_interval = config.poll_interval
@@ -576,11 +638,49 @@ class ReplicateProviderHandler:
                     update = parse_replicate_status(prediction)
                     on_progress(update)
 
+                # Log progress
+                log_info(
+                    "Progress status update",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "request_id": prediction_id,
+                        "status": prediction.status,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
                 # Check if completed
                 if prediction.status == "succeeded":
-                    return self._convert_response(
+                    log_debug(
+                        "Request complete",
+                        context={
+                            "provider": config.provider,
+                            "model": config.model,
+                            "request_id": prediction_id,
+                            "response": prediction.output,
+                        },
+                        logger_name=_LOGGER_NAME,
+                        redact=True,
+                    )
+
+                    response = self._convert_response(
                         config, request, prediction_id, prediction.output
                     )
+
+                    log_info(
+                        "Final generated response",
+                        context={
+                            "provider": config.provider,
+                            "model": config.model,
+                            "request_id": prediction_id,
+                            "response": response,
+                        },
+                        logger_name=_LOGGER_NAME,
+                        redact=True,
+                    )
+
+                    return response
                 elif prediction.status in ("failed", "canceled"):
                     error_msg = prediction.error or f"Prediction {prediction.status}"
                     raise GenerationFailedError(

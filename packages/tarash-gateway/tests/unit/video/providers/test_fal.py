@@ -8,6 +8,7 @@ from fal_client.client import FalClientHTTPError
 
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    HTTPError,
     TarashException,
     ValidationError,
     handle_video_generation_errors,
@@ -286,8 +287,8 @@ def test_handle_error_with_fal_client_http_error(handler, base_config, base_requ
 
     result = handler._handle_error(base_config, base_request, "req-2", http_error)
 
-    assert isinstance(result, TarashException)
-    assert "status code 500" in result.message
+    assert isinstance(result, HTTPError)
+    assert "500" in result.message
     assert result.provider == "fal"
     assert result.raw_response["status_code"] == 500
     assert result.raw_response["response_headers"] == {
@@ -397,7 +398,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
     mock_handler.request_id = "fal-req-123"
 
     # Mock iter_events to yield status updates
-    async def mock_iter_events(with_logs):
+    async def mock_iter_events(with_logs, interval=None):
         yield MockQueued()
         yield MockInProgress()
         yield MockCompleted()
@@ -476,7 +477,7 @@ async def test_generate_video_async_propagates_known_errors(
     mock_handler.request_id = "req-1"
 
     # iter_events needs to be an async generator
-    async def empty_iter_events(with_logs):
+    async def empty_iter_events(with_logs, interval=None):
         return
         yield  # Make it a generator
 
@@ -544,7 +545,7 @@ def test_generate_video_success_with_progress_callback(
     mock_handler = MagicMock()
     mock_handler.request_id = "fal-req-456"
 
-    def mock_iter_events(with_logs):
+    def mock_iter_events(with_logs, interval=None):
         yield MockQueued()
         yield MockCompleted()
 

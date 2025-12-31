@@ -283,23 +283,22 @@ class FalProviderHandler:
         # Get model-specific field mappers (with prefix matching)
         field_mappers = get_field_mappers(config.model)
 
-        log_debug(
-            "Converting request to Fal format",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "has_image": len(request.image_list) > 0,
-                "duration_seconds": request.duration_seconds,
-                "aspect_ratio": request.aspect_ratio,
-            },
-            logger_name=_LOGGER_NAME,
-        )
-
         # Apply field mappers to convert request
         api_payload = apply_field_mappers(field_mappers, request)
 
         # Merge with extra_params (allows manual overrides)
         api_payload.update(request.extra_params)
+
+        log_info(
+            "Mapped request to provider format",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "converted_request": api_payload,
+            },
+            logger_name=_LOGGER_NAME,
+            redact=True,
+        )
 
         return api_payload
 
@@ -476,9 +475,8 @@ class FalProviderHandler:
         update = parse_fal_status(request_id, event)
         elapsed_time = time.time() - start_time
 
-        # Log every event (not just status changes)
         log_info(
-            "Fal video generation status update",
+            "Progress status update",
             context={
                 "provider": config.provider,
                 "model": config.model,
@@ -574,25 +572,13 @@ class FalProviderHandler:
         # Build Fal input (let validation errors propagate)
         fal_input = self._convert_request(config, request)
 
-        log_info(
-            "Starting Fal video generation (async)",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
-
-        # Log sanitized request before API call
         log_debug(
-            "Calling Fal API with request",
+            "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
-                "request_params": fal_input,
             },
             logger_name=_LOGGER_NAME,
-            sanitize=True,
         )
 
         # Submit to Fal using async API
@@ -603,8 +589,8 @@ class FalProviderHandler:
 
         request_id = handler.request_id
 
-        log_info(
-            "Fal video job submitted",
+        log_debug(
+            "Request submitted",
             context={
                 "provider": config.provider,
                 "model": config.model,
@@ -618,14 +604,16 @@ class FalProviderHandler:
                 config, request_id, handler, on_progress
             )
 
-            log_info(
-                "Fal video generation completed",
+            log_debug(
+                "Request complete",
                 context={
                     "provider": config.provider,
                     "model": config.model,
                     "request_id": request_id,
+                    "response": result,
                 },
                 logger_name=_LOGGER_NAME,
+                redact=True,
             )
 
             # Parse response
@@ -635,6 +623,18 @@ class FalProviderHandler:
                 else (result.data if hasattr(result, "data") else {})
             )
             response = self._convert_response(config, request, request_id, fal_result)
+
+            log_info(
+                "Final generated response",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "response": response,
+                },
+                logger_name=_LOGGER_NAME,
+                redact=True,
+            )
 
             return response
 
@@ -664,16 +664,13 @@ class FalProviderHandler:
         # Build Fal input (let validation errors propagate)
         fal_input = self._convert_request(config, request)
 
-        # Log sanitized request before API call
-        log_info(
-            "Calling Fal API with parsed request",
+        log_debug(
+            "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
-                "request_params": fal_input,
             },
             logger_name=_LOGGER_NAME,
-            sanitize=True,
         )
 
         # Submit to Fal
@@ -683,8 +680,8 @@ class FalProviderHandler:
         )
         request_id = handler.request_id
 
-        log_info(
-            "Fal video job submitted",
+        log_debug(
+            "Request submitted",
             context={
                 "provider": config.provider,
                 "model": config.model,
@@ -696,14 +693,16 @@ class FalProviderHandler:
         try:
             result = self._process_events_sync(config, request_id, handler, on_progress)
 
-            log_info(
-                "Fal video generation completed",
+            log_debug(
+                "Request complete",
                 context={
                     "provider": config.provider,
                     "model": config.model,
                     "request_id": request_id,
+                    "response": result,
                 },
                 logger_name=_LOGGER_NAME,
+                redact=True,
             )
 
             # Parse response
@@ -713,6 +712,18 @@ class FalProviderHandler:
                 else (result.data if hasattr(result, "data") else {})
             )
             response = self._convert_response(config, request, request_id, fal_result)
+
+            log_info(
+                "Final generated response",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "response": response,
+                },
+                logger_name=_LOGGER_NAME,
+                redact=True,
+            )
 
             return response
 

@@ -29,7 +29,7 @@ def _get_handler(provider: str) -> ProviderHandler:
     """Get or create handler instance for provider."""
     if provider not in _HANDLER_INSTANCES:
         log_debug(
-            "Creating new handler instance",
+            "Selected provider",
             context={"provider": provider},
             logger_name="tarash.tarash_gateway.video.api",
         )
@@ -77,14 +77,14 @@ async def generate_video_async(
     Raises:
         TarashException: If generation fails
     """
-    log_debug(
+    log_info(
         "Video generation request received (async)",
         context={
             "config": config,
             "request": request,
         },
         logger_name="tarash.tarash_gateway.video.api",
-        sanitize=True,
+        redact=True,
     )
 
     # Get handler for provider
@@ -94,17 +94,6 @@ async def generate_video_async(
     # Errors are logged by the handle_video_generation_errors decorator
     response = await handler.generate_video_async(
         config, request, on_progress=on_progress
-    )
-    log_info(
-        "Video generation completed successfully (async)",
-        context={
-            "provider": config.provider,
-            "model": config.model,
-            "request_id": response.request_id,
-            "response": response,
-        },
-        sanitize=True,
-        logger_name="tarash.tarash_gateway.video.api",
     )
     return response
 
@@ -134,7 +123,7 @@ def generate_video(
             "config": config,
             "request": request,
         },
-        sanitize=True,
+        redact=True,
         logger_name="tarash.tarash_gateway.video.api",
     )
 
@@ -144,15 +133,4 @@ def generate_video(
     # Generate using handler with callback support
     # Errors are logged by the handle_video_generation_errors decorator
     response = handler.generate_video(config, request, on_progress=on_progress)
-    log_info(
-        "Video generation completed successfully (sync)",
-        context={
-            "provider": config.provider,
-            "model": config.model,
-            "request_id": response.request_id,
-            "response": response,
-        },
-        sanitize=True,
-        logger_name="tarash.tarash_gateway.video.api",
-    )
     return response

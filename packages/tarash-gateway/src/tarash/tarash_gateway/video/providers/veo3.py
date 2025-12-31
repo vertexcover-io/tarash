@@ -15,7 +15,7 @@ try:
 except ImportError:
     genai = None  # type: ignore
 
-from tarash.tarash_gateway.logging import log_debug
+from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     TarashException,
@@ -287,12 +287,25 @@ class Veo3ProviderHandler:
         # Create GenerateVideosConfig and return kwargs dict
         generation_config = GenerateVideosConfig(**config_params)
 
-        return {
+        api_payload = {
             "prompt": prompt,
             "image": image,
             "video": video,
             "config": generation_config,
         }
+
+        log_info(
+            "Mapped request to provider format",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "converted_request": api_payload,
+            },
+            logger_name=_LOGGER_NAME,
+            redact=True,
+        )
+
+        return api_payload
 
     def _convert_response(
         self,
@@ -412,16 +425,13 @@ class Veo3ProviderHandler:
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
 
-        # Log sanitized request before API call
         log_debug(
-            "Calling Veo3 API with request",
+            "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
-                "request_params": veo3_kwargs,
             },
             logger_name=_LOGGER_NAME,
-            sanitize=True,
         )
 
         operation = await client.models.generate_videos(
@@ -430,6 +440,16 @@ class Veo3ProviderHandler:
         )
 
         request_id = operation.name or "unknown"
+
+        log_debug(
+            "Request submitted",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
 
         try:
             # Poll for completion
@@ -444,6 +464,18 @@ class Veo3ProviderHandler:
                     result = on_progress(update)
                     if asyncio.iscoroutine(result):
                         await result
+
+                # Log progress
+                log_info(
+                    "Progress status update",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "request_id": request_id,
+                        "status": "processing" if not operation.done else "completed",
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
 
                 end_time = time.time()
                 if end_time - start < config.poll_interval:
@@ -462,8 +494,33 @@ class Veo3ProviderHandler:
                     raw_response={"status": "timeout"},
                 )
 
+            log_debug(
+                "Request complete",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "response": operation,
+                },
+                logger_name=_LOGGER_NAME,
+                redact=True,
+            )
+
             # Convert final response
             response = self._convert_response(config, request, request_id, operation)
+
+            log_info(
+                "Final generated response",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "response": response,
+                },
+                logger_name=_LOGGER_NAME,
+                redact=True,
+            )
+
             return response
 
         except Exception as ex:
@@ -492,16 +549,13 @@ class Veo3ProviderHandler:
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
 
-        # Log sanitized request before API call
         log_debug(
-            "Calling Veo3 API with request",
+            "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
-                "request_params": veo3_kwargs,
             },
             logger_name=_LOGGER_NAME,
-            sanitize=True,
         )
 
         operation = client.models.generate_videos(
@@ -511,6 +565,16 @@ class Veo3ProviderHandler:
 
         request_id = operation.name or "unknown"
 
+        log_debug(
+            "Request submitted",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
         try:
             # Poll for completion
             poll_attempts = 0
@@ -519,6 +583,18 @@ class Veo3ProviderHandler:
                 if on_progress:
                     update = parse_veo3_operation(operation)
                     on_progress(update)
+
+                # Log progress
+                log_info(
+                    "Progress status update",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "request_id": request_id,
+                        "status": "processing" if not operation.done else "completed",
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
 
                 # Check if done
                 if operation.done:
@@ -540,8 +616,33 @@ class Veo3ProviderHandler:
                     raw_response={"status": "timeout"},
                 )
 
+            log_debug(
+                "Request complete",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "response": operation,
+                },
+                logger_name=_LOGGER_NAME,
+                redact=True,
+            )
+
             # Convert final response
             response = self._convert_response(config, request, request_id, operation)
+
+            log_info(
+                "Final generated response",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "response": response,
+                },
+                logger_name=_LOGGER_NAME,
+                redact=True,
+            )
+
             return response
 
         except Exception as ex:
