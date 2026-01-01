@@ -84,6 +84,48 @@ KLING_VIDEO_V26_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "keep_original_sound": extra_params_field_mapper("keep_original_sound"),
 }
 
+# Veo 3 and Veo 3.1 models field mappings
+# Supports text-to-video, image-to-video, and first-last-frame-to-video
+# Both versions use the same API parameters
+VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=["4s", "6s", "8s"],
+        provider="fal",
+        model="veo3",
+    ),
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "auto_fix": passthrough_field_mapper("auto_fix"),
+    "seed": passthrough_field_mapper("seed"),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    # Image-to-video support
+    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    # First-last-frame-to-video support
+    "first_frame_url": single_image_field_mapper(
+        required=False, image_type="first_frame"
+    ),
+    "last_frame_url": single_image_field_mapper(
+        required=False, image_type="last_frame"
+    ),
+}
+
+# Sora 2 models field mappings
+# Supports both text-to-video and image-to-video variants
+SORA2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="int", allowed_values=[4, 8, 12], provider="fal", model="sora-2"
+    ),
+    "delete_video": passthrough_field_mapper("delete_video"),
+    # Image-to-video support (optional - required only for image-to-video variant)
+    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+}
+
 # Generic fallback field mappings
 GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -107,6 +149,12 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/minimax": MINIMAX_FIELD_MAPPERS,
     # Kling Video v2.6 - supports both image-to-video and motion-control
     "fal-ai/kling-video/v2.6": KLING_VIDEO_V26_FIELD_MAPPERS,
+    # Veo 3.1 - prefix must be registered before veo3 for longest-match precedence
+    "fal-ai/veo3.1": VEO3_FIELD_MAPPERS,
+    # Veo 3 - supports text-to-video, image-to-video, and first-last-frame-to-video
+    "fal-ai/veo3": VEO3_FIELD_MAPPERS,
+    # Sora 2 - supports both text-to-video and image-to-video variants
+    "fal-ai/sora-2": SORA2_FIELD_MAPPERS,
     # Future models...
     # "fal-ai/hunyuan-video": HUNYUAN_FIELD_MAPPERS,
 }
@@ -132,7 +180,10 @@ def get_field_mappers(model_name: str) -> dict[str, FieldMapper]:
     >>> get_field_mappers("fal-ai/minimax/hailuo-02-fast/image-to-video")
     MINIMAX_FIELD_MAPPERS  # Prefix match
 
-    >>> get_field_mappers("fal-ai/veo3.1")
+    >>> get_field_mappers("fal-ai/veo3.1/fast")
+    VEO31_FIELD_MAPPERS  # Prefix match
+
+    >>> get_field_mappers("fal-ai/unknown-model")
     GENERIC_FIELD_MAPPERS  # Fallback for unknown models
 
     Args:
@@ -206,7 +257,8 @@ class FalProviderHandler:
             )
 
         self._sync_client_cache: dict[str, Any] = {}
-        self._async_client_cache: dict[str, Any] = {}
+        # Note: AsyncClient is NOT cached to avoid "Event Loop closed" errors
+        # Each async request creates a new client to ensure proper cleanup
 
     def _get_client(
         self, config: VideoGenerationConfig, client_type: str
@@ -220,27 +272,32 @@ class FalProviderHandler:
 
         Returns:
             fal_client.SyncClient or fal_client.AsyncClient instance
+
+        Note:
+            AsyncClient instances are created fresh for each request to avoid
+            "Event Loop closed" errors that occur when cached clients outlive
+            the event loop they were created in.
         """
 
         # Use API key + base_url as cache key
         cache_key = f"{config.api_key}:{config.base_url or 'default'}"
 
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                log_debug(
-                    "Creating new async Fal client",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "base_url": config.base_url or "default",
-                    },
-                    logger_name=_LOGGER_NAME,
-                )
-                self._async_client_cache[cache_key] = fal_client.AsyncClient(
-                    key=config.api_key,
-                    default_timeout=config.timeout,
-                )
-            return self._async_client_cache[cache_key]
+            # Don't cache AsyncClient - create new instance for each request
+            # This prevents "Event Loop closed" errors
+            log_debug(
+                "Creating new async Fal client",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "base_url": config.base_url or "default",
+                },
+                logger_name=_LOGGER_NAME,
+            )
+            return fal_client.AsyncClient(
+                key=config.api_key,
+                default_timeout=config.timeout,
+            )
         else:  # sync
             if cache_key not in self._sync_client_cache:
                 log_debug(

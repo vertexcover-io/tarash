@@ -39,7 +39,11 @@ def mock_sync_client():
 
 @pytest.fixture
 def mock_async_client():
-    """Patch fal_client.AsyncClient and provide mock."""
+    """Patch fal_client.AsyncClient to return a configurable mock.
+
+    Note: In production, AsyncClient is not cached and creates new instances.
+    For testing, we use a single mock that can be configured per test.
+    """
     mock = AsyncMock()
     with patch(
         "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient",
@@ -75,9 +79,11 @@ def base_request():
 
 
 def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches."""
+    """Test that handler initializes with empty client caches.
+
+    Note: AsyncClient is not cached, only SyncClient is cached.
+    """
     assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
 
 
 # ==================== Client Management Tests ====================
@@ -97,18 +103,26 @@ def test_get_client_creates_and_caches_sync_client(
     assert client1 is mock_sync_client
 
 
-def test_get_client_creates_and_caches_async_client(
-    handler, base_config, mock_async_client
-):
-    """Test async client creation and caching."""
-    # Clear cache first
-    handler._async_client_cache.clear()
+def test_get_client_creates_new_async_client_each_time(handler, base_config):
+    """Test async client creates new instance each time (not cached).
 
-    client1 = handler._get_client(base_config, "async")
-    client2 = handler._get_client(base_config, "async")
+    AsyncClient is not cached to avoid "Event Loop closed" errors.
+    Each async request gets a fresh client instance.
+    """
+    with patch(
+        "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient"
+    ) as mock_constructor:
+        # Configure mock to return new instances
+        mock_constructor.side_effect = [AsyncMock(), AsyncMock()]
 
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_async_client
+        client1 = handler._get_client(base_config, "async")
+        client2 = handler._get_client(base_config, "async")
+
+        # Each call creates a new instance (not cached)
+        assert client1 is not client2
+
+        # Verify AsyncClient was called twice
+        assert mock_constructor.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -170,24 +184,25 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     """Test conversion with all optional fields and validated model_params."""
     request = VideoGenerationRequest(
         prompt="A test video",
-        duration_seconds=5,
+        duration_seconds=6,  # Valid for veo3.1: 4, 6, or 8 seconds
         resolution="1080p",
         aspect_ratio="16:9",
         image_list=[{"image": "https://example.com/image.jpg", "type": "reference"}],
-        video="https://example.com/video.mp4",
-        extra_params={"seed": 42, "generate_audio": True},
+        extra_params={"seed": 42, "generate_audio": True, "auto_fix": True},
     )
 
     result = handler._convert_request(base_config, request)
 
     assert result["prompt"] == "A test video"
-    assert result["duration"] == 5
+    assert result["duration"] == "6s"  # Veo3.1 uses string format like "6s"
     assert result["resolution"] == "1080p"
     assert result["aspect_ratio"] == "16:9"
-    assert result["image_urls"] == ["https://example.com/image.jpg"]
-    assert result["video_url"] == "https://example.com/video.mp4"
+    assert (
+        result["image_url"] == "https://example.com/image.jpg"
+    )  # Veo3.1 uses image_url, not image_urls
     assert result["seed"] == 42
     assert result["generate_audio"] is True
+    assert result["auto_fix"] is True
     # None values should not be included
     assert "negative_prompt" not in result
 
@@ -211,6 +226,76 @@ def test_convert_request_propagates_validation_errors(handler):
     assert "Invalid duration" in str(exc_info.value)
     assert "15 seconds" in str(exc_info.value)
     assert "6, 10" in str(exc_info.value)
+
+
+def test_convert_request_veo31_duration_validation(handler):
+    """Test that veo3.1 validates duration correctly."""
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test invalid duration (5 seconds is not allowed)
+    request_invalid = VideoGenerationRequest(
+        prompt="test",
+        duration_seconds=5,  # Invalid for veo3.1 (only supports 4, 6, or 8 seconds)
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(config, request_invalid)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "5 seconds" in str(exc_info.value)
+    assert "4, 6, 8" in str(exc_info.value)
+
+    # Test valid durations (4, 6, 8 seconds)
+    for valid_duration in [4, 6, 8]:
+        request_valid = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=valid_duration,
+        )
+        result = handler._convert_request(config, request_valid)
+        assert result["duration"] == f"{valid_duration}s"
+
+
+def test_convert_request_veo31_first_last_frame(handler):
+    """Test that veo3.1 supports first-last-frame-to-video."""
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/first-last-frame-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A woman looks into the camera",
+        duration_seconds=6,
+        image_list=[
+            {
+                "image": "https://example.com/first.jpg",
+                "type": "first_frame",
+            },
+            {
+                "image": "https://example.com/last.jpg",
+                "type": "last_frame",
+            },
+        ],
+        aspect_ratio="16:9",
+        resolution="720p",
+        generate_audio=True,
+        auto_fix=True,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A woman looks into the camera"
+    assert result["duration"] == "6s"
+    assert result["first_frame_url"] == "https://example.com/first.jpg"
+    assert result["last_frame_url"] == "https://example.com/last.jpg"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+    assert result["generate_audio"] is True
+    assert result["auto_fix"] is True
 
 
 # ==================== Response Conversion Tests ====================
@@ -412,8 +497,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
     mock_async_client = AsyncMock()
     mock_async_client.submit = AsyncMock(return_value=mock_handler)
 
-    # Clear cache and patch
-    handler._async_client_cache.clear()
+    # Patch AsyncClient (not cached)
     with (
         patch(
             "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient",
@@ -485,7 +569,6 @@ async def test_generate_video_async_propagates_known_errors(
     mock_handler.get = AsyncMock(return_value={})  # No video URL
     mock_async_client.submit = AsyncMock(return_value=mock_handler)
 
-    handler._async_client_cache.clear()
     with pytest.raises(GenerationFailedError):
         await handler.generate_video_async(base_config, base_request)
 
@@ -507,7 +590,6 @@ async def test_generate_video_async_handles_fal_http_error(
 
     mock_async_client.submit = AsyncMock(side_effect=http_error)
 
-    handler._async_client_cache.clear()
     with pytest.raises(TarashException, match="Unknown error"):
         await handler.generate_video_async(base_config, base_request)
 
@@ -519,7 +601,6 @@ async def test_generate_video_async_wraps_unknown_exceptions(
     """Test unknown exceptions are wrapped by decorator."""
     mock_async_client.submit = AsyncMock(side_effect=RuntimeError("Unexpected error"))
 
-    handler._async_client_cache.clear()
     with pytest.raises(TarashException, match="Unknown error"):
         await handler.generate_video_async(base_config, base_request)
 
