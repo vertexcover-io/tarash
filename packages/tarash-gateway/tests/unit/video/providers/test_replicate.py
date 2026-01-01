@@ -19,6 +19,7 @@ from tarash.tarash_gateway.video.providers.replicate import (
     MINIMAX_FIELD_MAPPERS,
     LUMA_FIELD_MAPPERS,
     WAN_FIELD_MAPPERS,
+    VEO31_FIELD_MAPPERS,
     GENERIC_REPLICATE_FIELD_MAPPERS,
 )
 
@@ -99,6 +100,21 @@ def test_get_replicate_field_mappers_wan():
     """Test prefix match for Wan (Alibaba) models."""
     mappers = get_replicate_field_mappers("wan-video/some-model")
     assert mappers is WAN_FIELD_MAPPERS
+
+
+def test_get_replicate_field_mappers_veo3():
+    """Test prefix match for Google Veo 3 and 3.1 models (same API)."""
+    # Veo 3.1 (prefix match from google/veo-3)
+    mappers_v31 = get_replicate_field_mappers("google/veo-3.1")
+    assert mappers_v31 is VEO31_FIELD_MAPPERS
+
+    # Veo 3 (exact match)
+    mappers_v3 = get_replicate_field_mappers("google/veo-3")
+    assert mappers_v3 is VEO31_FIELD_MAPPERS
+
+    # With version tags
+    mappers_v31_versioned = get_replicate_field_mappers("google/veo-3.1:abc123")
+    assert mappers_v31_versioned is VEO31_FIELD_MAPPERS
 
 
 def test_get_replicate_field_mappers_unknown():
@@ -355,6 +371,118 @@ def test_convert_request_with_extra_params(handler, base_config, base_request):
     assert result["prompt"] == "Test video"
     assert result["custom_param"] == "value"
     assert result["another_param"] == 123
+
+
+def test_convert_request_with_veo31_duration_validation(handler):
+    """Test Veo 3.1 duration validation (4, 6, or 8 seconds only)."""
+    from tarash.tarash_gateway.video.exceptions import ValidationError
+
+    config = VideoGenerationConfig(
+        model="google/veo-3.1",
+        provider="replicate",
+        api_key="test-key",
+    )
+
+    # Test valid durations
+    for valid_duration in [4, 6, 8]:
+        request_valid = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=valid_duration,
+        )
+        result = handler._convert_request(config, request_valid)
+        assert result["duration"] == valid_duration
+
+    # Test invalid duration (5 seconds is not allowed)
+    request_invalid = VideoGenerationRequest(
+        prompt="test",
+        duration_seconds=5,
+    )
+
+    with pytest.raises(ValidationError, match="Invalid duration"):
+        handler._convert_request(config, request_invalid)
+
+
+def test_convert_request_with_veo31_first_last_frame(handler):
+    """Test Veo 3.1 with first and last frame."""
+    config = VideoGenerationConfig(
+        model="google/veo-3.1",
+        provider="replicate",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A smooth transition",
+        duration_seconds=6,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        image_list=[
+            {
+                "image": "https://example.com/first.jpg",
+                "type": "first_frame",
+            },
+            {
+                "image": "https://example.com/last.jpg",
+                "type": "last_frame",
+            },
+        ],
+        generate_audio=True,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A smooth transition"
+    assert result["duration"] == 6
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["image"] == "https://example.com/first.jpg"
+    assert result["last_frame"] == "https://example.com/last.jpg"
+    assert result["generate_audio"] is True
+
+
+def test_convert_request_with_veo31_reference_images(handler):
+    """Test Veo 3.1 with reference images (R2V)."""
+    config = VideoGenerationConfig(
+        model="google/veo-3.1",
+        provider="replicate",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A woman giving a podcast interview",
+        duration_seconds=8,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        image_list=[
+            {
+                "image": "https://example.com/ref1.jpg",
+                "type": "reference",
+            },
+            {
+                "image": "https://example.com/ref2.jpg",
+                "type": "reference",
+            },
+            {
+                "image": "https://example.com/ref3.jpg",
+                "type": "reference",
+            },
+        ],
+        generate_audio=True,
+        seed=42,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A woman giving a podcast interview"
+    assert result["duration"] == 8
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["reference_images"] == [
+        "https://example.com/ref1.jpg",
+        "https://example.com/ref2.jpg",
+        "https://example.com/ref3.jpg",
+    ]
+    assert result["generate_audio"] is True
+    assert result["seed"] == 42
 
 
 # ==================== Response Conversion Tests ====================

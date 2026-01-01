@@ -98,6 +98,53 @@ WAN_FIELD_MAPPERS: dict[str, FieldMapper] = {
 }
 
 
+# Helper function to create a filtered image list mapper
+def _create_reference_images_mapper() -> FieldMapper:
+    """Create a FieldMapper for reference_images (filters by type='reference')."""
+    from tarash.tarash_gateway.video.providers.field_mappers import convert_to_data_url
+
+    def converter(
+        request: VideoGenerationRequest, value: list | None
+    ) -> list[str] | None:
+        if not value:
+            return None
+
+        # Filter images with type="reference"
+        urls = []
+        for item in value:
+            if isinstance(item, dict):
+                # Check if this is a reference image
+                if item.get("type") == "reference" and "image" in item:
+                    media = item["image"]
+                    if isinstance(media, dict) and "content" in media:
+                        urls.append(convert_to_data_url(media))
+                    else:
+                        urls.append(str(media))
+
+        return urls if urls else None
+
+    return FieldMapper(source_field="image_list", converter=converter, required=False)
+
+
+# Veo 3.1 field mappings (google/veo-3.1)
+# Input schema: prompt (required), aspect_ratio, duration (int seconds),
+# image, last_frame, reference_images (1-3 images), negative_prompt, resolution, generate_audio, seed
+VEO31_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "duration": duration_field_mapper(
+        field_type="int", allowed_values=[4, 6, 8], provider="replicate", model="veo3.1"
+    ),
+    "image": single_image_field_mapper(required=False, image_type="first_frame"),
+    "last_frame": single_image_field_mapper(required=False, image_type="last_frame"),
+    "reference_images": _create_reference_images_mapper(),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    "seed": passthrough_field_mapper("seed"),
+}
+
+
 # Generic fallback field mappings for unknown Replicate models
 GENERIC_REPLICATE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -125,6 +172,8 @@ REPLICATE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # Wan (Alibaba) models
     "wan-video/": WAN_FIELD_MAPPERS,
     "alibaba/wan": WAN_FIELD_MAPPERS,
+    # Google Veo 3 and 3.1 (same API)
+    "google/veo-3": VEO31_FIELD_MAPPERS,
 }
 
 
