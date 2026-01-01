@@ -10,3 +10,9 @@ wheels/
 .venv
 .vscode
 docs
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml

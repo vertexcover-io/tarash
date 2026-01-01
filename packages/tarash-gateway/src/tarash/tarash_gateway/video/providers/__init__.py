@@ -35,31 +35,16 @@ from tarash.tarash_gateway.video.providers.veo3 import (
     parse_veo3_operation,
 )
 
-# Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
-try:
-    from tarash.tarash_gateway.video.providers.replicate import (
-        ReplicateProviderHandler,
-        REPLICATE_MODEL_REGISTRY,
-        get_replicate_field_mappers,
-        parse_replicate_status,
-        KLING_V21_FIELD_MAPPERS,
-        LUMA_FIELD_MAPPERS,
-        WAN_FIELD_MAPPERS,
-        GENERIC_REPLICATE_FIELD_MAPPERS,
-    )
-
-    _REPLICATE_AVAILABLE = True
-except Exception:
-    # Replicate not available (likely due to pydantic v1 incompatibility with Python 3.14+)
-    ReplicateProviderHandler = None  # type: ignore
-    REPLICATE_MODEL_REGISTRY = {}  # type: ignore
-    get_replicate_field_mappers = None  # type: ignore
-    parse_replicate_status = None  # type: ignore
-    KLING_V21_FIELD_MAPPERS = {}  # type: ignore
-    LUMA_FIELD_MAPPERS = {}  # type: ignore
-    WAN_FIELD_MAPPERS = {}  # type: ignore
-    GENERIC_REPLICATE_FIELD_MAPPERS = {}  # type: ignore
-    _REPLICATE_AVAILABLE = False
+from tarash.tarash_gateway.video.providers.replicate import (
+    ReplicateProviderHandler,
+    REPLICATE_MODEL_REGISTRY,
+    get_replicate_field_mappers,
+    parse_replicate_status,
+    KLING_V21_FIELD_MAPPERS,
+    LUMA_FIELD_MAPPERS,
+    WAN_FIELD_MAPPERS,
+    GENERIC_REPLICATE_FIELD_MAPPERS,
+)
 
 __all__ = [
     # Common Field Mappers

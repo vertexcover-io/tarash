@@ -29,6 +29,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-xdist>=3.0.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [build-system]
@@ -52,9 +53,40 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
     "--strict-markers",
-    "--tb=short",    
+    "--tb=short",
+    "--cov=tarash.tarash_gateway",
+    "--cov-report=term-missing",
+    "--cov-report=html",
 ]
 log_cli = true  # Enable live logging to console
 log_cli_level = "INFO"  # Minimum level to display
 log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s - %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.coverage.run]
+source = ["src/tarash/tarash_gateway"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
