@@ -258,3 +258,126 @@ async def test_kling_motion_control(fal_api_key):
     print(f"  Model: {kling_config.model}")
     print("  Character orientation: video")
     print("  Keep original sound: True")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_veo31_image_to_video_with_image_list(fal_api_key):
+    """
+    Test veo3.1 image-to-video using image_list parameter.
+
+    This tests:
+    - Veo 3.1 image-to-video model (fal-ai/veo3.1/fast/image-to-video)
+    - Field mapping: image_list with type="reference" -> image_url
+    - All veo3.1 parameters (aspect_ratio, resolution, generate_audio, auto_fix)
+    - Prefix matching in registry
+    """
+    veo31_config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/image-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A serene mountain landscape with clouds slowly moving across the sky",
+        duration_seconds=6,
+        aspect_ratio="16:9",
+        resolution="720p",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
+                "type": "reference",
+            }
+        ],
+        generate_audio=True,
+        auto_fix=True,
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(veo31_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated veo3.1 image-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {veo31_config.model}")
+    print("  Duration: 6s")
+    print("  Aspect Ratio: 16:9")
+    print("  Resolution: 720p")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_veo31_first_last_frame_to_video(fal_api_key):
+    """
+    Test veo3.1 first-last-frame-to-video.
+
+    This tests:
+    - Veo 3.1 first-last-frame model (fal-ai/veo3.1/fast/first-last-frame-to-video)
+    - Field mapping: image_list with type="first_frame" and "last_frame"
+    - Validates both frames are required and correctly mapped
+    - All veo3.1 parameters
+    """
+    veo31_config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/first-last-frame-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt='A woman looks into the camera, breathes in, then exclaims energetically, "have you guys checked out Veo3.1 First-Last-Frame-to-Video on Fal? It\'s incredible!"',
+        duration_seconds=8,
+        aspect_ratio="16:9",
+        resolution="720p",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31-flf2v-input-1.jpeg",
+                "type": "first_frame",
+            },
+            {
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31-flf2v-input-2.jpeg",
+                "type": "last_frame",
+            },
+        ],
+        generate_audio=True,
+        auto_fix=False,
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(veo31_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated veo3.1 first-last-frame-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {veo31_config.model}")
+    print("  Duration: 8s")
+    print("  Aspect Ratio: 16:9")
+    print("  Resolution: 720p")
+    print("  Generate Audio: True")
