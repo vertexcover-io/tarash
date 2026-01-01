@@ -6,6 +6,7 @@ import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    HTTPError,
     TarashException,
     ValidationError,
     handle_video_generation_errors,
@@ -233,15 +234,13 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     assert config.enhance_prompt is True
 
 
-def test_convert_request_with_different_image_types(handler, base_config):
-    """Test conversion with different image types (first_frame, last_frame, asset, style)."""
+def test_convert_request_with_interpolation_mode(handler, base_config):
+    """Test conversion with interpolation mode (first_frame + last_frame)."""
     request = VideoGenerationRequest(
         prompt="test",
         image_list=[
             {"image": "https://example.com/first.jpg", "type": "first_frame"},
             {"image": "https://example.com/last.jpg", "type": "last_frame"},
-            {"image": "https://example.com/asset.jpg", "type": "asset"},
-            {"image": "https://example.com/style.jpg", "type": "style"},
         ],
     )
 
@@ -250,11 +249,33 @@ def test_convert_request_with_different_image_types(handler, base_config):
     # first_frame should be in top-level 'image'
     assert result["image"] == {"gcs_uri": "https://example.com/first.jpg"}
 
-    # last_frame and reference_images should be in config
+    # last_frame should be in config
     config = result["config"]
     assert config.last_frame.gcs_uri == "https://example.com/last.jpg"
+    # No reference images in interpolation mode
+    assert config.reference_images is None
+
+
+def test_convert_request_with_reference_images_mode(handler, base_config):
+    """Test conversion with reference images mode (asset + style)."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {"image": "https://example.com/asset.jpg", "type": "asset"},
+            {"image": "https://example.com/style.jpg", "type": "style"},
+        ],
+    )
+
+    result = handler._convert_request(base_config, request)
+
+    # No first_frame in reference images mode
+    assert result["image"] is None
+
     # asset and style should be in reference_images
+    config = result["config"]
     assert len(config.reference_images) == 2
+    # No last_frame in reference images mode
+    assert config.last_frame is None
 
 
 def test_convert_request_with_image_bytes(handler, base_config):
@@ -287,6 +308,128 @@ def test_convert_request_propagates_validation_errors(handler, base_config):
 
     with pytest.raises(ValidationError):
         handler._convert_request(base_config, request)
+
+
+def test_convert_request_rejects_last_frame_without_first_frame(handler, base_config):
+    """Test that last_frame requires first_frame."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {
+                "image": {"content": b"fake-bytes", "content_type": "image/jpeg"},
+                "type": "last_frame",
+            }
+        ],
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(base_config, request)
+
+    assert "first_frame" in str(exc_info.value).lower()
+    assert "interpolation" in str(exc_info.value).lower()
+
+
+def test_convert_request_rejects_first_frame_with_reference_images(
+    handler, base_config
+):
+    """Test that first_frame and reference images are mutually exclusive."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {
+                "image": {"content": b"fake-bytes-1", "content_type": "image/jpeg"},
+                "type": "first_frame",
+            },
+            {
+                "image": {"content": b"fake-bytes-2", "content_type": "image/jpeg"},
+                "type": "asset",
+            },
+        ],
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(base_config, request)
+
+    assert "reference images" in str(exc_info.value).lower()
+    assert "first_frame" in str(exc_info.value).lower()
+
+
+def test_convert_request_rejects_more_than_3_reference_images(handler, base_config):
+    """Test that maximum 3 reference images are allowed."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {
+                "image": {"content": b"fake-bytes-1", "content_type": "image/jpeg"},
+                "type": "asset",
+            },
+            {
+                "image": {"content": b"fake-bytes-2", "content_type": "image/jpeg"},
+                "type": "asset",
+            },
+            {
+                "image": {"content": b"fake-bytes-3", "content_type": "image/jpeg"},
+                "type": "style",
+            },
+            {
+                "image": {"content": b"fake-bytes-4", "content_type": "image/jpeg"},
+                "type": "asset",
+            },
+        ],
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(base_config, request)
+
+    assert "3" in str(exc_info.value)
+    assert "reference images" in str(exc_info.value).lower()
+
+
+def test_convert_request_accepts_first_frame_with_last_frame(handler, base_config):
+    """Test that first_frame + last_frame is valid (interpolation mode)."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {
+                "image": {"content": b"fake-bytes-1", "content_type": "image/jpeg"},
+                "type": "first_frame",
+            },
+            {
+                "image": {"content": b"fake-bytes-2", "content_type": "image/jpeg"},
+                "type": "last_frame",
+            },
+        ],
+    )
+
+    # Should not raise
+    result = handler._convert_request(base_config, request)
+    assert result["image"]["image_bytes"] == b"fake-bytes-1"
+    assert result["config"].last_frame.image_bytes == b"fake-bytes-2"
+
+
+def test_convert_request_accepts_up_to_3_reference_images(handler, base_config):
+    """Test that up to 3 reference images are allowed."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {
+                "image": {"content": b"fake-bytes-1", "content_type": "image/jpeg"},
+                "type": "asset",
+            },
+            {
+                "image": {"content": b"fake-bytes-2", "content_type": "image/jpeg"},
+                "type": "style",
+            },
+            {
+                "image": {"content": b"fake-bytes-3", "content_type": "image/jpeg"},
+                "type": "asset",
+            },
+        ],
+    )
+
+    # Should not raise
+    result = handler._convert_request(base_config, request)
+    assert len(result["config"].reference_images) == 3
 
 
 # ==================== Response Conversion Tests ====================
@@ -410,7 +553,7 @@ def test_handle_error_with_unknown_exception(handler, base_config, base_request)
 
     result = handler._handle_error(base_config, base_request, "req-3", unknown_error)
 
-    assert isinstance(result, TarashException)
+    assert isinstance(result, GenerationFailedError)
     assert "Error while generating video" in result.message
     assert result.provider == "veo3"
     assert result.raw_response["error_type"] == "ValueError"
@@ -608,8 +751,94 @@ async def test_generate_video_async_wraps_unknown_exceptions(
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with pytest.raises(TarashException, match="Unknown error"):
+        with pytest.raises(GenerationFailedError, match="Error while generating video"):
             await handler.generate_video_async(base_config, base_request)
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_handles_400_client_error(
+    handler, base_config, base_request
+):
+    """Test async generation handles Google API 400 error and converts to ValidationError."""
+
+    # Create a mock ClientError class
+    class MockClientError(Exception):
+        def __init__(self, code, message, status):
+            super().__init__(message)
+            self.code = code
+            self.message = message
+            self.details = {"code": code, "message": message, "status": status}
+            self.status = status
+
+    mock_error = MockClientError(
+        400,
+        "dont_allow for personGeneration is currently not supported.",
+        "INVALID_ARGUMENT",
+    )
+
+    mock_async_client = AsyncMock()
+    mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
+
+    handler._async_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.veo3.Client"
+    ) as mock_client_class:
+        mock_instance = MagicMock()
+        mock_instance.aio = mock_async_client
+        mock_client_class.return_value = mock_instance
+
+        with patch(
+            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
+        ):
+            with pytest.raises(ValidationError) as exc_info:
+                await handler.generate_video_async(base_config, base_request)
+
+            assert "dont_allow for personGeneration is currently not supported" in str(
+                exc_info.value
+            )
+            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.raw_response["status_code"] == 400
+            assert exc_info.value.raw_response["error_type"] == "INVALID_ARGUMENT"
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_handles_500_client_error(
+    handler, base_config, base_request
+):
+    """Test async generation handles Google API 500 error and converts to HTTPError."""
+
+    # Create a mock ClientError class
+    class MockClientError(Exception):
+        def __init__(self, code, message, status):
+            super().__init__(message)
+            self.code = code
+            self.message = message
+            self.details = {"code": code, "message": message, "status": status}
+            self.status = status
+
+    mock_error = MockClientError(500, "Internal server error", "INTERNAL_ERROR")
+
+    mock_async_client = AsyncMock()
+    mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
+
+    handler._async_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.veo3.Client"
+    ) as mock_client_class:
+        mock_instance = MagicMock()
+        mock_instance.aio = mock_async_client
+        mock_client_class.return_value = mock_instance
+
+        with patch(
+            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
+        ):
+            with pytest.raises(HTTPError) as exc_info:
+                await handler.generate_video_async(base_config, base_request)
+
+            assert "Internal server error" in str(exc_info.value)
+            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.raw_response["status_code"] == 500
+            assert exc_info.value.raw_response["error_type"] == "INTERNAL_ERROR"
 
 
 # ==================== Sync Video Generation Tests ====================
@@ -678,7 +907,7 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(TarashException, match="Unknown error"):
+        with pytest.raises(GenerationFailedError, match="Error while generating video"):
             handler.generate_video(base_config, base_request)
 
 
@@ -707,6 +936,80 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
     ):
         with pytest.raises(TarashException, match="timed out"):
             handler.generate_video(timeout_config, base_request)
+
+
+def test_generate_video_handles_400_client_error(handler, base_config, base_request):
+    """Test sync generation handles Google API 400 error and converts to ValidationError."""
+
+    # Create a mock ClientError class
+    class MockClientError(Exception):
+        def __init__(self, code, message, status):
+            super().__init__(message)
+            self.code = code
+            self.message = message
+            self.details = {"code": code, "message": message, "status": status}
+            self.status = status
+
+    mock_error = MockClientError(
+        400,
+        "dont_allow for personGeneration is currently not supported.",
+        "INVALID_ARGUMENT",
+    )
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.models.generate_videos.side_effect = mock_error
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.veo3.Client",
+        return_value=mock_sync_client,
+    ):
+        with patch(
+            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
+        ):
+            with pytest.raises(ValidationError) as exc_info:
+                handler.generate_video(base_config, base_request)
+
+            assert "dont_allow for personGeneration is currently not supported" in str(
+                exc_info.value
+            )
+            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.raw_response["status_code"] == 400
+            assert exc_info.value.raw_response["error_type"] == "INVALID_ARGUMENT"
+
+
+def test_generate_video_handles_500_client_error(handler, base_config, base_request):
+    """Test sync generation handles Google API 500 error and converts to HTTPError."""
+
+    # Create a mock ClientError class
+    class MockClientError(Exception):
+        def __init__(self, code, message, status):
+            super().__init__(message)
+            self.code = code
+            self.message = message
+            self.details = {"code": code, "message": message, "status": status}
+            self.status = status
+
+    mock_error = MockClientError(500, "Internal server error", "INTERNAL_ERROR")
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.models.generate_videos.side_effect = mock_error
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.video.providers.veo3.Client",
+        return_value=mock_sync_client,
+    ):
+        with patch(
+            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
+        ):
+            with pytest.raises(HTTPError) as exc_info:
+                handler.generate_video(base_config, base_request)
+
+            assert "Internal server error" in str(exc_info.value)
+            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.raw_response["status_code"] == 500
+            assert exc_info.value.raw_response["error_type"] == "INTERNAL_ERROR"
 
 
 # ==================== Error Decorator Tests ====================

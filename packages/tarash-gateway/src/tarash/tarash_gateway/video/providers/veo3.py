@@ -11,13 +11,16 @@ from typing_extensions import TypedDict
 try:
     from google import genai
     from google.genai.client import AsyncClient, Client
+    from google.genai.errors import ClientError
     from google.genai.types import GenerateVideosConfig
 except ImportError:
     genai = None  # type: ignore
 
-from tarash.tarash_gateway.logging import log_debug, log_info
+
+from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    HTTPError,
     TarashException,
     ValidationError,
     handle_video_generation_errors,
@@ -245,15 +248,45 @@ class Veo3ProviderHandler:
             last_frame_count = sum(
                 1 for img in request.image_list if img["type"] == "last_frame"
             )
+            reference_images_count = sum(
+                1 for img in request.image_list if img["type"] in ("asset", "style")
+            )
+            has_first_frame = any(
+                img["type"] == "first_frame" for img in request.image_list
+            )
 
+            # Validate only 1 reference/first_frame image
             if reference_count > 1:
                 raise ValidationError(
                     f"Veo3 only supports 1 reference/first_frame image, got {reference_count}",
                     provider=config.provider,
                 )
+
+            # Validate only 1 last_frame image
             if last_frame_count > 1:
                 raise ValidationError(
                     f"Veo3 only supports 1 last_frame image, got {last_frame_count}",
+                    provider=config.provider,
+                )
+
+            # Validate last_frame requires first_frame
+            if last_frame_count > 0 and not has_first_frame:
+                raise ValidationError(
+                    "Veo3 requires first_frame when using last_frame (interpolation mode)",
+                    provider=config.provider,
+                )
+
+            # Validate first_frame and reference images are mutually exclusive
+            if has_first_frame and reference_images_count > 0:
+                raise ValidationError(
+                    "Veo3 does not allow reference images (asset/style) when using first_frame (interpolation mode)",
+                    provider=config.provider,
+                )
+
+            # Validate maximum 3 reference images
+            if reference_images_count > 3:
+                raise ValidationError(
+                    f"Veo3 only supports up to 3 reference images (asset/style), got {reference_images_count}",
                     provider=config.provider,
                 )
 
@@ -387,11 +420,65 @@ class Veo3ProviderHandler:
         if isinstance(ex, TarashException):
             return ex
 
-        # Check for google-genai specific errors
+        # Handle Google GenAI ClientError (includes validation and HTTP errors)
+        if isinstance(ex, ClientError):
+            status_code = ex.code
+            error_msg = ex.message
+            error_details = ex.details
+            error_type = ex.status
+
+            # Build raw_response with all available details
+            raw_response = {
+                "status_code": status_code,
+                "message": error_msg,
+                "error_details": error_details,
+                "error_type": error_type,
+            }
+
+            # Determine exception class based on status code
+            if status_code == 400:
+                ex_class = ValidationError
+            else:
+                ex_class = HTTPError
+
+            log_error(
+                f"Google GenAI {ex_class.__name__} error: {error_msg}",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                    "status_code": status_code,
+                    "error_details": error_details,
+                    "error_type": error_type,
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
+            return ex_class(
+                error_msg,
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response=raw_response,
+            )
+
+        # Fallback for unknown errors
         error_type = type(ex).__name__
         error_msg = str(ex)
 
-        return TarashException(
+        log_error(
+            f"Google GenAI API error: {error_msg}",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+                "error_type": error_type,
+            },
+            logger_name=_LOGGER_NAME,
+            exc_info=True,
+        )
+
+        return GenerationFailedError(
             f"Error while generating video: {error_msg}",
             provider=config.provider,
             model=config.model,
@@ -434,24 +521,25 @@ class Veo3ProviderHandler:
             logger_name=_LOGGER_NAME,
         )
 
-        operation = await client.models.generate_videos(
-            model=config.model,
-            **veo3_kwargs,
-        )
-
-        request_id = operation.name or "unknown"
-
-        log_debug(
-            "Request submitted",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
-            },
-            logger_name=_LOGGER_NAME,
-        )
-
         try:
+            request_id = None
+            operation = await client.models.generate_videos(
+                model=config.model,
+                **veo3_kwargs,
+            )
+
+            request_id = operation.name or "unknown"
+
+            log_debug(
+                "Request submitted",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
             # Poll for completion
             poll_attempts = 0
             while poll_attempts < config.max_poll_attempts:
@@ -558,24 +646,25 @@ class Veo3ProviderHandler:
             logger_name=_LOGGER_NAME,
         )
 
-        operation = client.models.generate_videos(
-            model=config.model,
-            **veo3_kwargs,
-        )
-
-        request_id = operation.name or "unknown"
-
-        log_debug(
-            "Request submitted",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
-            },
-            logger_name=_LOGGER_NAME,
-        )
-
         try:
+            request_id = None
+            operation = client.models.generate_videos(
+                model=config.model,
+                **veo3_kwargs,
+            )
+
+            request_id = operation.name or "unknown"
+
+            log_debug(
+                "Request submitted",
+                context={
+                    "provider": config.provider,
+                    "model": config.model,
+                    "request_id": request_id,
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
             # Poll for completion
             poll_attempts = 0
             while poll_attempts < config.max_poll_attempts:

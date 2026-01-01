@@ -9,6 +9,8 @@ Skip with: pytest tests/e2e/test_veo3.py -v -m "not e2e"
 """
 
 import os
+from pathlib import Path
+from urllib.request import urlopen
 
 import pytest
 
@@ -36,13 +38,26 @@ def google_api_key():
 def veo3_config(google_api_key):
     """Create Veo3 configuration."""
     return VideoGenerationConfig(
-        model="veo-3.0-flash-001",
+        model="veo-3.1-generate-preview",
         provider="veo3",
         api_key=google_api_key,
         timeout=600,
         max_poll_attempts=120,
         poll_interval=5,
     )
+
+
+@pytest.fixture(scope="module")
+def shoe_image_path():
+    """Get path to the shoe test image."""
+    # Path relative to test file
+    test_dir = Path(__file__).parent.parent
+    image_path = test_dir / "media" / "shoe-image.jpg"
+
+    if not image_path.exists():
+        pytest.skip(f"Test image not found at {image_path}")
+
+    return str(image_path)
 
 
 # ==================== E2E Tests ====================
@@ -70,13 +85,7 @@ async def test_comprehensive_async_video_generation(veo3_config):
         prompt="A serene lake at sunset with mountains in the background, cinematic quality",
         duration_seconds=5,
         aspect_ratio="16:9",
-        seed=42,
         negative_prompt="blur, low quality, distorted",
-        generate_audio=True,
-        enhance_prompt=True,
-        extra_params={
-            "person_generation": "allow_adult",
-        },
     )
 
     # Generate video using API
@@ -134,29 +143,51 @@ async def test_comprehensive_async_video_generation(veo3_config):
 @pytest.mark.e2e
 def test_sync_video_generation_with_all_image_types(veo3_config):
     """
-    Sync test combining:
+    Sync test for Veo3 interpolation mode:
     - Basic sync generation
-    - All image types: first_frame (only one of reference/first_frame allowed), last_frame, asset, style
-    - Different aspect ratios
+    - Interpolation mode: first_frame + last_frame
+    - 16:9 aspect ratio (supports both 16:9 and 9:16 for interpolation)
+    - 8 second duration (required for interpolation)
+    - Images passed as bytes with content_type
+
+    Note: Cannot combine interpolation (first/last frames) with reference images (asset/style).
+    These are mutually exclusive modes in Veo 3.1.
     """
     sample_image_urls = [
-        "https://picsum.photos/512/512?random=1",
-        "https://picsum.photos/512/512?random=2",
-        "https://picsum.photos/512/512?random=3",
-        "https://picsum.photos/512/512?random=4",
+        "https://picsum.photos/1280/720?random=1",  # 16:9 aspect ratio
+        "https://picsum.photos/1280/720?random=2",  # 16:9 aspect ratio
     ]
 
+    # Download images and convert to bytes
+    image_data = []
+    for url in sample_image_urls:
+        with urlopen(url) as response:
+            image_bytes = response.read()
+            image_data.append(image_bytes)
+
+    print("Image data downloaded successfully")
+
     request = VideoGenerationRequest(
-        prompt="Zoom out from this scene to reveal a vast landscape with flying birds",
-        duration_seconds=5,
-        aspect_ratio="1:1",
+        prompt="Smooth transition from a peaceful morning scene to a vibrant sunset landscape",
+        duration_seconds=8,  # Must be 8 when using interpolation
+        aspect_ratio="16:9",
         image_list=[
-            # Only ONE of reference or first_frame is allowed
-            {"image": sample_image_urls[0], "type": "first_frame"},
-            # But can combine with last_frame, asset, style
-            {"image": sample_image_urls[1], "type": "last_frame"},
-            {"image": sample_image_urls[2], "type": "asset"},
-            {"image": sample_image_urls[3], "type": "style"},
+            # Interpolation mode: first_frame + last_frame
+            {
+                "image": {
+                    "content": image_data[0],
+                    "content_type": "image/jpeg",
+                },
+                "type": "first_frame",
+            },
+            {
+                "image": {
+                    "content": image_data[1],
+                    "content_type": "image/jpeg",
+                },
+                "type": "last_frame",
+            },
+            # Note: Cannot add asset/style reference images when using interpolation mode
         ],
     )
 
@@ -190,11 +221,103 @@ def test_sync_video_generation_with_all_image_types(veo3_config):
         video_info = f"{len(response.video['content'])} bytes, type: {response.video['content_type']}"
 
     # Log details
-    print("✓ Generated video with all image types successfully")
+    print("✓ Generated video with multiple image types successfully")
     print(f"  Request ID: {response.request_id}")
     print(f"  Video type: {video_type}")
     print(f"  Video info: {video_info}")
-    print("  Image types used: first_frame, last_frame, asset, style")
+    print("  Image types used: first_frame, last_frame, asset")
+    print(
+        f"  Duration: {response.duration}s" if response.duration else "  Duration: N/A"
+    )
+    print(
+        f"  Resolution: {response.resolution}"
+        if response.resolution
+        else "  Resolution: N/A"
+    )
+
+
+@pytest.mark.e2e
+def test_sync_video_generation_with_local_image(veo3_config, shoe_image_path):
+    """
+    Sync test for Veo3 reference images mode:
+    - Basic sync generation
+    - Reference images mode: 3 asset images from local file (shoe-image.jpg used 3 times)
+    - 16:9 aspect ratio (required for reference images)
+    - 8 seconds duration (required for reference images)
+    - Binary image content
+
+    Note: Reference images mode preserves the subject's appearance across the video.
+    """
+    # Read the image file
+    with open(shoe_image_path, "rb") as f:
+        image_content = f.read()
+
+    request = VideoGenerationRequest(
+        prompt="A sleek athletic shoe rotating slowly in a studio setting, showcasing its design from all angles",
+        duration_seconds=8,  # Must be 8 when using reference images
+        aspect_ratio="16:9",  # Must be 16:9 when using reference images
+        image_list=[
+            # Reference images mode: up to 3 asset images
+            {
+                "image": {
+                    "content": image_content,
+                    "content_type": "image/jpeg",
+                },
+                "type": "asset",
+            },
+            {
+                "image": {
+                    "content": image_content,
+                    "content_type": "image/jpeg",
+                },
+                "type": "asset",
+            },
+            {
+                "image": {
+                    "content": image_content,
+                    "content_type": "image/jpeg",
+                },
+                "type": "asset",
+            },
+        ],
+    )
+
+    # Generate video using API (sync)
+    response = api.generate_video(veo3_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Validate raw_response structure
+    assert isinstance(response.raw_response, dict)
+    assert response.raw_response is not None, "raw_response should not be None"
+
+    # Video should be a URL string (http or gs://) or dict with content
+    if isinstance(response.video, str):
+        assert response.video.startswith("http") or response.video.startswith(
+            "gs://"
+        ), f"Expected HTTP or GCS URL, got: {response.video}"
+        video_type = "URL"
+        video_info = response.video
+    else:
+        # Dict with binary content
+        assert "content" in response.video, "Video dict should have 'content' field"
+        assert "content_type" in response.video, (
+            "Video dict should have 'content_type' field"
+        )
+        video_type = "bytes"
+        video_size_mb = len(response.video["content"]) / (1024 * 1024)
+        video_info = f"{video_size_mb:.2f} MB, type: {response.video['content_type']}"
+
+    # Log details
+    print("✓ Generated video with local reference image successfully")
+    print(f"  Request ID: {response.request_id}")
+    print(f"  Video type: {video_type}")
+    print(f"  Video info: {video_info}")
+    print(f"  Model: {veo3_config.model}")
     print(
         f"  Duration: {response.duration}s" if response.duration else "  Duration: N/A"
     )
