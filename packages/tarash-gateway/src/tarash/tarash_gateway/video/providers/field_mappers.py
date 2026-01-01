@@ -281,3 +281,62 @@ def video_url_field_mapper(required: bool = False) -> FieldMapper:
         ),
         required=required,
     )
+
+
+# ==================== Model Registry Utilities ====================
+
+
+def get_field_mappers_from_registry(
+    model_name: str,
+    registry: dict[str, dict[str, FieldMapper]],
+    fallback_mappers: dict[str, FieldMapper],
+) -> dict[str, FieldMapper]:
+    """Get field mappers for a model using registry lookup with prefix matching.
+
+    Lookup Strategy:
+    1. Try exact match first
+    2. If not found, try prefix matching - find registry keys that are prefixes
+       of the model_name, and use the longest matching prefix
+    3. If no match found, return fallback field mappers
+
+    Args:
+        model_name: Full model name (e.g., "fal-ai/minimax/hailuo-02-fast/image-to-video")
+        registry: Registry mapping model names/prefixes to field mappers
+        fallback_mappers: Default field mappers to use if no match found
+
+    Returns:
+        Dict mapping API field names to FieldMapper objects
+
+    Examples:
+        >>> registry = {
+        ...     "fal-ai/minimax": MINIMAX_MAPPERS,
+        ...     "fal-ai/veo3.1": VEO31_MAPPERS,
+        ...     "fal-ai/veo3": VEO3_MAPPERS,
+        ... }
+        >>> get_field_mappers_from_registry("fal-ai/minimax", registry, GENERIC)
+        MINIMAX_MAPPERS  # Exact match
+        >>> get_field_mappers_from_registry("fal-ai/minimax/hailuo-02-fast", registry, GENERIC)
+        MINIMAX_MAPPERS  # Prefix match
+        >>> get_field_mappers_from_registry("fal-ai/veo3.1/fast", registry, GENERIC)
+        VEO31_MAPPERS  # Prefix match (longest)
+        >>> get_field_mappers_from_registry("fal-ai/unknown-model", registry, GENERIC)
+        GENERIC  # Fallback for unknown models
+    """
+    # Try exact match first
+    if model_name in registry:
+        return registry[model_name]
+
+    # Try prefix matching - find all registry keys that are prefixes of model_name
+    # Use the longest matching prefix
+    matching_prefix = None
+    for registry_key in registry:
+        if model_name.startswith(registry_key):
+            # Found a prefix match - keep if it's longer than current match
+            if matching_prefix is None or len(registry_key) > len(matching_prefix):
+                matching_prefix = registry_key
+
+    if matching_prefix:
+        return registry[matching_prefix]
+
+    # No match found - use fallback
+    return fallback_mappers

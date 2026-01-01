@@ -28,6 +28,7 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
     apply_field_mappers,
     duration_field_mapper,
     extra_params_field_mapper,
+    get_field_mappers_from_registry,
     image_list_field_mapper,
     passthrough_field_mapper,
     single_image_field_mapper,
@@ -49,6 +50,9 @@ except ImportError:
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.fal"
+
+# Provider name constant
+_PROVIDER_NAME = "fal"
 
 # ==================== Model Field Mappings ====================
 
@@ -194,24 +198,9 @@ def get_field_mappers(model_name: str) -> dict[str, FieldMapper]:
     Returns:
         Dict mapping API field names to FieldMapper objects
     """
-    # Try exact match first
-    if model_name in FAL_MODEL_REGISTRY:
-        return FAL_MODEL_REGISTRY[model_name]
-
-    # Try prefix matching - find all registry keys that are prefixes of model_name
-    # Use the longest matching prefix
-    matching_prefix = None
-    for registry_key in FAL_MODEL_REGISTRY:
-        if model_name.startswith(registry_key):
-            # Found a prefix match - keep if it's longer than current match
-            if matching_prefix is None or len(registry_key) > len(matching_prefix):
-                matching_prefix = registry_key
-
-    if matching_prefix:
-        return FAL_MODEL_REGISTRY[matching_prefix]
-
-    # No match found - use generic fallback
-    return GENERIC_FIELD_MAPPERS
+    return get_field_mappers_from_registry(
+        model_name, FAL_MODEL_REGISTRY, GENERIC_FIELD_MAPPERS
+    )
 
 
 def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:

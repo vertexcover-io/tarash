@@ -1,6 +1,12 @@
 """Video generation module."""
 
-from tarash.tarash_gateway.video.api import generate_video, generate_video_async
+from tarash.tarash_gateway.video.api import (
+    generate_video,
+    generate_video_async,
+    get_provider_field_mapping,
+    register_provider,
+    register_provider_field_mapping,
+)
 from tarash.tarash_gateway.video.exceptions import (
     ContentModerationError,
     GenerationFailedError,
@@ -22,6 +28,9 @@ __all__ = [
     # API functions
     "generate_video",
     "generate_video_async",
+    "register_provider",
+    "register_provider_field_mapping",
+    "get_provider_field_mapping",
     # Models
     "VideoGenerationConfig",
     "VideoGenerationRequest",

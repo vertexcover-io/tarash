@@ -22,6 +22,7 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
     apply_field_mappers,
     duration_field_mapper,
     extra_params_field_mapper,
+    get_field_mappers_from_registry,
     passthrough_field_mapper,
     single_image_field_mapper,
 )
@@ -34,6 +35,9 @@ except (ImportError, Exception):
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.replicate"
+
+# Provider name constant
+_PROVIDER_NAME = "replicate"
 
 # ==================== Model Field Mappings ====================
 
@@ -191,22 +195,9 @@ def get_replicate_field_mappers(model_name: str) -> dict[str, FieldMapper]:
     # Normalize model name (remove version suffix if present)
     base_model = model_name.split(":")[0]
 
-    # Try exact match first
-    if base_model in REPLICATE_MODEL_REGISTRY:
-        return REPLICATE_MODEL_REGISTRY[base_model]
-
-    # Try prefix matching - find all registry keys that are prefixes of model_name
-    matching_prefix = None
-    for registry_key in REPLICATE_MODEL_REGISTRY:
-        if base_model.startswith(registry_key):
-            if matching_prefix is None or len(registry_key) > len(matching_prefix):
-                matching_prefix = registry_key
-
-    if matching_prefix:
-        return REPLICATE_MODEL_REGISTRY[matching_prefix]
-
-    # No match found - use generic fallback
-    return GENERIC_REPLICATE_FIELD_MAPPERS
+    return get_field_mappers_from_registry(
+        base_model, REPLICATE_MODEL_REGISTRY, GENERIC_REPLICATE_FIELD_MAPPERS
+    )
 
 
 # ==================== Status Parsing ====================

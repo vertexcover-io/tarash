@@ -17,12 +17,21 @@ from tarash.tarash_gateway.video.providers import (
     Veo3ProviderHandler,
     ReplicateProviderHandler,
 )
+from tarash.tarash_gateway.video.providers.field_mappers import FieldMapper
+from tarash.tarash_gateway.video.providers.fal import FAL_MODEL_REGISTRY
+from tarash.tarash_gateway.video.providers.replicate import REPLICATE_MODEL_REGISTRY
 
 # Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
 # ==================== Provider Registry ====================
 
 # Singleton instances of handlers (stateless)
 _HANDLER_INSTANCES: dict[str, ProviderHandler] = {}
+
+# Field mapper registries for each provider (hardcoded built-in providers)
+_FIELD_MAPPER_REGISTRIES: dict[str, dict[str, dict[str, FieldMapper]]] = {
+    "fal": FAL_MODEL_REGISTRY,
+    "replicate": REPLICATE_MODEL_REGISTRY,
+}
 
 
 def _get_handler(provider: str) -> ProviderHandler:
@@ -53,6 +62,102 @@ def _get_handler(provider: str) -> ProviderHandler:
             )
 
     return _HANDLER_INSTANCES[provider]
+
+
+def register_provider(
+    provider: str,
+    handler: ProviderHandler,
+) -> None:
+    """Register a custom provider handler.
+
+    This allows extending the video generation API with custom providers
+    without modifying the core library code.
+
+    Args:
+        provider: Provider name (e.g., "custom-provider")
+        handler: Instance of ProviderHandler implementing the provider logic
+
+    Examples:
+        >>> class MyCustomHandler(ProviderHandler):
+        ...     async def generate_video_async(self, config, request, on_progress=None):
+        ...         # Custom implementation
+        ...         pass
+        ...     def generate_video(self, config, request, on_progress=None):
+        ...         # Custom implementation
+        ...         pass
+        >>> register_provider("my-provider", MyCustomHandler())
+    """
+    if provider in _HANDLER_INSTANCES:
+        log_info(
+            f"Overwriting existing provider handler: {provider}",
+            context={"provider": provider},
+            logger_name="tarash.tarash_gateway.video.api",
+        )
+
+    _HANDLER_INSTANCES[provider] = handler
+    log_debug(
+        "Registered custom provider handler",
+        context={"provider": provider},
+        logger_name="tarash.tarash_gateway.video.api",
+    )
+
+
+def register_provider_field_mapping(
+    provider: str,
+    model_mappings: dict[str, dict[str, FieldMapper]],
+) -> None:
+    """Register field mappings for a provider's models.
+
+    This allows configuring how VideoGenerationRequest fields are mapped
+    to provider-specific API formats for different models.
+
+    Args:
+        provider: Provider name (e.g., "fal", "replicate", "custom-provider")
+        model_mappings: Dict mapping model names/prefixes to their field mappers
+
+    Examples:
+        >>> from tarash.tarash_gateway.video.providers.field_mappers import (
+        ...     passthrough_field_mapper,
+        ...     duration_field_mapper,
+        ... )
+        >>> register_provider_field_mapping("my-provider", {
+        ...     "my-provider/model-1": {
+        ...         "prompt": passthrough_field_mapper("prompt", required=True),
+        ...         "duration": duration_field_mapper(field_type="int"),
+        ...     },
+        ...     "my-provider/model-2": {
+        ...         "prompt": passthrough_field_mapper("prompt", required=True),
+        ...     },
+        ... })
+    """
+    _FIELD_MAPPER_REGISTRIES[provider] = model_mappings
+    log_debug(
+        "Registered field mappings for provider",
+        context={
+            "provider": provider,
+            "num_models": len(model_mappings),
+        },
+        logger_name="tarash.tarash_gateway.video.api",
+    )
+
+
+def get_provider_field_mapping(
+    provider: str,
+) -> dict[str, dict[str, FieldMapper]] | None:
+    """Get the field mapper registry for a provider.
+
+    Args:
+        provider: Provider name (e.g., "fal", "replicate")
+
+    Returns:
+        Dict mapping model names to field mappers, or None if not registered
+
+    Examples:
+        >>> registry = get_provider_field_mapping("fal")
+        >>> if registry:
+        ...     model_mappers = registry.get("fal-ai/minimax")
+    """
+    return _FIELD_MAPPER_REGISTRIES.get(provider)
 
 
 # ==================== Public API ====================
