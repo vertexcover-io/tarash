@@ -2,14 +2,11 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "WebFetch(domain:docs.astral.sh)",
+      "WebFetch",
       "Bash(mkdir:*)",
       "Bash(pre-commit install:*)",
       "Bash(pre-commit run:*)",
       "Skill(superpowers:brainstorming)",
-      "WebFetch(domain:fal.ai)",
-      "WebFetch(domain:platform.openai.com)",
-      "WebFetch(domain:app.klingai.com)",
       "Bash(uv sync)",
       "Bash(uv sync:*)",
       "Bash(uv pip:*)",
