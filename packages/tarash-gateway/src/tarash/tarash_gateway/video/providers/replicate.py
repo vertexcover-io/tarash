@@ -28,13 +28,9 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
 
 try:
     import replicate
-    from replicate import Client
-    from replicate.prediction import Prediction
+    from replicate import AsyncReplicate, Replicate
 except (ImportError, Exception):
-    # Handle both ImportError and potential pydantic compatibility issues
     replicate = None  # type: ignore
-    Client = None  # type: ignore
-    Prediction = None  # type: ignore
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.replicate"
@@ -294,22 +290,22 @@ class ReplicateProviderHandler:
                 "Install with: pip install tarash-gateway[replicate]"
             )
 
-        self._client_cache: dict[str, Client] = {}
+        self._client_cache: dict[str, Replicate] = {}
 
-    def _get_client(self, config: VideoGenerationConfig) -> Client:
+    def _get_client(self, config: VideoGenerationConfig) -> Replicate:
         """Get or create Replicate client for the given config.
 
         Args:
             config: Provider configuration
 
         Returns:
-            replicate.Client instance
+            replicate.Replicate instance (v2.0.0 API)
         """
         # Use API key as cache key
         cache_key = config.api_key
 
         if cache_key not in self._client_cache:
-            self._client_cache[cache_key] = Client(api_token=config.api_key)
+            self._client_cache[cache_key] = Replicate(bearer_token=config.api_key)
 
         return self._client_cache[cache_key]
 
@@ -491,28 +487,24 @@ class ReplicateProviderHandler:
         prediction_id = ""
 
         try:
-            # Use async_run for simple case without progress
+            # Create async client (v2.0.0 API)
+            async_client = AsyncReplicate(bearer_token=config.api_key)
+
+            # Use run for simple case without progress
             if on_progress is None:
-                output = await replicate.async_run(
+                output = await async_client.run(
                     config.model,
                     input=replicate_input,
                 )
-                # Generate a pseudo prediction ID since async_run doesn't return one
+                # Generate a pseudo prediction ID since run doesn't return one
                 prediction_id = f"replicate-{id(output)}"
                 return self._convert_response(config, request, prediction_id, output)
 
             # For progress tracking, we need to use predictions.create and poll
-            # Run the sync prediction creation in a thread pool
-            loop = asyncio.get_event_loop()
-
-            def create_prediction():
-                client = self._get_client(config)
-                return client.predictions.create(
-                    model=config.model,
-                    input=replicate_input,
-                )
-
-            prediction = await loop.run_in_executor(None, create_prediction)
+            prediction = await async_client.predictions.create(
+                version=config.model,
+                input=replicate_input,
+            )
             prediction_id = prediction.id
 
             log_debug(
@@ -530,8 +522,10 @@ class ReplicateProviderHandler:
             max_attempts = config.max_poll_attempts
 
             for _ in range(max_attempts):
-                # Reload prediction status
-                await loop.run_in_executor(None, prediction.reload)
+                # Reload prediction status (v2.0.0 API)
+                prediction = await async_client.predictions.get(
+                    prediction_id=prediction.id
+                )
 
                 # Send progress update
                 if on_progress:
@@ -646,18 +640,18 @@ class ReplicateProviderHandler:
         prediction_id = ""
 
         try:
-            # For simple case without progress, use run()
+            # For simple case without progress, use run() (v2.0.0 API)
             if on_progress is None:
-                output = replicate.run(
+                output = client.run(
                     config.model,
                     input=replicate_input,
                 )
                 prediction_id = f"replicate-{id(output)}"
                 return self._convert_response(config, request, prediction_id, output)
 
-            # For progress tracking, use predictions.create and poll
+            # For progress tracking, use predictions.create and poll (v2.0.0 API)
             prediction = client.predictions.create(
-                model=config.model,
+                version=config.model,
                 input=replicate_input,
             )
             prediction_id = prediction.id
@@ -679,8 +673,8 @@ class ReplicateProviderHandler:
             import time
 
             for _ in range(max_attempts):
-                # Reload prediction status
-                prediction.reload()
+                # Reload prediction status (v2.0.0 API)
+                prediction = client.predictions.get(prediction_id=prediction.id)
 
                 # Send progress update
                 if on_progress:

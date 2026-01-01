@@ -29,13 +29,13 @@ from tarash.tarash_gateway.video.providers.replicate import (
 
 @pytest.fixture
 def mock_replicate():
-    """Patch replicate module and provide mocks."""
+    """Patch replicate module and provide mocks (v2.0.0 API)."""
     mock_client = MagicMock()
     mock_predictions = MagicMock()
     mock_client.predictions = mock_predictions
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.Client",
+        "tarash.tarash_gateway.video.providers.replicate.Replicate",
         return_value=mock_client,
     ):
         yield mock_client
@@ -286,7 +286,7 @@ def test_get_client_creates_different_clients_for_different_keys(handler):
     )
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.Client",
+        "tarash.tarash_gateway.video.providers.replicate.Replicate",
         side_effect=[mock_client1, mock_client2],
     ):
         client1 = handler._get_client(config1)
@@ -583,46 +583,58 @@ def test_handle_error_with_unknown_exception(handler, base_config, base_request)
 
 
 def test_generate_video_success_without_progress(handler, base_config, base_request):
-    """Test successful sync generation without progress callback."""
+    """Test successful sync generation without progress callback (v2.0.0 API)."""
+    # Mock client with run method
+    mock_client = MagicMock()
+    mock_client.run.return_value = "https://example.com/video.mp4"
+
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.replicate"
-    ) as mock_replicate_module:
-        mock_replicate_module.run.return_value = "https://example.com/video.mp4"
+        "tarash.tarash_gateway.video.providers.replicate.Replicate",
+        return_value=mock_client,
+    ):
+        handler._client_cache.clear()
+        result = handler.generate_video(base_config, base_request)
 
-        # Also need to patch Client since it's used in _get_client
-        with patch("tarash.tarash_gateway.video.providers.replicate.Client"):
-            handler._client_cache.clear()
-            result = handler.generate_video(base_config, base_request)
-
-            assert result.video == "https://example.com/video.mp4"
-            assert result.status == "completed"
+        assert result.video == "https://example.com/video.mp4"
+        assert result.status == "completed"
+        mock_client.run.assert_called_once()
 
 
 def test_generate_video_success_with_progress_callback(
     handler, base_config, base_request, mock_replicate
 ):
-    """Test successful sync generation with progress callback."""
-    # Setup mock prediction
-    mock_prediction = MagicMock()
-    mock_prediction.id = "pred-progress"
-    mock_prediction.status = "starting"
-    mock_prediction.progress = None
-    mock_prediction.logs = None
-    mock_prediction.error = None
-    mock_prediction.output = "https://example.com/video.mp4"
+    """Test successful sync generation with progress callback (v2.0.0 API)."""
+    # Setup mock predictions with different states
+    mock_prediction_1 = MagicMock()
+    mock_prediction_1.id = "pred-progress"
+    mock_prediction_1.status = "starting"
+    mock_prediction_1.progress = None
+    mock_prediction_1.logs = None
+    mock_prediction_1.error = None
 
-    # Simulate status changes
-    call_count = [0]
+    mock_prediction_2 = MagicMock()
+    mock_prediction_2.id = "pred-progress"
+    mock_prediction_2.status = "processing"
+    mock_prediction_2.progress = None
+    mock_prediction_2.logs = None
+    mock_prediction_2.error = None
 
-    def reload_side_effect():
-        call_count[0] += 1
-        if call_count[0] == 1:
-            mock_prediction.status = "processing"
-        else:
-            mock_prediction.status = "succeeded"
+    mock_prediction_3 = MagicMock()
+    mock_prediction_3.id = "pred-progress"
+    mock_prediction_3.status = "succeeded"
+    mock_prediction_3.progress = None
+    mock_prediction_3.logs = None
+    mock_prediction_3.error = None
+    mock_prediction_3.output = "https://example.com/video.mp4"
 
-    mock_prediction.reload = reload_side_effect
-    mock_replicate.predictions.create.return_value = mock_prediction
+    # v2.0.0 API: predictions.create returns initial prediction
+    mock_replicate.predictions.create.return_value = mock_prediction_1
+
+    # v2.0.0 API: predictions.get returns updated states
+    mock_replicate.predictions.get.side_effect = [
+        mock_prediction_2,  # First poll: processing
+        mock_prediction_3,  # Second poll: succeeded
+    ]
 
     handler._client_cache.clear()
 
@@ -644,7 +656,7 @@ def test_generate_video_success_with_progress_callback(
 def test_generate_video_handles_failure(
     handler, base_config, base_request, mock_replicate
 ):
-    """Test handling of failed prediction."""
+    """Test handling of failed prediction (v2.0.0 API)."""
     mock_prediction = MagicMock()
     mock_prediction.id = "pred-fail"
     mock_prediction.status = "failed"
@@ -652,9 +664,10 @@ def test_generate_video_handles_failure(
     mock_prediction.logs = "Error logs"
     mock_prediction.error = "Model crashed"
     mock_prediction.output = None
-    mock_prediction.reload = MagicMock()
 
     mock_replicate.predictions.create.return_value = mock_prediction
+    # v2.0.0 API: predictions.get returns the failed prediction
+    mock_replicate.predictions.get.return_value = mock_prediction
 
     handler._client_cache.clear()
 
@@ -663,7 +676,7 @@ def test_generate_video_handles_failure(
 
 
 def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
-    """Test handling of prediction timeout."""
+    """Test handling of prediction timeout (v2.0.0 API)."""
     config = VideoGenerationConfig(
         model="kwaivgi/kling-v2.1",
         provider="replicate",
@@ -678,9 +691,10 @@ def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
     mock_prediction.progress = None
     mock_prediction.logs = None
     mock_prediction.error = None
-    mock_prediction.reload = MagicMock()
 
     mock_replicate.predictions.create.return_value = mock_prediction
+    # v2.0.0 API: predictions.get keeps returning processing status
+    mock_replicate.predictions.get.return_value = mock_prediction
 
     handler._client_cache.clear()
 
@@ -696,58 +710,75 @@ def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
 async def test_generate_video_async_success_without_progress(
     handler, base_config, base_request
 ):
-    """Test successful async generation without progress callback."""
-    with patch(
-        "tarash.tarash_gateway.video.providers.replicate.replicate"
-    ) as mock_replicate_module:
-        mock_replicate_module.async_run = AsyncMock(
-            return_value="https://example.com/video.mp4"
-        )
+    """Test successful async generation without progress callback (v2.0.0 API)."""
+    # Mock AsyncReplicate client
+    mock_async_client = AsyncMock()
+    mock_async_client.run = AsyncMock(return_value="https://example.com/video.mp4")
 
+    with patch(
+        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
         result = await handler.generate_video_async(base_config, base_request)
 
         assert result.video == "https://example.com/video.mp4"
         assert result.status == "completed"
+        mock_async_client.run.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_generate_video_async_success_with_progress_callback(
-    handler, base_config, base_request, mock_replicate
+    handler, base_config, base_request
 ):
-    """Test successful async generation with progress callback."""
-    # Setup mock prediction
-    mock_prediction = MagicMock()
-    mock_prediction.id = "pred-async-progress"
-    mock_prediction.status = "starting"
-    mock_prediction.progress = None
-    mock_prediction.logs = None
-    mock_prediction.error = None
-    mock_prediction.output = "https://example.com/video.mp4"
+    """Test successful async generation with progress callback (v2.0.0 API)."""
+    # Setup mock predictions with different states
+    mock_prediction_1 = MagicMock()
+    mock_prediction_1.id = "pred-async-progress"
+    mock_prediction_1.status = "starting"
+    mock_prediction_1.progress = None
+    mock_prediction_1.logs = None
+    mock_prediction_1.error = None
 
-    # Simulate status changes
-    call_count = [0]
+    mock_prediction_2 = MagicMock()
+    mock_prediction_2.id = "pred-async-progress"
+    mock_prediction_2.status = "processing"
+    mock_prediction_2.progress = None
+    mock_prediction_2.logs = None
+    mock_prediction_2.error = None
 
-    def reload_side_effect():
-        call_count[0] += 1
-        if call_count[0] == 1:
-            mock_prediction.status = "processing"
-        else:
-            mock_prediction.status = "succeeded"
+    mock_prediction_3 = MagicMock()
+    mock_prediction_3.id = "pred-async-progress"
+    mock_prediction_3.status = "succeeded"
+    mock_prediction_3.progress = None
+    mock_prediction_3.logs = None
+    mock_prediction_3.error = None
+    mock_prediction_3.output = "https://example.com/video.mp4"
 
-    mock_prediction.reload = reload_side_effect
-    mock_replicate.predictions.create.return_value = mock_prediction
-
-    handler._client_cache.clear()
+    # Mock AsyncReplicate client
+    mock_async_client = AsyncMock()
+    mock_async_client.predictions = AsyncMock()
+    mock_async_client.predictions.create = AsyncMock(return_value=mock_prediction_1)
+    # v2.0.0 API: predictions.get returns updated states
+    mock_async_client.predictions.get = AsyncMock(
+        side_effect=[
+            mock_prediction_2,  # First poll: processing
+            mock_prediction_3,  # Second poll: succeeded
+        ]
+    )
 
     progress_calls = []
 
     async def async_progress_callback(update):
         progress_calls.append(update)
 
-    with patch("asyncio.sleep", new_callable=AsyncMock):
-        result = await handler.generate_video_async(
-            base_config, base_request, on_progress=async_progress_callback
-        )
+    with patch(
+        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await handler.generate_video_async(
+                base_config, base_request, on_progress=async_progress_callback
+            )
 
     assert result.request_id == "pred-async-progress"
     assert result.video == "https://example.com/video.mp4"
@@ -755,10 +786,8 @@ async def test_generate_video_async_success_with_progress_callback(
 
 
 @pytest.mark.asyncio
-async def test_generate_video_async_handles_failure(
-    handler, base_config, base_request, mock_replicate
-):
-    """Test handling of failed prediction in async mode."""
+async def test_generate_video_async_handles_failure(handler, base_config, base_request):
+    """Test handling of failed prediction in async mode (v2.0.0 API)."""
     mock_prediction = MagicMock()
     mock_prediction.id = "pred-async-fail"
     mock_prediction.status = "failed"
@@ -766,30 +795,39 @@ async def test_generate_video_async_handles_failure(
     mock_prediction.logs = "Error logs"
     mock_prediction.error = "Async model crashed"
     mock_prediction.output = None
-    mock_prediction.reload = MagicMock()
 
-    mock_replicate.predictions.create.return_value = mock_prediction
+    # Mock AsyncReplicate client
+    mock_async_client = AsyncMock()
+    mock_async_client.predictions = AsyncMock()
+    mock_async_client.predictions.create = AsyncMock(return_value=mock_prediction)
+    # v2.0.0 API: predictions.get returns the failed prediction
+    mock_async_client.predictions.get = AsyncMock(return_value=mock_prediction)
 
-    handler._client_cache.clear()
-
-    with pytest.raises(GenerationFailedError, match="Async model crashed"):
-        await handler.generate_video_async(
-            base_config, base_request, on_progress=lambda x: None
-        )
+    with patch(
+        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
+        with pytest.raises(GenerationFailedError, match="Async model crashed"):
+            await handler.generate_video_async(
+                base_config, base_request, on_progress=lambda x: None
+            )
 
 
 @pytest.mark.asyncio
 async def test_generate_video_async_wraps_unknown_exceptions(
     handler, base_config, base_request
 ):
-    """Test unknown exceptions are wrapped by decorator in async mode."""
-    with patch(
-        "tarash.tarash_gateway.video.providers.replicate.replicate"
-    ) as mock_replicate_module:
-        mock_replicate_module.async_run = AsyncMock(
-            side_effect=RuntimeError("Unexpected async error")
-        )
+    """Test unknown exceptions are wrapped by decorator in async mode (v2.0.0 API)."""
+    # Mock AsyncReplicate client that raises exception
+    mock_async_client = AsyncMock()
+    mock_async_client.run = AsyncMock(
+        side_effect=RuntimeError("Unexpected async error")
+    )
 
+    with patch(
+        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
         # Error is wrapped by _handle_error which creates "Replicate API error" message
         with pytest.raises(GenerationFailedError, match="Replicate API error"):
             await handler.generate_video_async(base_config, base_request)

@@ -298,6 +298,36 @@ def test_convert_request_veo31_first_last_frame(handler):
     assert result["auto_fix"] is True
 
 
+def test_convert_request_veo31_video_to_video(handler):
+    """Test that veo3.1 supports video-to-video (extend-video)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/extend-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Continue the scene naturally, maintaining the same style and motion",
+        video="https://example.com/input-video.mp4",
+        aspect_ratio="16:9",
+        resolution="720p",
+        generate_audio=True,
+        auto_fix=False,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert (
+        result["prompt"]
+        == "Continue the scene naturally, maintaining the same style and motion"
+    )
+    assert result["video_url"] == "https://example.com/input-video.mp4"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+    assert result["generate_audio"] is True
+    assert result["auto_fix"] is False
+
+
 # ==================== Response Conversion Tests ====================
 
 

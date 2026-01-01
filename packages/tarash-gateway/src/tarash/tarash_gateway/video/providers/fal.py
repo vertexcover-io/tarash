@@ -85,7 +85,7 @@ KLING_VIDEO_V26_FIELD_MAPPERS: dict[str, FieldMapper] = {
 }
 
 # Veo 3 and Veo 3.1 models field mappings
-# Supports text-to-video, image-to-video, and first-last-frame-to-video
+# Supports text-to-video, image-to-video, first-last-frame-to-video, and video-to-video (extend-video)
 # Both versions use the same API parameters
 VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -110,6 +110,8 @@ VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "last_frame_url": single_image_field_mapper(
         required=False, image_type="last_frame"
     ),
+    # Video-to-video support (extend-video)
+    "video_url": video_url_field_mapper(),
 }
 
 # Sora 2 models field mappings
