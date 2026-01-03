@@ -16,3 +16,6 @@ htmlcov/
 .coverage
 .coverage.*
 coverage.xml
+
+# Git worktrees
+.worktrees/
