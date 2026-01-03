@@ -19,7 +19,9 @@ from tarash.tarash_gateway.video.models import (
     MediaContent,
     MediaType,
     ProgressCallback,
+    ProviderHandler,
     Resolution,
+    VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
@@ -193,6 +195,10 @@ class MockConfig(BaseModel):
 
     model_config = {"frozen": True, "arbitrary_types_allowed": True}
 
+
+# Rebuild VideoGenerationConfig now that MockConfig is defined
+# This resolves the forward reference in models.py
+VideoGenerationConfig.model_rebuild()
 
 # Cache directory
 MOCK_CACHE_DIR = Path.home() / ".tarash" / "mock_cache"
@@ -656,3 +662,62 @@ async def handle_mock_request_async(
         )
 
     return response
+
+
+# ==================== Provider Handler ====================
+
+
+class MockProviderHandler(ProviderHandler):
+    """Provider handler for mock video generation.
+
+    This handler wraps the mock logic and presents it as a standard ProviderHandler,
+    allowing mock to be treated like any other provider in the execution orchestrator.
+    """
+
+    async def generate_video_async(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Generate mock video asynchronously.
+
+        Args:
+            config: Video generation configuration (with mock config)
+            request: Video generation request
+            on_progress: Optional progress callback
+
+        Returns:
+            Mock video generation response
+
+        Raises:
+            TarashException: If mock is configured to raise an error
+        """
+        if not config.mock or not config.mock.enabled:
+            raise ValueError("MockProviderHandler requires mock config to be enabled")
+
+        return await handle_mock_request_async(config.mock, request, on_progress)
+
+    def generate_video(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Generate mock video synchronously.
+
+        Args:
+            config: Video generation configuration (with mock config)
+            request: Video generation request
+            on_progress: Optional progress callback
+
+        Returns:
+            Mock video generation response
+
+        Raises:
+            TarashException: If mock is configured to raise an error
+        """
+        if not config.mock or not config.mock.enabled:
+            raise ValueError("MockProviderHandler requires mock config to be enabled")
+
+        return handle_mock_request_sync(config.mock, request, on_progress)

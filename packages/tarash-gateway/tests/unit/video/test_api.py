@@ -2,15 +2,15 @@
 
 import pytest
 
+# Import mock module to trigger VideoGenerationConfig.model_rebuild()
+import tarash.tarash_gateway.video.mock  # noqa: F401
 from tarash.tarash_gateway.video.api import (
-    _get_handler,
+    _FIELD_MAPPER_REGISTRIES,
     generate_video,
     generate_video_async,
     get_provider_field_mapping,
     register_provider,
     register_provider_field_mapping,
-    _HANDLER_INSTANCES,
-    _FIELD_MAPPER_REGISTRIES,
 )
 from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import (
@@ -21,6 +21,10 @@ from tarash.tarash_gateway.video.models import (
 )
 from tarash.tarash_gateway.video.providers.field_mappers import (
     passthrough_field_mapper,
+)
+from tarash.tarash_gateway.video.registry import (
+    _HANDLER_INSTANCES,
+    get_handler as _get_handler,
 )
 
 
@@ -81,39 +85,54 @@ def sample_request():
 
 
 class TestGetHandler:
-    """Tests for _get_handler function."""
+    """Tests for get_handler function."""
 
     def test_get_handler_fal(self):
         """Test getting fal provider handler."""
-        handler = _get_handler("fal")
+        config = VideoGenerationConfig(
+            provider="fal", model="fal-ai/test", api_key="test"
+        )
+        handler = _get_handler(config)
         assert handler is not None
         assert "fal" in _HANDLER_INSTANCES
         # Subsequent calls should return same instance
-        handler2 = _get_handler("fal")
+        handler2 = _get_handler(config)
         assert handler is handler2
 
     def test_get_handler_veo3(self):
         """Test getting veo3 provider handler."""
-        handler = _get_handler("veo3")
+        config = VideoGenerationConfig(
+            provider="veo3", model="veo3-test", api_key="test"
+        )
+        handler = _get_handler(config)
         assert handler is not None
         assert "veo3" in _HANDLER_INSTANCES
 
     def test_get_handler_replicate(self):
         """Test getting replicate provider handler."""
-        handler = _get_handler("replicate")
+        config = VideoGenerationConfig(
+            provider="replicate", model="replicate/test", api_key="test"
+        )
+        handler = _get_handler(config)
         assert handler is not None
         assert "replicate" in _HANDLER_INSTANCES
 
     def test_get_handler_openai(self):
         """Test getting openai provider handler."""
-        handler = _get_handler("openai")
+        config = VideoGenerationConfig(
+            provider="openai", model="openai/test", api_key="test"
+        )
+        handler = _get_handler(config)
         assert handler is not None
         assert "openai" in _HANDLER_INSTANCES
 
     def test_get_handler_unsupported_provider(self):
         """Test getting unsupported provider raises ValidationError."""
+        config = VideoGenerationConfig(
+            provider="invalid-provider", model="test", api_key="test"
+        )
         with pytest.raises(ValidationError) as exc_info:
-            _get_handler("invalid-provider")
+            _get_handler(config)
 
         assert "Unsupported provider: invalid-provider" in str(exc_info.value)
         assert exc_info.value.provider == "invalid-provider"
@@ -143,11 +162,14 @@ class TestRegisterProvider:
         assert _HANDLER_INSTANCES["my-provider"] is handler2
 
     def test_register_provider_can_be_retrieved(self):
-        """Test that registered provider can be retrieved via _get_handler."""
+        """Test that registered provider can be retrieved via get_handler."""
         handler = MockProviderHandler()
         register_provider("test-provider", handler)
 
-        retrieved = _get_handler("test-provider")
+        config = VideoGenerationConfig(
+            provider="test-provider", model="test", api_key="test"
+        )
+        retrieved = _get_handler(config)
         assert retrieved is handler
 
 

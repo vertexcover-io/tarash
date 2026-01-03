@@ -1,7 +1,6 @@
-"""Orchestrator for managing fallback chain execution."""
+"""Orchestrator for managing video generation execution with fallback support."""
 
 from datetime import datetime
-from typing import Any, Awaitable, Callable
 
 from tarash.tarash_gateway.logging import log_error, log_info
 from tarash.tarash_gateway.video.exceptions import is_retryable_error
@@ -13,13 +12,10 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-
-# Type alias for handler factory functions
-HandlerFactory = Callable[[VideoGenerationConfig], Any]
-AsyncHandlerFactory = Callable[[VideoGenerationConfig], Awaitable[Any]]
+from tarash.tarash_gateway.video.registry import get_handler
 
 
-class FallbackOrchestrator:
+class ExecutionOrchestrator:
     """Orchestrator for managing fallback chain execution with metadata tracking."""
 
     @staticmethod
@@ -39,7 +35,7 @@ class FallbackOrchestrator:
         if config.fallback_configs:
             for fallback in config.fallback_configs:
                 # Recursively collect fallbacks (depth-first)
-                chain.extend(FallbackOrchestrator.collect_fallback_chain(fallback))
+                chain.extend(ExecutionOrchestrator.collect_fallback_chain(fallback))
 
         return chain
 
@@ -47,7 +43,6 @@ class FallbackOrchestrator:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        handler_factory: AsyncHandlerFactory,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """Execute video generation with fallback support (async).
@@ -55,7 +50,6 @@ class FallbackOrchestrator:
         Args:
             config: Primary video generation configuration
             request: Video generation request
-            handler_factory: Factory function to create provider handler
             on_progress: Optional progress callback
 
         Returns:
@@ -104,8 +98,8 @@ class FallbackOrchestrator:
                     logger_name="tarash.tarash_gateway.video.orchestrator",
                 )
 
-                # Create handler and execute
-                handler = await handler_factory(cfg)
+                # Get handler and execute
+                handler = get_handler(cfg)
                 response = await handler.generate_video_async(
                     cfg, request, on_progress=on_progress
                 )
@@ -197,7 +191,6 @@ class FallbackOrchestrator:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        handler_factory: HandlerFactory,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """Execute video generation with fallback support (sync).
@@ -205,7 +198,6 @@ class FallbackOrchestrator:
         Args:
             config: Primary video generation configuration
             request: Video generation request
-            handler_factory: Factory function to create provider handler
             on_progress: Optional progress callback
 
         Returns:
@@ -254,8 +246,8 @@ class FallbackOrchestrator:
                     logger_name="tarash.tarash_gateway.video.orchestrator",
                 )
 
-                # Create handler and execute
-                handler = handler_factory(cfg)
+                # Get handler and execute
+                handler = get_handler(cfg)
                 response = handler.generate_video(cfg, request, on_progress=on_progress)
 
                 # Success!

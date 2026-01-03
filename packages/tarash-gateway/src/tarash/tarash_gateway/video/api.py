@@ -1,36 +1,22 @@
 """Public API for video generation."""
 
-# from typing import AsyncIterator
-
-from tarash.tarash_gateway.logging import log_debug, log_error, log_info
-from tarash.tarash_gateway.video.exceptions import ValidationError
+from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.video.models import (
     ProgressCallback,
-    ProviderHandler,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.video.orchestrator import FallbackOrchestrator
-from tarash.tarash_gateway.video.providers import (
-    FalProviderHandler,
-    OpenAIProviderHandler,
-    ReplicateProviderHandler,
-    RunwayProviderHandler,
-    Veo3ProviderHandler,
-)
+from tarash.tarash_gateway.video.orchestrator import ExecutionOrchestrator
 from tarash.tarash_gateway.video.providers.fal import FAL_MODEL_REGISTRY
 from tarash.tarash_gateway.video.providers.field_mappers import FieldMapper
 from tarash.tarash_gateway.video.providers.replicate import REPLICATE_MODEL_REGISTRY
+from tarash.tarash_gateway.video.registry import register_provider as _register_provider
 
-# Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
 # ==================== Provider Registry ====================
 
-# Singleton instances of handlers (stateless)
-_HANDLER_INSTANCES: dict[str, ProviderHandler] = {}
-
 # Singleton orchestrator instance
-_ORCHESTRATOR = FallbackOrchestrator()
+_ORCHESTRATOR = ExecutionOrchestrator()
 
 # Field mapper registries for each provider (hardcoded built-in providers)
 _FIELD_MAPPER_REGISTRIES: dict[str, dict[str, dict[str, FieldMapper]]] = {
@@ -39,41 +25,9 @@ _FIELD_MAPPER_REGISTRIES: dict[str, dict[str, dict[str, FieldMapper]]] = {
 }
 
 
-def _get_handler(provider: str) -> ProviderHandler:
-    """Get or create handler instance for provider."""
-    if provider not in _HANDLER_INSTANCES:
-        log_debug(
-            "Selected provider",
-            context={"provider": provider},
-            logger_name="tarash.tarash_gateway.video.api",
-        )
-        if provider == "fal":
-            _HANDLER_INSTANCES[provider] = FalProviderHandler()
-        elif provider == "veo3":
-            _HANDLER_INSTANCES[provider] = Veo3ProviderHandler()
-        elif provider == "replicate":
-            _HANDLER_INSTANCES[provider] = ReplicateProviderHandler()
-        elif provider == "openai":
-            _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
-        elif provider == "runway":
-            _HANDLER_INSTANCES[provider] = RunwayProviderHandler()
-        else:
-            log_error(
-                "Unsupported provider",
-                context={"provider": provider},
-                logger_name="tarash.tarash_gateway.video.api",
-            )
-            raise ValidationError(
-                f"Unsupported provider: {provider}",
-                provider=provider,
-            )
-
-    return _HANDLER_INSTANCES[provider]
-
-
 def register_provider(
     provider: str,
-    handler: ProviderHandler,
+    handler: "ProviderHandler",  # noqa: F821
 ) -> None:
     """Register a custom provider handler.
 
@@ -94,19 +48,7 @@ def register_provider(
         ...         pass
         >>> register_provider("my-provider", MyCustomHandler())
     """
-    if provider in _HANDLER_INSTANCES:
-        log_info(
-            f"Overwriting existing provider handler: {provider}",
-            context={"provider": provider},
-            logger_name="tarash.tarash_gateway.video.api",
-        )
-
-    _HANDLER_INSTANCES[provider] = handler
-    log_debug(
-        "Registered custom provider handler",
-        context={"provider": provider},
-        logger_name="tarash.tarash_gateway.video.api",
-    )
+    _register_provider(provider, handler)
 
 
 def register_provider_field_mapping(
@@ -179,9 +121,10 @@ async def generate_video_async(
     Generate video asynchronously with progress callback (sync or async).
 
     Supports automatic fallback to alternative providers if configured.
+    Supports mock mode for testing and development.
 
     Args:
-        config: Provider configuration (may include fallback_configs)
+        config: Provider configuration (may include fallback_configs and mock config)
         request: Video generation request
         on_progress: Optional callback (sync or async) for progress updates
 
@@ -201,21 +144,8 @@ async def generate_video_async(
         redact=True,
     )
 
-    # INTERCEPTION: Check for mock mode
-    if config.mock and config.mock.enabled:
-        from tarash.tarash_gateway.video.mock import handle_mock_request_async
-
-        return await handle_mock_request_async(config.mock, request, on_progress)
-
-    # Handler factory function (creates handler for given config)
-    async def handler_factory(cfg: VideoGenerationConfig) -> ProviderHandler:
-        return _get_handler(cfg.provider)
-
-    # Delegate to orchestrator for fallback support
-    response = await _ORCHESTRATOR.execute_async(
-        config, request, handler_factory, on_progress=on_progress
-    )
-    return response
+    # Delegate to orchestrator (handles mock, fallbacks, and execution)
+    return await _ORCHESTRATOR.execute_async(config, request, on_progress=on_progress)
 
 
 def generate_video(
@@ -227,9 +157,10 @@ def generate_video(
     Generate video synchronously (blocking) with progress callback.
 
     Supports automatic fallback to alternative providers if configured.
+    Supports mock mode for testing and development.
 
     Args:
-        config: Provider configuration (may include fallback_configs)
+        config: Provider configuration (may include fallback_configs and mock config)
         request: Video generation request
         on_progress: Optional callback (sync or async) for progress updates
 
@@ -249,18 +180,5 @@ def generate_video(
         logger_name="tarash.tarash_gateway.video.api",
     )
 
-    # INTERCEPTION: Check for mock mode
-    if config.mock and config.mock.enabled:
-        from tarash.tarash_gateway.video.mock import handle_mock_request_sync
-
-        return handle_mock_request_sync(config.mock, request, on_progress)
-
-    # Handler factory function (creates handler for given config)
-    def handler_factory(cfg: VideoGenerationConfig) -> ProviderHandler:
-        return _get_handler(cfg.provider)
-
-    # Delegate to orchestrator for fallback support
-    response = _ORCHESTRATOR.execute_sync(
-        config, request, handler_factory, on_progress=on_progress
-    )
-    return response
+    # Delegate to orchestrator (handles mock, fallbacks, and execution)
+    return _ORCHESTRATOR.execute_sync(config, request, on_progress=on_progress)
