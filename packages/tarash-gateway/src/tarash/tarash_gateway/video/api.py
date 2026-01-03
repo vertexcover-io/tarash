@@ -11,15 +11,16 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
+from tarash.tarash_gateway.video.orchestrator import FallbackOrchestrator
 from tarash.tarash_gateway.video.providers import (
-    OpenAIProviderHandler,
     FalProviderHandler,
-    Veo3ProviderHandler,
+    OpenAIProviderHandler,
     ReplicateProviderHandler,
     RunwayProviderHandler,
+    Veo3ProviderHandler,
 )
-from tarash.tarash_gateway.video.providers.field_mappers import FieldMapper
 from tarash.tarash_gateway.video.providers.fal import FAL_MODEL_REGISTRY
+from tarash.tarash_gateway.video.providers.field_mappers import FieldMapper
 from tarash.tarash_gateway.video.providers.replicate import REPLICATE_MODEL_REGISTRY
 
 # Replicate imports are conditional due to pydantic v1 compatibility issues with Python 3.14+
@@ -27,6 +28,9 @@ from tarash.tarash_gateway.video.providers.replicate import REPLICATE_MODEL_REGI
 
 # Singleton instances of handlers (stateless)
 _HANDLER_INSTANCES: dict[str, ProviderHandler] = {}
+
+# Singleton orchestrator instance
+_ORCHESTRATOR = FallbackOrchestrator()
 
 # Field mapper registries for each provider (hardcoded built-in providers)
 _FIELD_MAPPER_REGISTRIES: dict[str, dict[str, dict[str, FieldMapper]]] = {
@@ -174,16 +178,18 @@ async def generate_video_async(
     """
     Generate video asynchronously with progress callback (sync or async).
 
+    Supports automatic fallback to alternative providers if configured.
+
     Args:
-        config: Provider configuration
+        config: Provider configuration (may include fallback_configs)
         request: Video generation request
         on_progress: Optional callback (sync or async) for progress updates
 
     Returns:
-        Final VideoGenerationResponse when complete
+        Final VideoGenerationResponse when complete (includes execution_metadata)
 
     Raises:
-        TarashException: If generation fails
+        TarashException: If generation fails on all providers in fallback chain
     """
     log_info(
         "Video generation request received (async)",
@@ -201,13 +207,13 @@ async def generate_video_async(
 
         return await handle_mock_request_async(config.mock, request, on_progress)
 
-    # Get handler for provider
-    handler = _get_handler(config.provider)
+    # Handler factory function (creates handler for given config)
+    async def handler_factory(cfg: VideoGenerationConfig) -> ProviderHandler:
+        return _get_handler(cfg.provider)
 
-    # Generate using handler with async callback support
-    # Errors are logged by the handle_video_generation_errors decorator
-    response = await handler.generate_video_async(
-        config, request, on_progress=on_progress
+    # Delegate to orchestrator for fallback support
+    response = await _ORCHESTRATOR.execute_async(
+        config, request, handler_factory, on_progress=on_progress
     )
     return response
 
@@ -220,16 +226,18 @@ def generate_video(
     """
     Generate video synchronously (blocking) with progress callback.
 
+    Supports automatic fallback to alternative providers if configured.
+
     Args:
-        config: Provider configuration
+        config: Provider configuration (may include fallback_configs)
         request: Video generation request
         on_progress: Optional callback (sync or async) for progress updates
 
     Returns:
-        Final VideoGenerationResponse when complete
+        Final VideoGenerationResponse when complete (includes execution_metadata)
 
     Raises:
-        TarashException: If generation fails
+        TarashException: If generation fails on all providers in fallback chain
     """
     log_info(
         "Video generation request received (sync)",
@@ -241,10 +249,12 @@ def generate_video(
         logger_name="tarash.tarash_gateway.video.api",
     )
 
-    # Get handler for provider
-    handler = _get_handler(config.provider)
+    # Handler factory function (creates handler for given config)
+    def handler_factory(cfg: VideoGenerationConfig) -> ProviderHandler:
+        return _get_handler(cfg.provider)
 
-    # Generate using handler with callback support
-    # Errors are logged by the handle_video_generation_errors decorator
-    response = handler.generate_video(config, request, on_progress=on_progress)
+    # Delegate to orchestrator for fallback support
+    response = _ORCHESTRATOR.execute_sync(
+        config, request, handler_factory, on_progress=on_progress
+    )
     return response
