@@ -174,3 +174,80 @@ except ImportError:
 - Provider code using these types won't run if `__init__` raises ImportError
 - Placeholder types mask the real problem and create confusing errors
 - Better to fail fast with clear error than fail later with cryptic behavior
+
+## Testing Guidelines
+
+### Test Organization
+
+**CRITICAL: Use function-based tests, not class-based tests**
+
+- **DO NOT** organize tests into classes (e.g., `class TestFoo:`)
+- **USE** standalone test functions with descriptive names
+- **USE** fixtures for shared setup/teardown
+- **USE** descriptive test function names that explain what is being tested
+
+**Examples:**
+
+Good:
+```python
+@pytest.fixture
+def basic_request():
+    """Create a basic video generation request."""
+    return VideoGenerationRequest(
+        prompt="A cat playing piano",
+        aspect_ratio="16:9",
+        resolution="1080p",
+        duration_seconds=4,
+    )
+
+def test_simple_success_response(basic_request):
+    """Simple success response with auto-matched video."""
+    config = MockConfig(enabled=True)
+    response = handle_mock_request_sync(config, basic_request)
+
+    assert response.status == "completed"
+    assert response.is_mock is True
+    assert response.request_id.startswith("mock_")
+
+def test_error_response_validation_error(basic_request):
+    """Error response with ValidationError."""
+    error = ValidationError("Invalid aspect ratio", provider="mock")
+    config = MockConfig(
+        enabled=True,
+        responses=[MockResponse(weight=1.0, error=error)],
+    )
+
+    with pytest.raises(ValidationError, match="Invalid aspect ratio"):
+        handle_mock_request_sync(config, basic_request)
+```
+
+Bad:
+```python
+class TestHandleMockRequestSync:
+    """Test synchronous mock request handler."""
+
+    def test_simple_success_response(self, basic_request):
+        """Simple success response with auto-matched video."""
+        config = MockConfig(enabled=True)
+        response = handle_mock_request_sync(config, basic_request)
+
+        assert response.status == "completed"
+
+    def test_error_response(self, basic_request):
+        """Error response with ValidationError."""
+        error = ValidationError("Invalid aspect ratio", provider="mock")
+        config = MockConfig(
+            enabled=True,
+            responses=[MockResponse(weight=1.0, error=error)],
+        )
+
+        with pytest.raises(ValidationError):
+            handle_mock_request_sync(config, basic_request)
+```
+
+**Rationale:**
+- Function-based tests are simpler and more Pythonic
+- Easier to read and understand at a glance
+- No need for `self` parameter clutter
+- Better pytest output with flat structure
+- Fixtures provide all the shared setup benefits of classes without the overhead

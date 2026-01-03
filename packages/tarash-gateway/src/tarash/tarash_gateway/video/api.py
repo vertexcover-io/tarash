@@ -241,6 +241,12 @@ def generate_video(
         logger_name="tarash.tarash_gateway.video.api",
     )
 
+    # INTERCEPTION: Check for mock mode
+    if config.mock and config.mock.enabled:
+        from tarash.tarash_gateway.video.mock import handle_mock_request_sync
+
+        return handle_mock_request_sync(config.mock, request, on_progress)
+
     # Get handler for provider
     handler = _get_handler(config.provider)
 
