@@ -1,0 +1,23 @@
+[project]
+name = "tarash-scene-detector"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ritesh Kadmawala", email = "ritesh@vertexcover.io" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "scenedetect[opencv]>=0.6.7.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "tarash.scene_detector"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tarash"]
