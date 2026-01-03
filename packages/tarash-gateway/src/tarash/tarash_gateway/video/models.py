@@ -1,6 +1,7 @@
 """Core data models for video generation."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Literal, Protocol, TypedDict, Union
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
@@ -33,6 +34,61 @@ ProgressCallback = Union[
     Callable[["VideoGenerationUpdate"], Awaitable[None]],
 ]
 
+# ==================== Execution Metadata ====================
+
+
+@dataclass
+class AttemptMetadata:
+    """Metadata for a single attempt in the fallback chain."""
+
+    provider: str
+    model: str
+    attempt_number: int
+    started_at: datetime
+    ended_at: datetime | None
+    status: Literal["success", "failed", "skipped"]
+    error_type: str | None
+    error_message: str | None
+    is_retryable: bool | None
+    request_id: str | None
+
+    @property
+    def elapsed_seconds(self) -> float | None:
+        """Compute elapsed time from timestamps."""
+        if self.ended_at is None:
+            return None
+        return (self.ended_at - self.started_at).total_seconds()
+
+
+@dataclass
+class ExecutionMetadata:
+    """Metadata for the complete execution including all fallback attempts."""
+
+    total_attempts: int
+    successful_attempt: int | None
+    attempts: list[AttemptMetadata]
+    fallback_triggered: bool
+    configs_in_chain: int
+
+    @property
+    def total_elapsed_seconds(self) -> float:
+        """Compute total elapsed time from first start to last end."""
+        if not self.attempts:
+            return 0.0
+
+        first_start = self.attempts[0].started_at
+        last_end = max(
+            (
+                attempt.ended_at
+                for attempt in self.attempts
+                if attempt.ended_at is not None
+            ),
+            default=first_start,
+        )
+
+        return (last_end - first_start).total_seconds()
+
+
 # ==================== Configuration ====================
 
 
@@ -48,6 +104,7 @@ class VideoGenerationConfig(BaseModel):
     max_poll_attempts: int = 120
     poll_interval: int = 5  # seconds
     mock: "MockConfig | None" = None  # Mock configuration
+    fallback_configs: list["VideoGenerationConfig"] | None = None  # Fallback chain
 
     model_config = {"frozen": True}
 
@@ -119,6 +176,7 @@ class VideoGenerationResponse(BaseModel):
     # Debugging & provider-specific data
     raw_response: dict[str, Any]
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    execution_metadata: ExecutionMetadata | None = None  # Fallback execution tracking
 
     model_config = {"frozen": True}
 
