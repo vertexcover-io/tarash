@@ -91,6 +91,45 @@ class TimeoutError(TarashException):
         self.timeout_seconds = timeout_seconds
 
 
+def is_retryable_error(error: Exception) -> bool:
+    """Determine if an error should trigger a fallback retry.
+
+    Retryable errors (should try fallback):
+    - GenerationFailedError: Video generation failed on provider side
+    - TimeoutError: Request timed out
+    - HTTPConnectionError: Network/connection failure
+    - HTTPError with codes: 429 (rate limit), 500, 502, 503, 504 (server errors)
+
+    Non-retryable errors (should NOT try fallback):
+    - ValidationError: Input validation failed (client error)
+    - ContentModerationError: Content policy violation
+    - HTTPError with codes: 400, 401, 403, 404 (client errors)
+    - Other unknown exceptions
+
+    Args:
+        error: Exception to classify
+
+    Returns:
+        True if error should trigger fallback, False otherwise
+    """
+    # Retryable: Generation failures, timeouts, connection errors
+    if isinstance(error, (GenerationFailedError, TimeoutError, HTTPConnectionError)):
+        return True
+
+    # Retryable: HTTP errors with specific status codes
+    if isinstance(error, HTTPError):
+        if error.status_code in (429, 500, 502, 503, 504):
+            return True
+        return False
+
+    # Non-retryable: Validation and content moderation errors
+    if isinstance(error, (ValidationError, ContentModerationError)):
+        return False
+
+    # Non-retryable: Unknown errors
+    return False
+
+
 def handle_video_generation_errors(func: Callable) -> Callable:
     """Decorator to handle only truly unhandled exceptions.
 
