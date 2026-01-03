@@ -17,6 +17,10 @@ if [ -z "$NAMESPACE" ] || [ -z "$PACKAGE_NAME" ]; then
     exit 1
 fi
 
+# Strip namespace prefix if it exists in package name
+# e.g., if PACKAGE_NAME is "tarash-gateway", make it just "gateway"
+PACKAGE_NAME="${PACKAGE_NAME#${NAMESPACE}-}"
+
 FULL_PACKAGE_NAME="${NAMESPACE}-${PACKAGE_NAME}"
 PACKAGE_PATH="${PACKAGES_DIR}/${PACKAGE_NAME}"
 ROOT_PYPROJECT="pyproject.toml"

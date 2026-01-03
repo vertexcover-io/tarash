@@ -381,3 +381,268 @@ async def test_veo31_first_last_frame_to_video(fal_api_key):
     print("  Aspect Ratio: 16:9")
     print("  Resolution: 720p")
     print("  Generate Audio: True")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_wan_v26_text_to_video(fal_api_key):
+    """
+    Test Wan v2.6 text-to-video model.
+
+    This tests:
+    - Wan v2.6 text-to-video model (wan/v2.6/text-to-video)
+    - Field mapping: duration_seconds -> duration (string without 's' suffix)
+    - Wan-specific parameters: enable_prompt_expansion, multi_shots
+    - Extra params: audio_url
+    - Prefix matching in registry (wan/v2.6/)
+    """
+    wan_config = VideoGenerationConfig(
+        model="wan/v2.6/text-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A cinematic shot of a fox director on a movie set, giving instructions to the crew",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        seed=42,
+        enhance_prompt=True,  # Maps to enable_prompt_expansion
+        negative_prompt="low quality, blurry, distorted",
+        extra_params={
+            "multi_shots": True,
+        },
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(wan_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated Wan v2.6 text-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {wan_config.model}")
+    print("  Duration: 5s")
+    print("  Aspect Ratio: 16:9")
+    print("  Resolution: 1080p")
+    print("  Prompt expansion: Enabled")
+    print("  Multi-shots: Enabled")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_wan_v25_image_to_video(fal_api_key):
+    """
+    Test Wan v2.5 image-to-video model.
+
+    This tests:
+    - Wan v2.5 image-to-video model (fal-ai/wan-25-preview/image-to-video)
+    - Field mapping: image_list -> image_url
+    - Unified mapper shared between v2.6 and v2.5
+    - Duration as string format
+    - Prefix matching in registry (fal-ai/wan-25-preview/)
+    """
+    wan_config = VideoGenerationConfig(
+        model="fal-ai/wan-25-preview/image-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A white dragon warrior standing majestically, with camera slowly moving around",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        resolution="720p",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/wan/dragon-warrior.jpg",
+                "type": "reference",
+            }
+        ],
+        enhance_prompt=True,
+        negative_prompt="low quality, blurry",
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(wan_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated Wan v2.5 image-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {wan_config.model}")
+    print("  Duration: 5s")
+    print("  Aspect Ratio: 16:9")
+    print("  Resolution: 720p")
+    print("  With reference image")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_wan_v22_animate_move(fal_api_key):
+    """
+    Test Wan v2.2-14b animate/move model.
+
+    This tests:
+    - Wan v2.2-14b animate/move model (fal-ai/wan/v2.2-14b/animate/move)
+    - Field mapping: video -> video_url, image_list -> image_url
+    - Wan v2.2-specific parameters: shift, guidance_scale, num_inference_steps
+    - Quality parameters: video_quality, video_write_mode, use_turbo
+    - Separate mapper from v2.6/v2.5
+    - Prefix matching in registry (fal-ai/wan/v2.2-14b/animate/)
+    """
+    wan_config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-14b/animate/move",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="",  # Auto-generated by model
+        video="https://v3b.fal.media/files/b/panda/a6SvJg96V8eoglMlYFShU_5385885-hd_1080_1920_25fps.mp4",
+        image_list=[
+            {
+                "image": "https://v3b.fal.media/files/b/panda/-oMlZo9Yyj_Nzoza_tgds_GmLF86r5bOt50eMMKCszy_eacc949b3933443c9915a83c98fbe85e.png",
+                "type": "reference",
+            }
+        ],
+        resolution="480p",
+        seed=42,
+        extra_params={
+            "shift": 8,
+            "guidance_scale": 1,
+            "num_inference_steps": 6,
+            "use_turbo": True,
+            "video_quality": "high",
+            "video_write_mode": "balanced",
+        },
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(wan_config, request)
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    print(f"✓ Generated Wan v2.2-14b animate/move: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {wan_config.model}")
+    print("  Resolution: 480p")
+    print("  Shift: 8")
+    print("  Guidance scale: 1")
+    print("  Inference steps: 6")
+    print("  Use turbo: True")
+    print("  Video quality: high")
+    print("  Video write mode: balanced")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_veo31_fast_extend_video(fal_api_key):
+    """
+    Test Veo 3.1 fast extend-video model.
+
+    This tests:
+    - Veo 3.1 fast extend-video model (fal-ai/veo3.1/fast/extend-video)
+    - Field mapping: video -> video_url (required)
+    - 7s duration (only supported duration for extend-video)
+    - 720p resolution (only supported resolution for extend-video)
+    - Aspect ratio options: auto, 16:9, 9:16
+    - Generate audio and auto_fix parameters
+    """
+    veo31_extend_config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/extend-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    # Track progress updates
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    request = VideoGenerationRequest(
+        prompt="Continue the scene naturally, maintaining the same style and motion",
+        video="https://v3b.fal.media/files/b/0a8670fe/pY8UGl4_C452wOm9XUBYO_9ae04df8771c4f3f979fa5cabeca6ada.mp4",
+        aspect_ratio="16:9",
+        duration_seconds=7,
+        resolution="720p",
+        generate_audio=True,
+        auto_fix=False,
+    )
+
+    # Generate video using API (async)
+    response = await api.generate_video_async(
+        veo31_extend_config, request, on_progress=progress_callback
+    )
+
+    # Validate response
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    # Video should be a URL
+    assert isinstance(response.video, str), "Video should be a string"
+    assert response.video.startswith("http"), (
+        f"Expected HTTP URL, got: {response.video}"
+    )
+
+    # Validate progress tracking
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [update.status for update in progress_updates]
+    assert "completed" in statuses, "Should receive completed status"
+
+    print(f"✓ Generated veo3.1 fast extend-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {veo31_extend_config.model}")
+    print("  Duration: 7s")
+    print("  Aspect Ratio: 16:9")
+    print("  Resolution: 720p")
+    print("  Generate Audio: True")
+    print(f"  Progress updates: {len(progress_updates)}")
+    print(f"  Statuses: {statuses}")

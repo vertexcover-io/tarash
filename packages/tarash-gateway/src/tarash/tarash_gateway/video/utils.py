@@ -138,6 +138,78 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
         ) from e
 
 
+async def download_media_from_url_async(
+    url: str, provider: str = "unknown"
+) -> tuple[bytes, str]:
+    """
+    Download media (image/video) from URL asynchronously and return bytes with content type.
+
+    Args:
+        url: URL to download from
+        provider: Provider name for error messages
+
+    Returns:
+        Tuple of (content_bytes, content_type)
+
+    Raises:
+        HTTPError: If download fails with HTTP error
+        TarashException: If download fails for other reasons
+    """
+    log_debug(
+        "Downloading media from URL (async)",
+        context={"provider": provider, "url": url},
+        logger_name="tarash.tarash_gateway.video.utils",
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+            content_type = response.headers.get(
+                "content-type", "application/octet-stream"
+            )
+            content_size = len(response.content)
+            log_debug(
+                "Media downloaded successfully (async)",
+                context={
+                    "provider": provider,
+                    "url": url,
+                    "content_type": content_type,
+                    "content_size_bytes": content_size,
+                },
+                logger_name="tarash.tarash_gateway.video.utils",
+            )
+            return response.content, content_type
+    except httpx.HTTPStatusError as e:
+        log_error(
+            f"Failed to download media from URL - HTTP error with status code {e.response.status_code}: {e}",
+            context={
+                "provider": provider,
+                "url": url,
+                "status_code": e.response.status_code,
+            },
+            logger_name="tarash.tarash_gateway.video.utils",
+        )
+        raise HTTPError(
+            f"Failed to download media from URL: {e}",
+            provider=provider,
+            raw_response={"url": url, "response": e.response.content},
+            status_code=e.response.status_code,
+        ) from e
+    except Exception as e:
+        log_error(
+            "Failed to download media from URL (async)",
+            context={"provider": provider, "url": url},
+            logger_name="tarash.tarash_gateway.video.utils",
+            exc_info=True,
+        )
+        raise TarashException(
+            f"Failed to download media from URL: {e}",
+            provider=provider,
+            raw_response={"url": url, "exception": str(e)},
+        ) from e
+
+
 def get_filename_from_url(url: str) -> str:
     """
     Extract filename from URL path.

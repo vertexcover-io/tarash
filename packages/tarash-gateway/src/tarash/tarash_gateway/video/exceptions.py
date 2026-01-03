@@ -69,6 +69,28 @@ class GenerationFailedError(TarashException):
     pass
 
 
+class HTTPConnectionError(TarashException):
+    """HTTP connection error (network failure, DNS resolution, etc.)."""
+
+    pass
+
+
+class TimeoutError(TarashException):
+    """Request timed out."""
+
+    def __init__(
+        self,
+        message: str,
+        provider: str | None = None,
+        model: str | None = None,
+        request_id: str | None = None,
+        raw_response: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
+    ):
+        super().__init__(message, provider, model, request_id, raw_response)
+        self.timeout_seconds = timeout_seconds
+
+
 def handle_video_generation_errors(func: Callable) -> Callable:
     """Decorator to handle only truly unhandled exceptions.
 

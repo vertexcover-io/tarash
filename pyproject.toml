@@ -12,6 +12,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
+tarash-scene-detector = { workspace = true }
 tarash-gateway = { workspace = true }
 
 [project.scripts]

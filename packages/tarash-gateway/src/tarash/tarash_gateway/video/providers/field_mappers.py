@@ -88,6 +88,7 @@ def duration_field_mapper(
     allowed_values: list[str] | list[int] | None = None,
     provider: str = "unknown",
     model: str | None = None,
+    add_suffix: bool = True,
 ) -> FieldMapper:
     """Create a FieldMapper for duration field.
 
@@ -96,13 +97,17 @@ def duration_field_mapper(
         allowed_values: Optional list of allowed values for validation
         provider: Provider name for error messages (default: "unknown")
         model: Optional model name for error messages
+        add_suffix: Whether to add "s" suffix for string type (default: True)
 
     Returns:
         FieldMapper for duration_seconds -> duration
 
     Examples:
-        >>> # String format with validation
+        >>> # String format with validation and suffix
         >>> duration_field_mapper("str", ["6s", "10s"], "fal", "minimax")
+
+        >>> # String format without suffix (ByteDance)
+        >>> duration_field_mapper("str", ["4", "5", "6"], "fal", "bytedance", add_suffix=False)
 
         >>> # Integer format without validation
         >>> duration_field_mapper("int")
@@ -123,7 +128,7 @@ def duration_field_mapper(
                 ]
                 # Use shared validation function
                 validate_duration(value, allowed_seconds, provider, model)
-                return f"{value}s"
+                return f"{value}s" if add_suffix else str(value)
             else:  # int
                 # Validate with shared function
                 validate_duration(value, allowed_values, provider, model)
@@ -131,7 +136,7 @@ def duration_field_mapper(
 
         # No validation, just convert
         if field_type == "str":
-            return f"{value}s"
+            return f"{value}s" if add_suffix else str(value)
         else:
             return value
 
@@ -143,6 +148,7 @@ def single_image_field_mapper(
     image_type: Literal[
         "reference", "first_frame", "last_frame", "asset", "style"
     ] = "reference",
+    strict: bool = True,
 ) -> FieldMapper:
     """Create a FieldMapper for extracting single image from image_list.
 
@@ -151,6 +157,8 @@ def single_image_field_mapper(
     Args:
         required: Whether this field is required (default: False)
         image_type: Type of image to extract (default: "reference")
+        strict: If True, raises error when multiple images of type are found.
+                If False, returns None when multiple images are found (default: True)
 
     Returns:
         FieldMapper for image_list -> image_url (single string)
@@ -175,9 +183,14 @@ def single_image_field_mapper(
             return None
 
         if len(filtered_images) > 1:
-            raise ValueError(
-                f"Only 1 {image_type} image allowed, got {len(filtered_images)} images",
-            )
+            if strict:
+                raise ValueError(
+                    f"Only 1 {image_type} image allowed, got {len(filtered_images)} images",
+                )
+            else:
+                # Multiple images found, but not in strict mode - return None
+                # This allows reference_image_urls to handle them
+                return None
 
         # Extract the image
         target_image = filtered_images[0]
@@ -196,8 +209,15 @@ def single_image_field_mapper(
     )
 
 
-def image_list_field_mapper() -> FieldMapper:
+def image_list_field_mapper(
+    image_type: Literal["reference", "first_frame", "last_frame", "asset", "style"]
+    | None = None,
+) -> FieldMapper:
     """Create a FieldMapper for converting image_list to list of URLs.
+
+    Args:
+        image_type: Optional filter to only include images of this type.
+                    If None, includes all images.
 
     Returns:
         FieldMapper for image_list -> image_urls (list of strings)
@@ -207,8 +227,17 @@ def image_list_field_mapper() -> FieldMapper:
         if not value:
             return []
 
+        # Filter by image type if specified
+        filtered_items = value
+        if image_type is not None:
+            filtered_items = [
+                item
+                for item in value
+                if isinstance(item, dict) and item.get("type") == image_type
+            ]
+
         urls = []
-        for item in value:
+        for item in filtered_items:
             if isinstance(item, dict) and "image" in item:
                 media = item["image"]
                 if isinstance(media, dict) and "content" in media:

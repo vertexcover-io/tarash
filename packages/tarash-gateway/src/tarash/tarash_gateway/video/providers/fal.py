@@ -9,10 +9,11 @@ from fal_client.client import FalClientHTTPError
 
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import (
-    ContentModerationError,
     GenerationFailedError,
+    HTTPConnectionError,
     HTTPError,
     TarashException,
+    TimeoutError,
     ValidationError,
     handle_video_generation_errors,
 )
@@ -37,6 +38,7 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
 
 try:
     import fal_client
+    import httpx
     from fal_client import (
         AsyncClient,
         Status,
@@ -88,15 +90,62 @@ KLING_VIDEO_V26_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "keep_original_sound": extra_params_field_mapper("keep_original_sound"),
 }
 
+
+# Kling Video O1 - Unified mapper for all variants
+# Supports: image-to-video, reference-to-video, video-to-video/edit
+# Reference: https://fal.ai/models/fal-ai/kling-video/o1/*
+#
+# Usage for elements (reference-to-video and video-to-video/edit):
+#   Pass elements directly via extra_params in the exact format expected by Fal:
+#   extra_params={
+#       "elements": [
+#           {
+#               "frontal_image_url": "url",
+#               "reference_image_urls": ["url1", "url2"]  # Optional, 1-4 additional angles
+#           }
+#       ]
+#   }
+KLING_O1_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core required field (all variants)
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Image-to-video: start/end frame support
+    "start_image_url": single_image_field_mapper(
+        required=False, image_type="first_frame"
+    ),
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    # Reference-to-video and video-to-video/edit: elements support (passed via extra_params)
+    "elements": extra_params_field_mapper("elements"),
+    "image_urls": image_list_field_mapper(image_type="reference"),
+    # Optional parameters (variant-specific)
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=["5", "10"],
+        provider="fal",
+        model="kling-o1",
+        add_suffix=False,  # o1 uses "5", "10" without "s" suffix
+    ),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    # Video-to-video/edit specific
+    "video_url": video_url_field_mapper(required=False),
+    "keep_audio": passthrough_field_mapper("keep_audio"),
+}
+
 # Veo 3 and Veo 3.1 models field mappings
 # Supports text-to-video, image-to-video, first-last-frame-to-video, and video-to-video (extend-video)
-# Both versions use the same API parameters
+#
+# Notes on extend-video:
+# - The fal-ai/veo3.1/fast/extend-video endpoint has stricter constraints:
+#   - Only supports 7s duration (vs 4s/6s/8s for other variants)
+#   - Only supports 720p resolution
+#   - Requires both prompt and video_url
+# - These API-level constraints are enforced by Fal's API, not by field mappers
+# - Use extra_params for extend-video specific values like aspect_ratio: "auto"
 VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
     "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
     "duration": duration_field_mapper(
         field_type="str",
-        allowed_values=["4s", "6s", "8s"],
+        allowed_values=["4s", "6s", "8s", "7s"],  # Added 7s for extend-video
         provider="fal",
         model="veo3",
     ),
@@ -119,7 +168,13 @@ VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
 }
 
 # Sora 2 models field mappings
-# Supports both text-to-video and image-to-video variants
+# Supports text-to-video, image-to-video, and video-to-video/remix variants
+#
+# Notes on video-to-video/remix:
+# - The fal-ai/sora-2/video-to-video/remix endpoint remixes Sora-generated videos
+# - Requires video_id (not video_url) - can only remix Sora 2 generated videos
+# - Pass video_id via extra_params: extra_params={"video_id": "video_123"}
+# - Does not use aspect_ratio, resolution, duration (inherited from original video)
 SORA2_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
     "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
@@ -130,6 +185,134 @@ SORA2_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "delete_video": passthrough_field_mapper("delete_video"),
     # Image-to-video support (optional - required only for image-to-video variant)
     "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    # Video-to-video/remix support (via extra_params)
+    "video_id": extra_params_field_mapper("video_id"),
+}
+
+# Wan v2.6 and v2.5 - Unified mapper for all video generation endpoints
+# Supports: text-to-video, image-to-video, reference-to-video
+# Works with both v2.6 (wan/v2.6/*) and v2.5 (fal-ai/wan-25-preview/*)
+WAN_VIDEO_GENERATION_MAPPERS: dict[str, FieldMapper] = {
+    # Core parameters (all variants)
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="str", add_suffix=False
+    ),  # Wan doesn't support "s" suffix
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "seed": passthrough_field_mapper("seed"),
+    # Image/Video inputs (optional - used by I2V and R2V variants)
+    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "video_urls": extra_params_field_mapper(
+        "video_urls"
+    ),  # For R2V with @Video1, @Video2, @Video3
+    # Wan-specific features
+    "audio_url": extra_params_field_mapper("audio_url"),
+    "enable_prompt_expansion": passthrough_field_mapper("enhance_prompt"),
+    "multi_shots": extra_params_field_mapper("multi_shots"),
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
+# Wan v2.2-14b Animate/Move - Video+Image to Video with motion control
+WAN_ANIMATE_MAPPERS: dict[str, FieldMapper] = {
+    # Required inputs
+    "video_url": video_url_field_mapper(required=True),
+    "image_url": single_image_field_mapper(required=True, image_type="reference"),
+    # Generation parameters
+    "resolution": passthrough_field_mapper("resolution"),
+    "seed": passthrough_field_mapper("seed"),
+    # Motion control parameters (via extra_params)
+    "guidance_scale": extra_params_field_mapper("guidance_scale"),
+    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
+    "shift": extra_params_field_mapper("shift"),
+    # Quality/output parameters
+    "video_quality": extra_params_field_mapper("video_quality"),
+    "video_write_mode": extra_params_field_mapper("video_write_mode"),
+    "use_turbo": extra_params_field_mapper("use_turbo"),
+    "return_frames_zip": extra_params_field_mapper("return_frames_zip"),
+    # Safety
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+    "enable_output_safety_checker": extra_params_field_mapper(
+        "enable_output_safety_checker"
+    ),
+}
+
+# ByteDance Seedance - Unified mapper for all versions and variants
+# Supports v1 (text-to-video, image-to-video, reference-to-video) and v1.5 (text-to-video)
+# Works with all ByteDance Seedance models regardless of version
+BYTEDANCE_SEEDANCE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core required
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Core optional (all variants)
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+        provider="fal",
+        model="bytedance-seedance",
+        add_suffix=False,  # ByteDance uses "2", "3", etc. without "s" suffix
+    ),
+    "camera_fixed": passthrough_field_mapper("camera_fixed"),
+    "seed": passthrough_field_mapper("seed"),
+    "generate_audio": passthrough_field_mapper(
+        "generate_audio"
+    ),  # v1.5 only, ignored by v1
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+    # Image-to-video support (v1/pro/image-to-video)
+    # Using strict=False to allow reference-to-video with multiple reference images
+    # When there's 1 reference image, both image_url and reference_image_urls work
+    # When there are multiple, image_url returns None and reference_image_urls gets the list
+    "image_url": single_image_field_mapper(
+        required=False, image_type="reference", strict=False
+    ),
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    # Reference-to-video support (v1/lite/reference-to-video)
+    "reference_image_urls": image_list_field_mapper(image_type="reference"),
+}
+
+# Pixverse (v5 and v5.5) - Unified mapper for all variants
+# Supports text-to-video, image-to-video, transition, effects, and swap
+# All variants share common fields with variant-specific optional fields
+PIXVERSE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core fields (text-to-video, image-to-video, transition)
+    "prompt": passthrough_field_mapper(
+        "prompt", required=False
+    ),  # Required for most, but not swap/effects
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=["5", "8", "10"],
+        provider="fal",
+        model="pixverse-v5.5",
+        add_suffix=False,  # Pixverse uses "5", "8", "10" without "s" suffix
+    ),
+    "style": passthrough_field_mapper("style"),
+    "thinking_type": passthrough_field_mapper("thinking_type"),
+    "seed": passthrough_field_mapper("seed"),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    # Audio generation (text-to-video, image-to-video, transition)
+    "generate_audio_switch": passthrough_field_mapper("generate_audio_switch"),
+    # Multi-clip generation (text-to-video, image-to-video)
+    "generate_multi_clip_switch": passthrough_field_mapper(
+        "generate_multi_clip_switch"
+    ),
+    # Image-to-video / transition / effects / swap support
+    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    # Transition support (first and end frames)
+    "first_image_url": single_image_field_mapper(
+        required=False, image_type="first_frame"
+    ),
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    # Effects variant
+    "effect": extra_params_field_mapper("effect"),
+    # Swap variant
+    "video_url": video_url_field_mapper(required=False),
+    "mode": extra_params_field_mapper("mode"),
+    "keyframe_id": extra_params_field_mapper("keyframe_id"),
+    "original_sound_switch": extra_params_field_mapper("original_sound_switch"),
 }
 
 # Generic fallback field mappings
@@ -153,14 +336,30 @@ GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
 FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # Minimax - all variants use same field mappings
     "fal-ai/minimax": MINIMAX_FIELD_MAPPERS,
+    # Kling Video O1 - All variants (image-to-video, reference-to-video, video-to-video/edit) use unified mapper
+    "fal-ai/kling-video/o1": KLING_O1_FIELD_MAPPERS,
     # Kling Video v2.6 - supports both image-to-video and motion-control
     "fal-ai/kling-video/v2.6": KLING_VIDEO_V26_FIELD_MAPPERS,
     # Veo 3.1 - prefix must be registered before veo3 for longest-match precedence
+    # Supports all variants: text-to-video, image-to-video, first-last-frame-to-video, extend-video
     "fal-ai/veo3.1": VEO3_FIELD_MAPPERS,
-    # Veo 3 - supports text-to-video, image-to-video, and first-last-frame-to-video
+    # Veo 3 - supports text-to-video, image-to-video, first-last-frame-to-video, and extend-video
     "fal-ai/veo3": VEO3_FIELD_MAPPERS,
     # Sora 2 - supports both text-to-video and image-to-video variants
     "fal-ai/sora-2": SORA2_FIELD_MAPPERS,
+    # Wan v2.6 - All variants (text-to-video, image-to-video, reference-to-video) use unified mapper
+    "wan/v2.6/": WAN_VIDEO_GENERATION_MAPPERS,
+    # Wan v2.5 - Uses same unified mapper as v2.6
+    "fal-ai/wan-25-preview/": WAN_VIDEO_GENERATION_MAPPERS,
+    # Wan v2.2-14b Animate
+    "fal-ai/wan/v2.2-14b/animate/": WAN_ANIMATE_MAPPERS,
+    # ByteDance Seedance - Unified mapper for all versions (v1, v1.5) and variants (text-to-video, image-to-video, reference-to-video)
+    "fal-ai/bytedance/seedance": BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
+    # Pixverse - All variants (text-to-video, image-to-video, transition, effects, swap) use unified mapper
+    # Supports both v5 and v5.5 with same field mappings
+    "fal-ai/pixverse/v5.5": PIXVERSE_FIELD_MAPPERS,  # v5.5 variants
+    "fal-ai/pixverse/v5": PIXVERSE_FIELD_MAPPERS,  # v5 variants (same API)
+    "fal-ai/pixverse/swap": PIXVERSE_FIELD_MAPPERS,  # Swap variant (works for both v5 and v5.5)
     # Future models...
     # "fal-ai/hunyuan-video": HUNYUAN_FIELD_MAPPERS,
 }
@@ -431,76 +630,77 @@ class FalProviderHandler:
         if isinstance(ex, TarashException):
             return ex
 
-        elif isinstance(ex, FalClientHTTPError):
-            log_error(
-                "Fal API HTTP error",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "status_code": ex.status_code,
-                    "error_message": ex.message,
-                },
-                logger_name=_LOGGER_NAME,
+        # httpx timeout errors
+        if isinstance(ex, httpx.TimeoutException):
+            return TimeoutError(
+                f"Request timed out: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+                timeout_seconds=config.timeout,
             )
-            # Map HTTP status codes to appropriate exception types
+
+        # httpx connection errors
+        if isinstance(ex, (httpx.ConnectError, httpx.NetworkError)):
+            return HTTPConnectionError(
+                f"Connection error: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+            )
+
+        # Fal HTTP errors
+        if isinstance(ex, FalClientHTTPError):
             raw_response = {
                 "status_code": ex.status_code,
                 "response_headers": ex.response_headers,
                 "response": ex.response.content,
-                "traceback": traceback.format_exc(),
             }
 
-            if ex.status_code == 400:
-                # Bad request - validation error
+            # Validation errors (400, 422)
+            if ex.status_code in (400, 422):
                 return ValidationError(
-                    f"Invalid request: {ex.message}",
+                    ex.message,
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
                     raw_response=raw_response,
                 )
-            elif ex.status_code == 403:
-                # Content moderation / policy violation
-                return ContentModerationError(
-                    f"Content policy violation: {ex.message}",
-                    provider=config.provider,
-                    model=config.model,
-                    request_id=request_id,
-                    raw_response=raw_response,
-                )
-            else:
-                # Other HTTP errors (401, 429, 500, 503, etc.)
-                return HTTPError(
-                    f"HTTP {ex.status_code}: {ex.message}",
-                    provider=config.provider,
-                    model=config.model,
-                    request_id=request_id,
-                    raw_response=raw_response,
-                    status_code=ex.status_code,
-                )
-        else:
-            log_error(
-                "Unknown error in Fal video generation",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "error_type": type(ex).__name__,
-                },
-                logger_name=_LOGGER_NAME,
-                exc_info=True,
-            )
-            raise TarashException(
-                f"Unknown Error while generating video: {ex}",
+
+            # All other HTTP errors (401, 403, 429, 500, 503, etc.)
+            return HTTPError(
+                f"HTTP {ex.status_code}: {ex.message}",
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
-                raw_response={
-                    "error": str(ex),
-                    "traceback": traceback.format_exc(),
-                },
+                raw_response=raw_response,
+                status_code=ex.status_code,
             )
+
+        # Unknown errors
+        log_error(
+            f"Fal unknown error: {str(ex)}",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+                "error_type": type(ex).__name__,
+            },
+            logger_name=_LOGGER_NAME,
+            exc_info=True,
+        )
+        return GenerationFailedError(
+            f"Error while generating video: {str(ex)}",
+            provider=config.provider,
+            model=config.model,
+            request_id=request_id,
+            raw_response={
+                "error": str(ex),
+                "traceback": traceback.format_exc(),
+            },
+        )
 
     def _process_event(
         self,

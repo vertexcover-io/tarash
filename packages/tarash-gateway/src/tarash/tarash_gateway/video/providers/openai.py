@@ -16,8 +16,10 @@ from tarash.tarash_gateway.logging import (
 )
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
     HTTPError,
     TarashException,
+    TimeoutError,
     ValidationError,
     handle_video_generation_errors,
 )
@@ -36,7 +38,14 @@ from tarash.tarash_gateway.video.utils import (
 )
 
 try:
-    from openai import APIStatusError, AsyncOpenAI, OpenAI
+    from openai import AsyncOpenAI, OpenAI
+    from openai import (
+        APIStatusError,
+        APIConnectionError,
+        APITimeoutError,
+        BadRequestError,
+        UnprocessableEntityError,
+    )
 except ImportError:
     pass
 
@@ -399,79 +408,79 @@ class OpenAIProviderHandler:
         if isinstance(ex, TarashException):
             return ex
 
-        # Handle OpenAI APIStatusError (includes BadRequestError and other HTTP errors)
-        elif isinstance(ex, APIStatusError):
-            status_code = ex.status_code
-            error_msg = ex.body.get("message", ex.message)
-            error_type = ex.type
-            param = ex.param
-            code = ex.code
-
-            # Extract detailed error information from body
-            error_details = {
-                "message": error_msg,
-                "type": error_type,
-                "param": param,
-                "code": code,
-            }
-
-            # Build raw_response with all available details
-            raw_response = {
-                "status_code": status_code,
-                "message": error_msg,
-                "type": error_details.get("type"),
-                "param": error_details.get("param"),
-                "code": error_details.get("code"),
-            }
-            if status_code == 400:
-                ex_class = ValidationError
-            else:
-                ex_class = HTTPError
-            log_error(
-                f"OpenAI {ex_class.__name__} error: {error_msg}",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "status_code": status_code,
-                    "type": error_type,
-                    "param": param,
-                    "code": code,
-                },
-                logger_name=_LOGGER_NAME,
+        # API timeout errors
+        if isinstance(ex, APITimeoutError):
+            return TimeoutError(
+                f"Request timed out: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+                timeout_seconds=config.timeout,
             )
-            return ex_class(
-                error_msg,
+
+        # API connection errors
+        if isinstance(ex, APIConnectionError):
+            return HTTPConnectionError(
+                f"Connection error: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+            )
+
+        # API status errors (4xx, 5xx)
+        if isinstance(ex, APIStatusError):
+            raw_response = {
+                "status_code": ex.status_code,
+                "message": ex.body.get("message", ex.message)
+                if isinstance(ex.body, dict)
+                else ex.message,
+                "type": ex.type,
+                "param": ex.param,
+                "code": ex.code,
+            }
+
+            # Validation errors (400, 422)
+            if isinstance(ex, (BadRequestError, UnprocessableEntityError)):
+                return ValidationError(
+                    raw_response["message"],
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+
+            # All other HTTP errors (401, 403, 429, 500, etc.)
+            return HTTPError(
+                raw_response["message"],
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
                 raw_response=raw_response,
+                status_code=ex.status_code,
             )
 
-        # Fallback for unknown errors
-        error_type = type(ex).__name__
-        error_msg = str(ex)
-
+        # Unknown errors
         log_error(
-            f"OpenAI API error: {error_msg}",
+            f"OpenAI unknown error: {str(ex)}",
             context={
                 "provider": config.provider,
                 "model": config.model,
                 "request_id": request_id,
-                "error_type": error_type,
+                "error_type": type(ex).__name__,
             },
             logger_name=_LOGGER_NAME,
             exc_info=True,
         )
-
         return GenerationFailedError(
-            f"Error while generating video: {error_msg}",
+            f"Error while generating video: {str(ex)}",
             provider=config.provider,
             model=config.model,
             request_id=request_id,
             raw_response={
-                "error": error_msg,
-                "error_type": error_type,
+                "error": str(ex),
+                "error_type": type(ex).__name__,
                 "traceback": traceback.format_exc(),
             },
         )
@@ -532,9 +541,10 @@ class OpenAIProviderHandler:
             poll_attempts: Number of poll attempts made
 
         Raises:
-            GenerationFailedError: If video generation timed out
+            TimeoutError: If video generation timed out
         """
         if video.status not in ("completed", "failed"):
+            timeout_seconds = config.max_poll_attempts * config.poll_interval
             log_error(
                 "OpenAI video generation timed out",
                 context={
@@ -544,15 +554,17 @@ class OpenAIProviderHandler:
                     "video_id": video.id,
                     "poll_attempts": poll_attempts,
                     "max_attempts": config.max_poll_attempts,
+                    "timeout_seconds": timeout_seconds,
                 },
                 logger_name=_LOGGER_NAME,
             )
-            raise GenerationFailedError(
-                f"Video generation timed out after {config.max_poll_attempts} attempts",
+            raise TimeoutError(
+                f"Video generation timed out after {config.max_poll_attempts} attempts ({timeout_seconds}s)",
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
-                raw_response={"status": "timeout"},
+                raw_response={"status": "timeout", "poll_attempts": poll_attempts},
+                timeout_seconds=timeout_seconds,
             )
 
     async def _download_video_async(
@@ -850,9 +862,13 @@ class OpenAIProviderHandler:
         """
         Generate video asynchronously via OpenAI Sora.
 
+        Supports both video generation and video remix:
+        - Generation: Uses client.videos.create()
+        - Remix: Uses client.videos.remix() when video_id is in extra_params
+
         Args:
             config: Provider configuration
-            request: Video generation request
+            request: Video generation request (use extra_params={"video_id": "..."} for remix)
             on_progress: Optional async callback for progress updates
 
         Returns:
@@ -861,19 +877,35 @@ class OpenAIProviderHandler:
         client: AsyncOpenAI = self._get_client(config, "async")
         openai_params = self._convert_request(config, request)
 
+        # Check if this is a remix request (video_id in extra_params)
+        video_id = (
+            request.extra_params.get("video_id") if request.extra_params else None
+        )
+        is_remix = video_id is not None
+
         log_debug(
             "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
+                "is_remix": is_remix,
+                "video_id": video_id if is_remix else None,
             },
             logger_name=_LOGGER_NAME,
         )
 
-        # Create video job
+        # Create video job or remix existing video
         try:
             request_id = None
-            video = await client.videos.create(**openai_params)
+            if is_remix:
+                # Use remix endpoint: POST /videos/{video_id}/remix
+                # Remove video_id from params as it goes in the URL
+                remix_params = {k: v for k, v in openai_params.items() if k != "model"}
+                video = await client.videos.remix(video_id=video_id, **remix_params)
+            else:
+                # Use standard create endpoint
+                video = await client.videos.create(**openai_params)
+
             request_id = video.id
 
             log_debug(
@@ -882,6 +914,7 @@ class OpenAIProviderHandler:
                     "provider": config.provider,
                     "model": config.model,
                     "request_id": request_id,
+                    "is_remix": is_remix,
                 },
                 logger_name=_LOGGER_NAME,
             )
@@ -901,9 +934,13 @@ class OpenAIProviderHandler:
         """
         Generate video synchronously (blocking).
 
+        Supports both video generation and video remix:
+        - Generation: Uses client.videos.create()
+        - Remix: Uses client.videos.remix() when video_id is in extra_params
+
         Args:
             config: Provider configuration
-            request: Video generation request
+            request: Video generation request (use extra_params={"video_id": "..."} for remix)
             on_progress: Optional callback for progress updates
 
         Returns:
@@ -912,18 +949,34 @@ class OpenAIProviderHandler:
         client = self._get_client(config, "sync")
         openai_params = self._convert_request(config, request)
 
+        # Check if this is a remix request (video_id in extra_params)
+        video_id = (
+            request.extra_params.get("video_id") if request.extra_params else None
+        )
+        is_remix = video_id is not None
+
         log_debug(
             "Starting API call",
             context={
                 "provider": config.provider,
                 "model": config.model,
+                "is_remix": is_remix,
+                "video_id": video_id if is_remix else None,
             },
             logger_name=_LOGGER_NAME,
         )
         try:
             request_id = None
-            # Create video job
-            video = client.videos.create(**openai_params)
+            # Create video job or remix existing video
+            if is_remix:
+                # Use remix endpoint: POST /videos/{video_id}/remix
+                # Remove video_id from params as it goes in the URL
+                remix_params = {k: v for k, v in openai_params.items() if k != "model"}
+                video = client.videos.remix(video_id=video_id, **remix_params)
+            else:
+                # Use standard create endpoint
+                video = client.videos.create(**openai_params)
+
             request_id = video.id
 
             log_debug(
@@ -932,6 +985,7 @@ class OpenAIProviderHandler:
                     "provider": config.provider,
                     "model": config.model,
                     "request_id": request_id,
+                    "is_remix": is_remix,
                 },
                 logger_name=_LOGGER_NAME,
             )

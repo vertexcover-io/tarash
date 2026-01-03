@@ -6,6 +6,7 @@ import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    TimeoutError,
     ValidationError,
 )
 from tarash.tarash_gateway.video.models import (
@@ -289,7 +290,7 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
         "tarash.tarash_gateway.video.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
     ):
-        with pytest.raises(GenerationFailedError, match="timed out"):
+        with pytest.raises(TimeoutError, match="timed out"):
             await handler.generate_video_async(base_config, base_request)
 
 
@@ -408,7 +409,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
         "tarash.tarash_gateway.video.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,
     ):
-        with pytest.raises(GenerationFailedError, match="timed out"):
+        with pytest.raises(TimeoutError, match="timed out"):
             handler.generate_video(base_config, base_request)
 
 

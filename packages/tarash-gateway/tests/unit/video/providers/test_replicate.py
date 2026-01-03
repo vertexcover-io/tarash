@@ -6,6 +6,7 @@ import pytest
 
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    TimeoutError,
 )
 from tarash.tarash_gateway.video.models import (
     VideoGenerationConfig,
@@ -699,7 +700,7 @@ def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
     handler._client_cache.clear()
 
     with patch("time.sleep"):
-        with pytest.raises(GenerationFailedError, match="timed out"):
+        with pytest.raises(TimeoutError, match="timed out"):
             handler.generate_video(config, base_request, on_progress=lambda x: None)
 
 

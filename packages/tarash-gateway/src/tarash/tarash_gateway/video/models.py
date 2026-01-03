@@ -1,5 +1,6 @@
 """Core data models for video generation."""
 
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, Protocol, TypedDict, Union
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
@@ -46,6 +47,7 @@ class VideoGenerationConfig(BaseModel):
     timeout: int = 600  # 10 minutes default
     max_poll_attempts: int = 120
     poll_interval: int = 5  # seconds
+    mock: "MockConfig | None" = None  # Mock configuration
 
     model_config = {"frozen": True}
 
@@ -112,6 +114,7 @@ class VideoGenerationResponse(BaseModel):
     resolution: str | None = None
     aspect_ratio: str | None = None
     status: Literal["completed", "failed"]
+    is_mock: bool = False  # Indicates if this is a mock response
 
     # Debugging & provider-specific data
     raw_response: dict[str, Any]
@@ -217,6 +220,164 @@ class KlingVideoParams(BaseVideoParams):
     negative_prompt: str | None = None
     cfg_scale: float | None = Field(None, ge=0.0, le=1.0)
     camera_control: KlingCameraControl | None = None
+
+
+# ==================== Mock Configuration ====================
+
+
+@dataclass(frozen=True)
+class MockVideoSpec:
+    """Specification for a mock video in the library."""
+
+    aspect_ratio: AspectRatio
+    resolution: Resolution
+    duration: float  # seconds
+    url: str
+
+
+# Mock video library - hardcoded sample videos
+MOCK_VIDEO_LIBRARY: list[MockVideoSpec] = [
+    # 9:16 Portrait
+    MockVideoSpec(
+        "9:16",
+        "720p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/portrait-720p-4s.mp4",
+    ),
+    MockVideoSpec(
+        "9:16",
+        "1080p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/portrait-1080p-4s.mp4",
+    ),
+    MockVideoSpec(
+        "9:16",
+        "720p",
+        8.0,
+        "https://storage.googleapis.com/tarash-mock-videos/portrait-720p-8s.mp4",
+    ),
+    # 16:9 Landscape
+    MockVideoSpec(
+        "16:9",
+        "720p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/landscape-720p-4s.mp4",
+    ),
+    MockVideoSpec(
+        "16:9",
+        "1080p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/landscape-1080p-4s.mp4",
+    ),
+    MockVideoSpec(
+        "16:9",
+        "4k",
+        8.0,
+        "https://storage.googleapis.com/tarash-mock-videos/landscape-4k-8s.mp4",
+    ),
+    # 1:1 Square
+    MockVideoSpec(
+        "1:1",
+        "720p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/square-720p-4s.mp4",
+    ),
+    MockVideoSpec(
+        "1:1",
+        "1080p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/square-1080p-4s.mp4",
+    ),
+    # 4:3 Classic
+    MockVideoSpec(
+        "4:3",
+        "480p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/classic-480p-4s.mp4",
+    ),
+    # 21:9 Ultrawide
+    MockVideoSpec(
+        "21:9",
+        "1080p",
+        4.0,
+        "https://storage.googleapis.com/tarash-mock-videos/ultrawide-1080p-4s.mp4",
+    ),
+]
+
+
+class MockPollingConfig(BaseModel):
+    """Configuration for simulating polling updates."""
+
+    enabled: bool = True
+    status_sequence: list[Literal["queued", "processing", "completed", "failed"]] = (
+        Field(default_factory=lambda: ["queued", "processing", "completed"])
+    )
+    delay_between_updates: float = 0.5
+    progress_percentages: list[int] | None = None
+    custom_updates: list[dict[str, Any]] | None = None
+
+    @model_validator(mode="after")
+    def validate_polling_config(self) -> "MockPollingConfig":
+        if self.progress_percentages and len(self.progress_percentages) != len(
+            self.status_sequence
+        ):
+            raise ValueError(
+                "progress_percentages length must match status_sequence length"
+            )
+        if self.custom_updates and len(self.custom_updates) != len(
+            self.status_sequence
+        ):
+            raise ValueError("custom_updates length must match status_sequence length")
+        return self
+
+    model_config = {"frozen": True}
+
+
+class MockResponse(BaseModel):
+    """A single mock response (success or error) with weight."""
+
+    weight: float = 1.0
+    mock_response: VideoGenerationResponse | None = None
+    output_video: MediaType | None = None
+    output_video_type: Literal["url", "content"] = "url"
+    error: Exception | None = None
+
+    @model_validator(mode="after")
+    def validate_response(self) -> "MockResponse":
+        has_success = self.mock_response is not None or self.output_video is not None
+        has_error = self.error is not None
+
+        if has_success and has_error:
+            raise ValueError(
+                "Cannot specify both success and error in the same MockResponse"
+            )
+        if self.mock_response and self.output_video:
+            raise ValueError("Cannot specify both mock_response and output_video")
+        if self.weight <= 0:
+            raise ValueError("weight must be positive")
+        return self
+
+    model_config = {"frozen": True, "arbitrary_types_allowed": True}
+
+
+class MockConfig(BaseModel):
+    """Configuration for mocking video generation responses."""
+
+    enabled: bool
+    responses: list[MockResponse] | None = None
+    polling: MockPollingConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_config(self) -> "MockConfig":
+        if self.enabled and not self.responses:
+            self.responses = [MockResponse(weight=1.0)]
+        if self.responses:
+            total_weight = sum(r.weight for r in self.responses)
+            if total_weight <= 0:
+                raise ValueError("Total weight must be positive")
+        return self
+
+    model_config = {"frozen": True, "arbitrary_types_allowed": True}
 
 
 # ==================== Provider Handler Protocol ====================

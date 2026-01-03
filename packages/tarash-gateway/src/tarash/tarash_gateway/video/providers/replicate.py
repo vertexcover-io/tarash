@@ -7,7 +7,11 @@ from typing import Any
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
+    HTTPError,
     TarashException,
+    TimeoutError,
+    ValidationError,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
@@ -30,6 +34,13 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
 try:
     import replicate
     from replicate import AsyncReplicate, Replicate
+
+    # Import Replicate exception types
+    APITimeoutError = replicate.APITimeoutError
+    APIConnectionError = replicate.APIConnectionError
+    APIStatusError = replicate.APIStatusError
+    BadRequestError = replicate.BadRequestError
+    UnprocessableEntityError = replicate.UnprocessableEntityError
 except (ImportError, Exception):
     replicate = None  # type: ignore
 
@@ -427,23 +438,68 @@ class ReplicateProviderHandler:
         if isinstance(ex, TarashException):
             return ex
 
-        # Handle Replicate-specific errors
-        error_message = str(ex)
-        raw_response: dict[str, Any] = {
-            "error": error_message,
-            "error_type": type(ex).__name__,
-            "traceback": traceback.format_exc(),
-        }
+        # API timeout errors
+        if isinstance(ex, APITimeoutError):
+            return TimeoutError(
+                f"Request timed out: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=prediction_id,
+                raw_response={"error": str(ex), "prediction_id": prediction_id},
+                timeout_seconds=config.timeout,
+            )
 
-        if prediction_id:
-            raw_response["prediction_id"] = prediction_id
+        # API connection errors
+        if isinstance(ex, APIConnectionError):
+            return HTTPConnectionError(
+                f"Connection error: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=prediction_id,
+                raw_response={"error": str(ex), "prediction_id": prediction_id},
+            )
 
+        # API status errors (4xx, 5xx)
+        if isinstance(ex, APIStatusError):
+            raw_response = {
+                "status_code": ex.status_code,
+                "message": ex.message,
+                "body": ex.body,
+                "prediction_id": prediction_id,
+            }
+
+            # Validation errors (400, 422)
+            if isinstance(ex, (BadRequestError, UnprocessableEntityError)):
+                return ValidationError(
+                    ex.message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=prediction_id,
+                    raw_response=raw_response,
+                )
+
+            # All other HTTP errors (401, 403, 429, 500, etc.)
+            return HTTPError(
+                ex.message,
+                provider=config.provider,
+                model=config.model,
+                request_id=prediction_id,
+                raw_response=raw_response,
+                status_code=ex.status_code,
+            )
+
+        # Unknown errors
         return GenerationFailedError(
-            f"Replicate API error: {error_message}",
+            f"Replicate API error: {str(ex)}",
             provider=config.provider,
-            raw_response=raw_response,
-            request_id=prediction_id,
             model=config.model,
+            request_id=prediction_id,
+            raw_response={
+                "error": str(ex),
+                "error_type": type(ex).__name__,
+                "prediction_id": prediction_id,
+                "traceback": traceback.format_exc(),
+            },
         )
 
     @handle_video_generation_errors
@@ -586,12 +642,17 @@ class ReplicateProviderHandler:
                 await asyncio.sleep(poll_interval)
 
             # Max attempts reached
-            raise GenerationFailedError(
-                f"Prediction timed out after {max_attempts * poll_interval} seconds",
+            timeout_seconds = max_attempts * poll_interval
+            raise TimeoutError(
+                f"Prediction timed out after {max_attempts} attempts ({timeout_seconds}s)",
                 provider=config.provider,
-                raw_response={"prediction_id": prediction_id},
+                raw_response={
+                    "prediction_id": prediction_id,
+                    "poll_attempts": max_attempts,
+                },
                 request_id=prediction_id,
                 model=config.model,
+                timeout_seconds=timeout_seconds,
             )
 
         except Exception as ex:
@@ -733,12 +794,17 @@ class ReplicateProviderHandler:
                 time.sleep(poll_interval)
 
             # Max attempts reached
-            raise GenerationFailedError(
-                f"Prediction timed out after {max_attempts * poll_interval} seconds",
+            timeout_seconds = max_attempts * poll_interval
+            raise TimeoutError(
+                f"Prediction timed out after {max_attempts} attempts ({timeout_seconds}s)",
                 provider=config.provider,
-                raw_response={"prediction_id": prediction_id},
+                raw_response={
+                    "prediction_id": prediction_id,
+                    "poll_attempts": max_attempts,
+                },
                 request_id=prediction_id,
                 model=config.model,
+                timeout_seconds=timeout_seconds,
             )
 
         except Exception as ex:

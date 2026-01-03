@@ -1,24 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch",
-      "WebFetch",
-      "Bash(mkdir:*)",
-      "Bash(pre-commit install:*)",
-      "Bash(pre-commit run:*)",
-      "Skill(superpowers:brainstorming)",
-      "Bash(uv sync)",
-      "Bash(uv sync:*)",
-      "Bash(uv pip:*)",
-      "Bash(python -c:*)",
-      "Bash(uv run python:*)",
-      "Skill(superpowers:using-superpowers)",
-      "Bash(uv run pytest:*)",
       "Bash(python -m pytest:*)",
+      "Bash(python -c:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run python:*)",
+      "Bash(uv run python3:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(python3:*)",
-      "Bash(pytest:*)"
-    ]
+      "Bash(git commit -m \"$(cat <<''EOF''\n✨ Add new video models and video-to-video capabilities\n\nAdds support for new AI video generation models and extends existing\nmodels with video-to-video (extend and remix) functionality.\n\n## New Models (via Fal Provider)\n- Runway Gen-3 Alpha (text-to-video, image-to-video)\n- Kling Video O1 (image/reference/video-to-video variants)\n- ByteDance Seedance v1/v1.5 (text/image/reference-to-video)\n- Pixverse v5/v5.5 (text/image-to-video, transition, effects, swap)\n- Wan v2.6/v2.5 (text/image/reference-to-video)\n- Wan v2.2-14b Animate (video+image motion control)\n\n## New Direct Provider\n- Runway Gen-3 Alpha (text-to-video, image-to-video)\n\n## Extended Capabilities\n\n### Veo 3.1 Video Extension (Fal)\n- Endpoint: fal-ai/veo3.1/fast/extend-video\n- Extend videos by 7s with prompt guidance\n- Supports 720p, 16:9/9:16/auto aspect ratios\n\n### Sora 2 Video Remix\n- **Fal**: fal-ai/sora-2/video-to-video/remix\n- **OpenAI**: Direct /videos/{video_id}/remix endpoint\n- Remix generated videos with new prompts\n- Unified extra_params={\"video_id\": \"...\"} pattern\nEOF\n)\")",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
   }
 }

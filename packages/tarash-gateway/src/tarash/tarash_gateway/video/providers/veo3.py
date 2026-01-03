@@ -9,19 +9,32 @@ from google.genai.types import GenerateVideosOperation, VideoGenerationReference
 from typing_extensions import TypedDict
 
 try:
+    import httpx
     from google import genai
     from google.genai.client import AsyncClient, Client
     from google.genai.errors import ClientError
     from google.genai.types import GenerateVideosConfig
+
+    # google.genai can use either httpx or aiohttp for async
+    try:
+        import aiohttp
+
+        has_aiohttp = True
+    except ImportError:
+        aiohttp = None  # type: ignore
+        has_aiohttp = False
 except ImportError:
     genai = None  # type: ignore
+    has_aiohttp = False
 
 
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
     HTTPError,
     TarashException,
+    TimeoutError,
     ValidationError,
     handle_video_generation_errors,
 )
@@ -420,72 +433,101 @@ class Veo3ProviderHandler:
         if isinstance(ex, TarashException):
             return ex
 
-        # Handle Google GenAI ClientError (includes validation and HTTP errors)
-        if isinstance(ex, ClientError):
-            status_code = ex.code
-            error_msg = ex.message
-            error_details = ex.details
-            error_type = ex.status
-
-            # Build raw_response with all available details
-            raw_response = {
-                "status_code": status_code,
-                "message": error_msg,
-                "error_details": error_details,
-                "error_type": error_type,
-            }
-
-            # Determine exception class based on status code
-            if status_code == 400:
-                ex_class = ValidationError
-            else:
-                ex_class = HTTPError
-
-            log_error(
-                f"Google GenAI {ex_class.__name__} error: {error_msg}",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "status_code": status_code,
-                    "error_details": error_details,
-                    "error_type": error_type,
-                },
-                logger_name=_LOGGER_NAME,
+        # httpx timeout errors
+        if isinstance(ex, httpx.TimeoutException):
+            return TimeoutError(
+                f"Request timed out: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+                timeout_seconds=config.timeout,
             )
 
-            return ex_class(
-                error_msg,
+        # httpx connection errors
+        if isinstance(ex, (httpx.ConnectError, httpx.NetworkError)):
+            return HTTPConnectionError(
+                f"Connection error: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+            )
+
+        # aiohttp errors (if aiohttp is used instead of httpx)
+        if has_aiohttp and aiohttp:
+            # aiohttp timeout errors
+            if isinstance(ex, (aiohttp.ServerTimeoutError, aiohttp.ClientTimeout)):
+                return TimeoutError(
+                    f"Request timed out: {str(ex)}",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response={"error": str(ex)},
+                    timeout_seconds=config.timeout,
+                )
+
+            # aiohttp connection errors
+            if isinstance(
+                ex, (aiohttp.ClientConnectionError, aiohttp.ClientConnectorError)
+            ):
+                return HTTPConnectionError(
+                    f"Connection error: {str(ex)}",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response={"error": str(ex)},
+                )
+
+        # Google GenAI ClientError (includes validation and HTTP errors)
+        if isinstance(ex, ClientError):
+            raw_response = {
+                "status_code": ex.code,
+                "message": ex.message,
+                "error_details": ex.details,
+                "error_type": ex.status,
+            }
+
+            # Validation errors (400, 422)
+            if ex.code in (400, 422):
+                return ValidationError(
+                    ex.message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+
+            # All other HTTP errors
+            return HTTPError(
+                ex.message,
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
                 raw_response=raw_response,
+                status_code=ex.code,
             )
 
-        # Fallback for unknown errors
-        error_type = type(ex).__name__
-        error_msg = str(ex)
-
+        # Unknown errors
         log_error(
-            f"Google GenAI API error: {error_msg}",
+            f"Veo3 unknown error: {str(ex)}",
             context={
                 "provider": config.provider,
                 "model": config.model,
                 "request_id": request_id,
-                "error_type": error_type,
+                "error_type": type(ex).__name__,
             },
             logger_name=_LOGGER_NAME,
             exc_info=True,
         )
-
         return GenerationFailedError(
-            f"Error while generating video: {error_msg}",
+            f"Error while generating video: {str(ex)}",
             provider=config.provider,
             model=config.model,
             request_id=request_id,
             raw_response={
-                "error": error_msg,
-                "error_type": error_type,
+                "error": str(ex),
+                "error_type": type(ex).__name__,
                 "traceback": traceback.format_exc(),
             },
         )
@@ -574,12 +616,17 @@ class Veo3ProviderHandler:
                 poll_attempts += 1
 
             if not operation.done:
-                raise GenerationFailedError(
-                    f"Video generation timed out after {config.max_poll_attempts} attempts",
+                timeout_seconds = config.max_poll_attempts * config.poll_interval
+                raise TimeoutError(
+                    f"Video generation timed out after {config.max_poll_attempts} attempts ({timeout_seconds}s)",
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
-                    raw_response={"status": "timeout"},
+                    raw_response={
+                        "status": "timeout",
+                        "poll_attempts": config.max_poll_attempts,
+                    },
+                    timeout_seconds=timeout_seconds,
                 )
 
             log_debug(
@@ -697,12 +744,17 @@ class Veo3ProviderHandler:
                 poll_attempts += 1
 
             if not operation.done:
-                raise GenerationFailedError(
-                    f"Video generation timed out after {config.max_poll_attempts} attempts",
+                timeout_seconds = config.max_poll_attempts * config.poll_interval
+                raise TimeoutError(
+                    f"Video generation timed out after {config.max_poll_attempts} attempts ({timeout_seconds}s)",
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
-                    raw_response={"status": "timeout"},
+                    raw_response={
+                        "status": "timeout",
+                        "poll_attempts": config.max_poll_attempts,
+                    },
+                    timeout_seconds=timeout_seconds,
                 )
 
             log_debug(

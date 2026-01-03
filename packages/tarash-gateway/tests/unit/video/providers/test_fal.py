@@ -19,6 +19,11 @@ from tarash.tarash_gateway.video.models import (
 )
 from tarash.tarash_gateway.video.providers.fal import (
     FalProviderHandler,
+    get_field_mappers,
+    WAN_VIDEO_GENERATION_MAPPERS,
+    WAN_ANIMATE_MAPPERS,
+    BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
+    PIXVERSE_FIELD_MAPPERS,
     parse_fal_status,
 )
 
@@ -328,6 +333,161 @@ def test_convert_request_veo31_video_to_video(handler):
     assert result["auto_fix"] is False
 
 
+def test_convert_request_veo31_fast_extend_video(handler):
+    """Test fal-ai/veo3.1/fast/extend-video with specific API requirements."""
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/extend-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Continue the scene naturally, maintaining the same style and motion",
+        video="https://example.com/input-video.mp4",
+        aspect_ratio="16:9",
+        duration_seconds=7,
+        resolution="720p",
+        generate_audio=True,
+        auto_fix=False,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert (
+        result["prompt"]
+        == "Continue the scene naturally, maintaining the same style and motion"
+    )
+    assert result["video_url"] == "https://example.com/input-video.mp4"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["duration"] == "7s"
+    assert result["resolution"] == "720p"
+    assert result["generate_audio"] is True
+    assert result["auto_fix"] is False
+
+
+def test_convert_request_veo31_fast_extend_video_auto_aspect_ratio(handler):
+    """Test extend-video with auto aspect ratio via extra_params."""
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/extend-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Use extra_params to pass "auto" aspect_ratio since it's not in the standard enum
+    request = VideoGenerationRequest(
+        prompt="Continue video",
+        video="https://example.com/input.mp4",
+        duration_seconds=7,
+        extra_params={"aspect_ratio": "auto"},
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Continue video"
+    assert result["video_url"] == "https://example.com/input.mp4"
+    assert result["aspect_ratio"] == "auto"  # Should come from extra_params
+    assert result["duration"] == "7s"
+
+
+def test_convert_request_veo31_fast_extend_video_9_16(handler):
+    """Test extend-video with 9:16 aspect ratio."""
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/extend-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Continue vertical video",
+        video="https://example.com/vertical.mp4",
+        aspect_ratio="9:16",
+        duration_seconds=7,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["aspect_ratio"] == "9:16"
+    assert result["video_url"] == "https://example.com/vertical.mp4"
+
+
+def test_convert_request_veo31_fast_extend_video_without_video(handler):
+    """Test that extend-video works without video_url (validation happens at API level).
+
+    Note: The video_url field is required by the Fal API, but we don't enforce this
+    at the field mapper level since VEO3_FIELD_MAPPERS is shared across all variants.
+    The API will return an error if video_url is missing.
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1/fast/extend-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Request without video - should map successfully but API will reject it
+    request_no_video = VideoGenerationRequest(
+        prompt="Continue video",
+        duration_seconds=7,
+    )
+
+    result = handler._convert_request(config, request_no_video)
+
+    # Should successfully map the fields we have
+    assert result["prompt"] == "Continue video"
+    assert result["duration"] == "7s"
+    # video_url should not be in the result (will cause API error)
+    assert "video_url" not in result
+
+
+def test_convert_request_sora2_remix(handler):
+    """Test Sora 2 video-to-video/remix endpoint."""
+    config = VideoGenerationConfig(
+        model="fal-ai/sora-2/video-to-video/remix",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Change the cat's fur color to purple",
+        extra_params={"video_id": "video_123"},
+        delete_video=True,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Change the cat's fur color to purple"
+    assert result["video_id"] == "video_123"
+    assert result["delete_video"] is True
+    # Should not include text-to-video fields
+    assert "aspect_ratio" not in result
+    assert "resolution" not in result
+    assert "duration" not in result
+
+
+def test_convert_request_sora2_text_to_video(handler):
+    """Test Sora 2 text-to-video with all parameters."""
+    config = VideoGenerationConfig(
+        model="fal-ai/sora-2/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A cat playing with a ball of yarn",
+        aspect_ratio="16:9",
+        resolution="1080p",
+        duration_seconds=8,
+        delete_video=False,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A cat playing with a ball of yarn"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["duration"] == 8
+    assert result["delete_video"] is False
+
+
 # ==================== Response Conversion Tests ====================
 
 
@@ -412,11 +572,12 @@ def test_handle_error_with_fal_client_http_error(handler, base_config, base_requ
 
 
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
-    """Test unknown exception is converted to TarashException."""
+    """Test unknown exception is converted to GenerationFailedError."""
     unknown_error = ValueError("Something went wrong")
 
-    with pytest.raises(TarashException, match="Unknown Error"):
-        handler._handle_error(base_config, base_request, "req-3", unknown_error)
+    result = handler._handle_error(base_config, base_request, "req-3", unknown_error)
+    assert isinstance(result, GenerationFailedError)
+    assert "Error while generating video" in str(result)
 
 
 # ==================== Status Parsing Tests ====================
@@ -705,6 +866,794 @@ def test_generate_video_handles_exceptions(
         handler.generate_video(base_config, base_request)
 
 
+# ==================== Wan Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_wan_v26_all_endpoints():
+    """Test unified mapper for all Wan v2.6 endpoints."""
+    # Text-to-video
+    assert get_field_mappers("wan/v2.6/text-to-video") is WAN_VIDEO_GENERATION_MAPPERS
+    # Image-to-video
+    assert get_field_mappers("wan/v2.6/image-to-video") is WAN_VIDEO_GENERATION_MAPPERS
+    # Reference-to-video
+    assert (
+        get_field_mappers("wan/v2.6/reference-to-video") is WAN_VIDEO_GENERATION_MAPPERS
+    )
+
+
+def test_get_field_mappers_wan_v25_all_endpoints():
+    """Test unified mapper for all Wan v2.5 endpoints."""
+    # Text-to-video
+    assert (
+        get_field_mappers("fal-ai/wan-25-preview/text-to-video")
+        is WAN_VIDEO_GENERATION_MAPPERS
+    )
+    # Image-to-video
+    assert (
+        get_field_mappers("fal-ai/wan-25-preview/image-to-video")
+        is WAN_VIDEO_GENERATION_MAPPERS
+    )
+
+
+def test_get_field_mappers_wan_v22_animate():
+    """Test Wan v2.2-14b animate/move mapper."""
+    mappers = get_field_mappers("fal-ai/wan/v2.2-14b/animate/move")
+    assert mappers is WAN_ANIMATE_MAPPERS
+
+
+# ==================== Wan Request Conversion Tests ====================
+
+
+def test_wan_v26_text_to_video_conversion(handler):
+    """Test Wan v2.6 text-to-video request conversion."""
+    config = VideoGenerationConfig(
+        model="wan/v2.6/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A fox director making a movie",
+        duration_seconds=10,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        seed=42,
+        enhance_prompt=True,
+        extra_params={
+            "multi_shots": True,
+            "audio_url": "https://example.com/audio.mp3",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A fox director making a movie"
+    assert result["duration"] == "10"  # String format without 's' suffix
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["seed"] == 42
+    assert result["enable_prompt_expansion"] is True  # Mapped from enhance_prompt
+    assert result["multi_shots"] is True
+    assert result["audio_url"] == "https://example.com/audio.mp3"
+
+
+def test_wan_v26_image_to_video_conversion(handler):
+    """Test Wan v2.6 image-to-video request conversion."""
+    config = VideoGenerationConfig(
+        model="wan/v2.6/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Dragon warrior walking",
+        image_list=[{"image": "https://example.com/dragon.jpg", "type": "reference"}],
+        duration_seconds=15,
+        negative_prompt="low quality, blurry",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Dragon warrior walking"
+    assert result["image_url"] == "https://example.com/dragon.jpg"
+    assert result["duration"] == "15"
+    assert result["negative_prompt"] == "low quality, blurry"
+
+
+def test_wan_v26_reference_to_video_conversion(handler):
+    """Test Wan v2.6 reference-to-video request conversion with video_urls."""
+    config = VideoGenerationConfig(
+        model="wan/v2.6/reference-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Dance battle between @Video1 and @Video2",
+        duration_seconds=5,
+        extra_params={
+            "video_urls": [
+                "https://example.com/video1.mp4",
+                "https://example.com/video2.mp4",
+            ]
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Dance battle between @Video1 and @Video2"
+    assert result["duration"] == "5"
+    assert result["video_urls"] == [
+        "https://example.com/video1.mp4",
+        "https://example.com/video2.mp4",
+    ]
+
+
+def test_wan_v25_text_to_video_conversion(handler):
+    """Test Wan v2.5 text-to-video request conversion (uses same mapper as v2.6)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan-25-preview/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A white dragon warrior",
+        duration_seconds=10,
+        aspect_ratio="16:9",
+        resolution="720p",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A white dragon warrior"
+    assert result["duration"] == "10"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+
+
+def test_wan_v22_animate_move_conversion(handler):
+    """Test Wan v2.2-14b animate/move conversion with video+image inputs."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-14b/animate/move",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="",  # Auto-generated by model
+        video="https://example.com/input-video.mp4",
+        image_list=[{"image": "https://example.com/style.jpg", "type": "reference"}],
+        resolution="720p",
+        seed=123,
+        extra_params={
+            "shift": 8,
+            "guidance_scale": 1.5,
+            "num_inference_steps": 20,
+            "use_turbo": True,
+            "video_quality": "high",
+            "video_write_mode": "balanced",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/input-video.mp4"
+    assert result["image_url"] == "https://example.com/style.jpg"
+    assert result["resolution"] == "720p"
+    assert result["seed"] == 123
+    assert result["shift"] == 8
+    assert result["guidance_scale"] == 1.5
+    assert result["num_inference_steps"] == 20
+    assert result["use_turbo"] is True
+    assert result["video_quality"] == "high"
+    assert result["video_write_mode"] == "balanced"
+
+
+# ==================== ByteDance Seedance Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_bytedance_seedance():
+    """Test ByteDance Seedance v1.5 Pro mapper selection."""
+    # Full model path
+    assert (
+        get_field_mappers("fal-ai/bytedance/seedance/v1.5/pro/text-to-video")
+        is BYTEDANCE_SEEDANCE_FIELD_MAPPERS
+    )
+    # Prefix match
+    assert (
+        get_field_mappers("fal-ai/bytedance/seedance")
+        is BYTEDANCE_SEEDANCE_FIELD_MAPPERS
+    )
+
+
+# ==================== ByteDance Seedance Request Conversion Tests ====================
+
+
+def test_bytedance_seedance_minimal_conversion(handler):
+    """Test ByteDance Seedance with minimal parameters (prompt only)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1.5/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Defense attorney declaring 'Ladies and gentlemen, reasonable doubt isn't just a phrase'",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert (
+        result["prompt"]
+        == "Defense attorney declaring 'Ladies and gentlemen, reasonable doubt isn't just a phrase'"
+    )
+    # No other fields should be present
+    assert "duration" not in result
+    assert "aspect_ratio" not in result
+    assert "resolution" not in result
+
+
+def test_bytedance_seedance_full_conversion(handler):
+    """Test ByteDance Seedance with all parameters."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1.5/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A cinematic courtroom drama scene",
+        duration_seconds=10,
+        aspect_ratio="16:9",
+        resolution="720p",
+        seed=42,
+        generate_audio=True,
+        extra_params={"camera_fixed": True, "enable_safety_checker": False},
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A cinematic courtroom drama scene"
+    assert result["duration"] == "10"  # String format, no suffix
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+    assert result["seed"] == 42
+    assert result["generate_audio"] is True
+    assert result["camera_fixed"] is True
+    assert result["enable_safety_checker"] is False
+
+
+def test_bytedance_seedance_duration_validation(handler):
+    """Test ByteDance Seedance duration validation (4-12 seconds)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1.5/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test all valid durations (2-12 seconds for unified mapper - covers both v1 and v1.5)
+    for valid_duration in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]:
+        request = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=valid_duration,
+        )
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(valid_duration)
+
+    # Test invalid durations
+    for invalid_duration in [1, 13, 15, 20]:
+        request_invalid = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=invalid_duration,
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            handler._convert_request(config, request_invalid)
+
+        assert "Invalid duration" in str(exc_info.value)
+        assert f"{invalid_duration} seconds" in str(exc_info.value)
+        assert "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12" in str(exc_info.value)
+
+
+def test_bytedance_seedance_aspect_ratio_options(handler):
+    """Test ByteDance Seedance supports various aspect ratios."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1.5/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test aspect ratios supported by VideoGenerationRequest
+    # Note: ByteDance API supports "3:4" but VideoGenerationRequest doesn't include it
+    for aspect_ratio in ["21:9", "16:9", "4:3", "1:1", "9:16"]:
+        request = VideoGenerationRequest(
+            prompt="test",
+            aspect_ratio=aspect_ratio,
+        )
+        result = handler._convert_request(config, request)
+        assert result["aspect_ratio"] == aspect_ratio
+
+
+def test_bytedance_seedance_resolution_options(handler):
+    """Test ByteDance Seedance resolution options."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1.5/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test both resolution options
+    for resolution in ["480p", "720p"]:
+        request = VideoGenerationRequest(
+            prompt="test",
+            resolution=resolution,
+        )
+        result = handler._convert_request(config, request)
+        assert result["resolution"] == resolution
+
+
+# ==================== ByteDance Seedance v1 Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_bytedance_seedance_v1():
+    """Test ByteDance Seedance v1 mapper selection for all variants."""
+    # Text-to-video
+    assert (
+        get_field_mappers("fal-ai/bytedance/seedance/v1/pro/fast/text-to-video")
+        is BYTEDANCE_SEEDANCE_FIELD_MAPPERS
+    )
+    # Image-to-video
+    assert (
+        get_field_mappers("fal-ai/bytedance/seedance/v1/pro/image-to-video")
+        is BYTEDANCE_SEEDANCE_FIELD_MAPPERS
+    )
+    # Reference-to-video
+    assert (
+        get_field_mappers("fal-ai/bytedance/seedance/v1/lite/reference-to-video")
+        is BYTEDANCE_SEEDANCE_FIELD_MAPPERS
+    )
+    # Prefix match
+    assert (
+        get_field_mappers("fal-ai/bytedance/seedance/v1")
+        is BYTEDANCE_SEEDANCE_FIELD_MAPPERS
+    )
+
+
+# ==================== ByteDance Seedance v1 Request Conversion Tests ====================
+
+
+def test_bytedance_v1_text_to_video(handler):
+    """Test ByteDance v1 pro/fast/text-to-video conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1/pro/fast/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A martial artist moves with precision in a quiet dojo",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        seed=42,
+        extra_params={"camera_fixed": True, "enable_safety_checker": True},
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A martial artist moves with precision in a quiet dojo"
+    assert result["duration"] == "5"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["seed"] == 42
+    assert result["camera_fixed"] is True
+    assert result["enable_safety_checker"] is True
+
+
+def test_bytedance_v1_image_to_video(handler):
+    """Test ByteDance v1 pro/image-to-video conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1/pro/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A skier glides over fresh snow, joyously smiling",
+        image_list=[{"image": "https://example.com/skier.jpg", "type": "reference"}],
+        duration_seconds=6,
+        aspect_ratio="16:9",
+        resolution="1080p",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A skier glides over fresh snow, joyously smiling"
+    assert result["image_url"] == "https://example.com/skier.jpg"
+    assert result["duration"] == "6"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+
+
+def test_bytedance_v1_image_to_video_with_end_frame(handler):
+    """Test ByteDance v1 image-to-video with first and last frame."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1/pro/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Smooth transition from start to end pose",
+        image_list=[
+            {"image": "https://example.com/start.jpg", "type": "reference"},
+            {"image": "https://example.com/end.jpg", "type": "last_frame"},
+        ],
+        duration_seconds=8,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Smooth transition from start to end pose"
+    assert result["image_url"] == "https://example.com/start.jpg"
+    assert result["end_image_url"] == "https://example.com/end.jpg"
+    assert result["duration"] == "8"
+
+
+def test_bytedance_v1_reference_to_video(handler):
+    """Test ByteDance v1 lite/reference-to-video conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1/lite/reference-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="The girl catches the puppy and hugs it",
+        image_list=[
+            {"image": "https://example.com/ref1.jpg", "type": "reference"},
+            {"image": "https://example.com/ref2.jpg", "type": "reference"},
+        ],
+        duration_seconds=5,
+        resolution="720p",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "The girl catches the puppy and hugs it"
+    assert result["reference_image_urls"] == [
+        "https://example.com/ref1.jpg",
+        "https://example.com/ref2.jpg",
+    ]
+    assert result["duration"] == "5"
+    assert result["resolution"] == "720p"
+
+
+def test_bytedance_v1_duration_validation(handler):
+    """Test ByteDance v1 duration validation (2-12 seconds)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/seedance/v1/pro/fast/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test all valid durations (2-12 seconds)
+    for valid_duration in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]:
+        request = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=valid_duration,
+        )
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(valid_duration)
+
+    # Test invalid durations
+    for invalid_duration in [1, 13, 15]:
+        request_invalid = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=invalid_duration,
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            handler._convert_request(config, request_invalid)
+
+        assert "Invalid duration" in str(exc_info.value)
+        assert f"{invalid_duration} seconds" in str(exc_info.value)
+
+
+# ==================== Pixverse Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_pixverse_v55_all_variants():
+    """Test Pixverse v5.5 mapper selection for all variants."""
+    # Text-to-video
+    assert (
+        get_field_mappers("fal-ai/pixverse/v5.5/text-to-video")
+        is PIXVERSE_FIELD_MAPPERS
+    )
+    # Image-to-video
+    assert (
+        get_field_mappers("fal-ai/pixverse/v5.5/image-to-video")
+        is PIXVERSE_FIELD_MAPPERS
+    )
+    # Transition
+    assert (
+        get_field_mappers("fal-ai/pixverse/v5.5/transition") is PIXVERSE_FIELD_MAPPERS
+    )
+    # Effects
+    assert get_field_mappers("fal-ai/pixverse/v5.5/effects") is PIXVERSE_FIELD_MAPPERS
+    # Swap (separate endpoint)
+    assert get_field_mappers("fal-ai/pixverse/swap") is PIXVERSE_FIELD_MAPPERS
+    # Prefix match
+    assert get_field_mappers("fal-ai/pixverse/v5.5") is PIXVERSE_FIELD_MAPPERS
+
+
+def test_get_field_mappers_pixverse_v5_all_variants():
+    """Test Pixverse v5 mapper selection for all variants."""
+    # Text-to-video
+    assert (
+        get_field_mappers("fal-ai/pixverse/v5/text-to-video") is PIXVERSE_FIELD_MAPPERS
+    )
+    # Image-to-video
+    assert (
+        get_field_mappers("fal-ai/pixverse/v5/image-to-video") is PIXVERSE_FIELD_MAPPERS
+    )
+    # Prefix match
+    assert get_field_mappers("fal-ai/pixverse/v5") is PIXVERSE_FIELD_MAPPERS
+
+
+# ==================== Pixverse Request Conversion Tests ====================
+
+
+def test_pixverse_text_to_video_minimal(handler):
+    """Test Pixverse text-to-video with minimal parameters."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A serene lake at sunset with mountains in the background",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert (
+        result["prompt"] == "A serene lake at sunset with mountains in the background"
+    )
+    # No other fields should be present
+    assert "duration" not in result
+    assert "aspect_ratio" not in result
+    assert "resolution" not in result
+
+
+def test_pixverse_text_to_video_full(handler):
+    """Test Pixverse text-to-video with all parameters."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Epic cinematic scene of a warrior",
+        duration_seconds=10,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        seed=42,
+        negative_prompt="blurry, low quality",
+        extra_params={
+            "style": "anime",
+            "thinking_type": "enabled",
+            "generate_audio_switch": True,
+            "generate_multi_clip_switch": True,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Epic cinematic scene of a warrior"
+    assert result["duration"] == "10"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["seed"] == 42
+    assert result["negative_prompt"] == "blurry, low quality"
+    assert result["style"] == "anime"
+    assert result["thinking_type"] == "enabled"
+    assert result["generate_audio_switch"] is True
+    assert result["generate_multi_clip_switch"] is True
+
+
+def test_pixverse_image_to_video(handler):
+    """Test Pixverse image-to-video conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A woman warrior walking with her wolf",
+        image_list=[{"image": "https://example.com/warrior.jpg", "type": "reference"}],
+        duration_seconds=8,
+        resolution="720p",
+        extra_params={
+            "style": "3d_animation",
+            "generate_audio_switch": True,
+            "generate_multi_clip_switch": False,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A woman warrior walking with her wolf"
+    assert result["image_url"] == "https://example.com/warrior.jpg"
+    assert result["duration"] == "8"
+    assert result["resolution"] == "720p"
+    assert result["style"] == "3d_animation"
+    assert result["generate_audio_switch"] is True
+    assert result["generate_multi_clip_switch"] is False
+
+
+def test_pixverse_transition(handler):
+    """Test Pixverse transition with first and end frames."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/transition",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Scene slowly transitions from day to night",
+        image_list=[
+            {"image": "https://example.com/day.jpg", "type": "first_frame"},
+            {"image": "https://example.com/night.jpg", "type": "last_frame"},
+        ],
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        extra_params={
+            "style": "cyberpunk",
+            "generate_audio_switch": False,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Scene slowly transitions from day to night"
+    assert result["first_image_url"] == "https://example.com/day.jpg"
+    assert result["end_image_url"] == "https://example.com/night.jpg"
+    assert result["duration"] == "5"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["style"] == "cyberpunk"
+    assert result["generate_audio_switch"] is False
+
+
+def test_pixverse_transition_first_frame_only(handler):
+    """Test Pixverse transition with only first frame (end frame optional)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/transition",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Animate from this starting frame",
+        image_list=[
+            {"image": "https://example.com/start.jpg", "type": "first_frame"},
+        ],
+        duration_seconds=8,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Animate from this starting frame"
+    assert result["first_image_url"] == "https://example.com/start.jpg"
+    assert "end_image_url" not in result
+    assert result["duration"] == "8"
+
+
+def test_pixverse_effects(handler):
+    """Test Pixverse effects variant."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/effects",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="",  # Prompt not required for effects (empty string is valid)
+        image_list=[{"image": "https://example.com/person.jpg", "type": "reference"}],
+        duration_seconds=5,
+        resolution="720p",
+        extra_params={
+            "effect": "Zombie Mode",
+            "thinking_type": "disabled",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["image_url"] == "https://example.com/person.jpg"
+    assert result["duration"] == "5"
+    assert result["resolution"] == "720p"
+    assert result["effect"] == "Zombie Mode"
+    assert result["thinking_type"] == "disabled"
+    # Empty string prompt is included (valid value)
+    assert result["prompt"] == ""
+
+
+def test_pixverse_swap(handler):
+    """Test Pixverse swap variant (person/object/background swap)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/swap",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="",  # Prompt not required for swap (empty string is valid)
+        video="https://example.com/original.mp4",
+        image_list=[{"image": "https://example.com/target.jpg", "type": "reference"}],
+        resolution="720p",
+        extra_params={
+            "mode": "person",
+            "keyframe_id": 1,
+            "original_sound_switch": True,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/original.mp4"
+    assert result["image_url"] == "https://example.com/target.jpg"
+    assert result["resolution"] == "720p"
+    assert result["mode"] == "person"
+    assert result["keyframe_id"] == 1
+    assert result["original_sound_switch"] is True
+    # Empty string prompt is included (valid value)
+    assert result["prompt"] == ""
+
+
+def test_pixverse_duration_validation(handler):
+    """Test Pixverse duration validation (5, 8, 10 seconds)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test all valid durations
+    for valid_duration in [5, 8, 10]:
+        request = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=valid_duration,
+        )
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(valid_duration)
+
+    # Test invalid durations
+    for invalid_duration in [3, 4, 6, 7, 9, 12, 15]:
+        request_invalid = VideoGenerationRequest(
+            prompt="test",
+            duration_seconds=invalid_duration,
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            handler._convert_request(config, request_invalid)
+
+        assert "Invalid duration" in str(exc_info.value)
+        assert f"{invalid_duration} seconds" in str(exc_info.value)
+        assert "5, 8, 10" in str(exc_info.value)
+
+
+def test_pixverse_v5_same_mapper_as_v55(handler):
+    """Test that Pixverse v5 uses same mapper as v5.5."""
+    config_v5 = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    config_v55 = VideoGenerationConfig(
+        model="fal-ai/pixverse/v5.5/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="test",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+    )
+
+    result_v5 = handler._convert_request(config_v5, request)
+    result_v55 = handler._convert_request(config_v55, request)
+
+    # Both versions should produce identical results
+    assert result_v5 == result_v55
+    assert result_v5["prompt"] == "test"
+    assert result_v5["duration"] == "5"
+    assert result_v5["aspect_ratio"] == "16:9"
+
+
 # ==================== Error Decorator Tests ====================
 
 
@@ -765,3 +1714,280 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
     # Test unknown exception is wrapped
     with pytest.raises(TarashException, match="Unknown error"):
         sync_func(None, config, VideoGenerationRequest(prompt="unknown"))
+
+
+# ==================== Kling O1 Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_kling_o1_all_variants():
+    """Test Kling O1 mapper selection for all three variants."""
+    from tarash.tarash_gateway.video.providers.fal import KLING_O1_FIELD_MAPPERS
+
+    # Image-to-video
+    assert (
+        get_field_mappers("fal-ai/kling-video/o1/image-to-video")
+        is KLING_O1_FIELD_MAPPERS
+    )
+    # Reference-to-video
+    assert (
+        get_field_mappers("fal-ai/kling-video/o1/reference-to-video")
+        is KLING_O1_FIELD_MAPPERS
+    )
+    # Video-to-video/edit
+    assert (
+        get_field_mappers("fal-ai/kling-video/o1/standard/video-to-video/edit")
+        is KLING_O1_FIELD_MAPPERS
+    )
+    # Prefix match
+    assert get_field_mappers("fal-ai/kling-video/o1") is KLING_O1_FIELD_MAPPERS
+
+
+# ==================== Kling O1 Request Conversion Tests ====================
+
+
+def test_kling_o1_image_to_video_conversion(handler):
+    """Test Kling O1 image-to-video request conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Animate this winter scene with @Image1 as start frame",
+        image_list=[
+            {"image": "https://example.com/winter.jpg", "type": "first_frame"},
+        ],
+        duration_seconds=5,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Animate this winter scene with @Image1 as start frame"
+    assert result["start_image_url"] == "https://example.com/winter.jpg"
+    assert "end_image_url" not in result
+    assert result["duration"] == "5"  # No "s" suffix
+    assert "aspect_ratio" not in result
+
+
+def test_kling_o1_image_to_video_with_end_frame(handler):
+    """Test Kling O1 image-to-video with both start and end frames."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Transition from @Image1 to @Image2",
+        image_list=[
+            {"image": "https://example.com/start.jpg", "type": "first_frame"},
+            {"image": "https://example.com/end.jpg", "type": "last_frame"},
+        ],
+        duration_seconds=10,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Transition from @Image1 to @Image2"
+    assert result["start_image_url"] == "https://example.com/start.jpg"
+    assert result["end_image_url"] == "https://example.com/end.jpg"
+    assert result["duration"] == "10"
+
+
+def test_kling_o1_reference_to_video_conversion(handler):
+    """Test Kling O1 reference-to-video with elements and reference images."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/reference-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Show @Element1 walking through a forest with style of @Image1",
+        image_list=[
+            # Reference image for style
+            {"image": "https://example.com/forest-style.jpg", "type": "reference"},
+        ],
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        extra_params={
+            "elements": [
+                {
+                    "frontal_image_url": "https://example.com/char-front.jpg",
+                    "reference_image_urls": ["https://example.com/char-side.jpg"],
+                }
+            ]
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert (
+        result["prompt"]
+        == "Show @Element1 walking through a forest with style of @Image1"
+    )
+    assert result["duration"] == "5"
+    assert result["aspect_ratio"] == "16:9"
+
+    # Check elements structure
+    assert "elements" in result
+    assert len(result["elements"]) == 1
+    assert (
+        result["elements"][0]["frontal_image_url"]
+        == "https://example.com/char-front.jpg"
+    )
+    assert result["elements"][0]["reference_image_urls"] == [
+        "https://example.com/char-side.jpg"
+    ]
+
+    # Check reference images
+    assert "image_urls" in result
+    assert result["image_urls"] == ["https://example.com/forest-style.jpg"]
+
+
+def test_kling_o1_reference_to_video_multiple_elements(handler):
+    """Test Kling O1 reference-to-video with multiple elements."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/reference-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="@Element1 and @Element2 standing together in style of @Image1",
+        image_list=[
+            # Style reference
+            {"image": "https://example.com/style.jpg", "type": "reference"},
+        ],
+        duration_seconds=10,
+        aspect_ratio="1:1",
+        extra_params={
+            "elements": [
+                {"frontal_image_url": "https://example.com/char1.jpg"},
+                {
+                    "frontal_image_url": "https://example.com/char2-front.jpg",
+                    "reference_image_urls": ["https://example.com/char2-back.jpg"],
+                },
+            ]
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    # Check elements
+    assert len(result["elements"]) == 2
+
+    # Element 1 (single image)
+    elem1 = next(
+        e
+        for e in result["elements"]
+        if e["frontal_image_url"] == "https://example.com/char1.jpg"
+    )
+    assert "reference_image_urls" not in elem1
+
+    # Element 2 (multiple images)
+    elem2 = next(
+        e
+        for e in result["elements"]
+        if e["frontal_image_url"] == "https://example.com/char2-front.jpg"
+    )
+    assert elem2["reference_image_urls"] == ["https://example.com/char2-back.jpg"]
+
+
+def test_kling_o1_video_to_video_edit_conversion(handler):
+    """Test Kling O1 video-to-video/edit request conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/standard/video-to-video/edit",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Replace character with @Element1 and apply style from @Image1",
+        video="https://example.com/input-video.mp4",
+        image_list=[
+            # Style reference
+            {"image": "https://example.com/new-style.jpg", "type": "reference"},
+        ],
+        extra_params={
+            "elements": [{"frontal_image_url": "https://example.com/new-char.jpg"}],
+            "keep_audio": True,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert (
+        result["prompt"]
+        == "Replace character with @Element1 and apply style from @Image1"
+    )
+    assert result["video_url"] == "https://example.com/input-video.mp4"
+    assert result["keep_audio"] is True
+    assert "duration" not in result  # video-to-video/edit doesn't use duration
+
+    # Check elements
+    assert "elements" in result
+    assert len(result["elements"]) == 1
+    assert (
+        result["elements"][0]["frontal_image_url"] == "https://example.com/new-char.jpg"
+    )
+
+    # Check reference images
+    assert result["image_urls"] == ["https://example.com/new-style.jpg"]
+
+
+def test_kling_o1_duration_validation(handler):
+    """Test Kling O1 duration validation (only 5 or 10 seconds allowed)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Valid durations
+    for valid_duration in [5, 10]:
+        request = VideoGenerationRequest(
+            prompt="Test",
+            image_list=[
+                {"image": "https://example.com/img.jpg", "type": "first_frame"}
+            ],
+            duration_seconds=valid_duration,
+        )
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(valid_duration)
+
+    # Invalid duration
+    request_invalid = VideoGenerationRequest(
+        prompt="Test",
+        image_list=[{"image": "https://example.com/img.jpg", "type": "first_frame"}],
+        duration_seconds=7,  # Not allowed
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(config, request_invalid)
+
+    assert "Invalid duration" in str(exc_info.value)
+    assert "7 seconds" in str(exc_info.value)
+    assert "kling-o1" in str(exc_info.value).lower()
+
+
+def test_kling_o1_no_elements_in_extra_params(handler):
+    """Test Kling O1 without elements in extra_params."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o1/reference-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Test with only reference images",
+        image_list=[
+            {"image": "https://example.com/ref1.jpg", "type": "reference"},
+            {"image": "https://example.com/ref2.jpg", "type": "reference"},
+        ],
+    )
+
+    result = handler._convert_request(config, request)
+
+    # No elements field when not in extra_params
+    assert "elements" not in result
+    # But reference images should be present
+    assert result["image_urls"] == [
+        "https://example.com/ref1.jpg",
+        "https://example.com/ref2.jpg",
+    ]

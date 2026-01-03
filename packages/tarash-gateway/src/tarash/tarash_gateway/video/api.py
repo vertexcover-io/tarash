@@ -16,6 +16,7 @@ from tarash.tarash_gateway.video.providers import (
     FalProviderHandler,
     Veo3ProviderHandler,
     ReplicateProviderHandler,
+    RunwayProviderHandler,
 )
 from tarash.tarash_gateway.video.providers.field_mappers import FieldMapper
 from tarash.tarash_gateway.video.providers.fal import FAL_MODEL_REGISTRY
@@ -50,6 +51,8 @@ def _get_handler(provider: str) -> ProviderHandler:
             _HANDLER_INSTANCES[provider] = ReplicateProviderHandler()
         elif provider == "openai":
             _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
+        elif provider == "runway":
+            _HANDLER_INSTANCES[provider] = RunwayProviderHandler()
         else:
             log_error(
                 "Unsupported provider",
@@ -191,6 +194,12 @@ async def generate_video_async(
         logger_name="tarash.tarash_gateway.video.api",
         redact=True,
     )
+
+    # INTERCEPTION: Check for mock mode
+    if config.mock and config.mock.enabled:
+        from tarash.tarash_gateway.video.mock import handle_mock_request_async
+
+        return await handle_mock_request_async(config.mock, request, on_progress)
 
     # Get handler for provider
     handler = _get_handler(config.provider)
