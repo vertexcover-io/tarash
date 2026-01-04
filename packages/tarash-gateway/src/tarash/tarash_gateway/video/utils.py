@@ -1,12 +1,11 @@
 """Utility functions for video generation."""
 
 import base64
-from typing import Any, Type
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from pydantic import TypeAdapter
-from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.logging import log_debug, log_error
 from tarash.tarash_gateway.video.exceptions import (
@@ -18,7 +17,7 @@ from tarash.tarash_gateway.video.exceptions import (
 
 def validate_model_params(
     *,
-    schema: Type[TypedDict],
+    schema: type[Any],  # TypedDict type
     data: dict[str, Any],
     provider: str,
     model: str,

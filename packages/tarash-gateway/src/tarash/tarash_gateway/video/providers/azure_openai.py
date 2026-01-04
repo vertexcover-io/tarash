@@ -13,8 +13,8 @@ from tarash.tarash_gateway.video.providers.openai import parse_openai_video_stat
 try:
     from openai import AsyncAzureOpenAI, AzureOpenAI
 except ImportError:
-    AsyncAzureOpenAI = None  # type: ignore
-    AzureOpenAI = None  # type: ignore
+    AsyncAzureOpenAI = None
+    AzureOpenAI = None
 
 
 class AzureOpenAIVideoParams(TypedDict, total=False):

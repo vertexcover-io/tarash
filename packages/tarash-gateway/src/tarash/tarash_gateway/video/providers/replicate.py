@@ -42,7 +42,7 @@ try:
     BadRequestError = replicate.BadRequestError
     UnprocessableEntityError = replicate.UnprocessableEntityError
 except (ImportError, Exception):
-    replicate = None  # type: ignore
+    replicate = None
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.replicate"

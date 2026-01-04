@@ -32,6 +32,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-xdist>=3.0.0",
     "pytest-cov>=4.0.0",
+    "mypy>=1.8.0",
 ]
 
 [build-system]
@@ -92,3 +93,49 @@ exclude_lines = [
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+strict_equality = true
+
+# Allow Any types - common in provider integrations
+warn_return_any = false
+disallow_any_unimported = false
+disallow_any_explicit = false
+disallow_any_generics = false
+
+# Relaxed settings for practical use
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+warn_no_return = false
+
+# Paths
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+
+# Per-module options for third-party libraries without type stubs
+[[tool.mypy.overrides]]
+module = [
+    "fal_client.*",
+    "replicate.*",
+    "runwayml.*",
+    "google.genai.*",
+    "google.cloud.*",
+    "google.*",
+    "aiohttp.*",
+    "openai.*",
+]
+ignore_missing_imports = true
+
+# Allow tests to have more flexibility with types
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+check_untyped_defs = false

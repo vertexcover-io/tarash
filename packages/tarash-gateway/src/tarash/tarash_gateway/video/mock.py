@@ -120,7 +120,9 @@ class MockPollingConfig(BaseModel):
 
     enabled: bool = True
     status_sequence: list[Literal["queued", "processing", "completed", "failed"]] = (
-        Field(default_factory=lambda: ["queued", "processing", "completed"])
+        Field(  # type: ignore[assignment]
+            default_factory=lambda: ["queued", "processing", "completed"]
+        )
     )
     delay_between_updates: float = 0.5
     progress_percentages: list[int] | None = None
@@ -603,7 +605,7 @@ def handle_mock_request_sync(
 ) -> VideoGenerationResponse:
     """Handle mock request (sync)."""
     request_id = generate_mock_request_id()
-    selected = select_mock_response(mock_config.responses)
+    selected = select_mock_response(mock_config.responses)  # type: ignore[arg-type]
 
     if selected.error:
         if mock_config.polling:
@@ -637,7 +639,7 @@ async def handle_mock_request_async(
 ) -> VideoGenerationResponse:
     """Handle mock request (async)."""
     request_id = generate_mock_request_id()
-    selected = select_mock_response(mock_config.responses)
+    selected = select_mock_response(mock_config.responses)  # type: ignore[arg-type]
 
     if selected.error:
         if mock_config.polling:

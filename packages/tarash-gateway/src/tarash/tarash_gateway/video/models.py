@@ -13,7 +13,7 @@ from typing import (
     Union,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 if TYPE_CHECKING:
     from tarash.tarash_gateway.video.mock import MockConfig
@@ -209,7 +209,9 @@ class VideoGenerationUpdate(BaseModel):
 
 
 class BaseVideoParams(TypedDict, total=False):
-    __pydantic_config__ = ConfigDict(extra="allow")
+    """Base video parameters - extensible dict for provider-specific params."""
+
+    pass
 
 
 # Kling Camera Control
@@ -285,52 +287,41 @@ class KlingCameraControl(BaseModel):
 class KlingVideoParams(BaseVideoParams):
     """Kling-specific parameters."""
 
-    mode: Literal["std", "pro"] = "std"
-    sound: bool = False
-    negative_prompt: str | None = None
-    cfg_scale: float | None = Field(None, ge=0.0, le=1.0)
-    camera_control: KlingCameraControl | None = None
+    mode: Literal["std", "pro"]
+    sound: bool
+    negative_prompt: str | None
+    cfg_scale: float | None
+    camera_control: KlingCameraControl | None
 
 
 # ==================== Provider Handler Protocol ====================
 
 
 class ProviderHandler(Protocol):
-    """Protocol for provider handler implementations."""
+    """Protocol for provider handler implementations.
+
+    Note: This is a relaxed protocol - not all methods need exact signatures.
+    Providers may have variations (e.g., different return types, extra parameters).
+    """
 
     def _get_client(
-        self, config: VideoGenerationConfig, client_type: Literal["sync", "async"]
+        self, config: VideoGenerationConfig, *args: Any, **kwargs: Any
     ) -> Any:
         """
         Get or create provider client.
 
         Args:
             config: Provider configuration
-            client_type: Type of client to return ("sync" or "async")
+            *args, **kwargs: Provider-specific arguments (e.g., client_type)
 
         Returns:
-            Provider-specific client instance (sync or async)
-        """
-        ...
-
-    def _validate_params(
-        self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> dict[str, Any]:
-        """
-        Validate and transform model_params.
-
-        Args:
-            config: Provider configuration
-            request: Video generation request
-
-        Returns:
-            Validated model parameters dict
+            Provider-specific client instance
         """
         ...
 
     def _convert_request(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> dict[str, Any]:
+    ) -> Any:
         """
         Convert VideoGenerationRequest to provider-specific format.
 
@@ -339,7 +330,7 @@ class ProviderHandler(Protocol):
             request: Video generation request
 
         Returns:
-            Provider-specific request payload
+            Provider-specific request payload (dict or tuple)
         """
         ...
 

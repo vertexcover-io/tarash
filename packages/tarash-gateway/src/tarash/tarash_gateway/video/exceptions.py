@@ -3,7 +3,7 @@
 import functools
 import inspect
 import traceback
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from tarash.tarash_gateway.video.models import (
         VideoGenerationConfig,
         VideoGenerationRequest,
+        VideoGenerationResponse,
     )
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class TarashException(Exception):
@@ -142,12 +145,12 @@ def handle_video_generation_errors(func: Callable) -> Callable:
 
         @functools.wraps(func)
         async def async_wrapper(
-            self,
+            self: Any,
             config: "VideoGenerationConfig",
             request: "VideoGenerationRequest",
-            *args,
-            **kwargs,
-        ):
+            *args: Any,
+            **kwargs: Any,
+        ) -> "VideoGenerationResponse":
             try:
                 return await func(self, config, request, *args, **kwargs)
             except (
@@ -183,12 +186,12 @@ def handle_video_generation_errors(func: Callable) -> Callable:
 
         @functools.wraps(func)
         def sync_wrapper(
-            self,
+            self: Any,
             config: "VideoGenerationConfig",
             request: "VideoGenerationRequest",
-            *args,
-            **kwargs,
-        ):
+            *args: Any,
+            **kwargs: Any,
+        ) -> "VideoGenerationResponse":
             try:
                 return func(self, config, request, *args, **kwargs)
             except (

@@ -21,10 +21,10 @@ try:
 
         has_aiohttp = True
     except ImportError:
-        aiohttp = None  # type: ignore
+        aiohttp = None
         has_aiohttp = False
 except ImportError:
-    genai = None  # type: ignore
+    genai = None
     has_aiohttp = False
 
 
@@ -68,6 +68,7 @@ def _convert_to_image(image: MediaType) -> dict[str, Any]:
         return {"image_bytes": image["content"], "mime_type": image["content_type"]}
     elif isinstance(image, str):
         return {"gcs_uri": image}
+    return {}  # type: ignore[return-value]
 
 
 def _convert_to_video(video: MediaType) -> dict[str, Any]:
@@ -76,6 +77,7 @@ def _convert_to_video(video: MediaType) -> dict[str, Any]:
         return {"video_bytes": video["content"], "mime_type": video["content_type"]}
     elif isinstance(video, str):
         return {"uri": video}
+    return {}  # type: ignore[return-value]
 
 
 def parse_veo3_operation(operation: GenerateVideosOperation) -> VideoGenerationUpdate:
