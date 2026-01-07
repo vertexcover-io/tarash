@@ -1,18 +1,22 @@
-"""Common field mapping framework for video generation providers.
+"""Common field mapping framework for video and image generation providers.
 
-This module provides a declarative way to map VideoGenerationRequest fields
-to provider-specific API formats using FieldMapper objects.
+This module provides a declarative way to map VideoGenerationRequest and
+ImageGenerationRequest fields to provider-specific API formats using FieldMapper objects.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Callable, Literal, TypedDict, cast
+from typing import Callable, Literal, TypedDict, Union, cast
 
 from tarash.tarash_gateway.models import (
+    ImageGenerationRequest,
     MediaContent,
     VideoGenerationRequest,
 )
 from tarash.tarash_gateway.utils import convert_to_data_url, validate_duration
+
+# Union type for request types that field mappers can handle
+GenerationRequest = Union[VideoGenerationRequest, ImageGenerationRequest]
 
 
 # Type alias for image list items
@@ -28,24 +32,24 @@ class ImageListItem(TypedDict, total=False):
 
 @dataclass
 class FieldMapper:
-    """Maps a VideoGenerationRequest field to an API field with conversion.
+    """Maps a generation request field to an API field with conversion.
 
     Attributes:
-        source_field: Field name in VideoGenerationRequest
+        source_field: Field name in VideoGenerationRequest or ImageGenerationRequest
         converter: Function that takes (request, field_value) and returns converted value
         required: Whether this field is required (default: False)
     """
 
     source_field: str
-    converter: Callable[[VideoGenerationRequest, object], object]
+    converter: Callable[[GenerationRequest, object], object]
     required: bool = False
 
 
 def apply_field_mappers(
     field_mappers: dict[str, FieldMapper],
-    request: VideoGenerationRequest,
+    request: GenerationRequest,
 ) -> dict[str, object]:
-    """Apply field mappers to convert VideoGenerationRequest to API format.
+    """Apply field mappers to convert generation request to API format.
 
     Args:
         field_mappers: Dict mapping API field names to FieldMapper objects
@@ -426,3 +430,180 @@ def get_field_mappers_from_registry(
 
     # No match found - use fallback
     return fallback_mappers
+
+
+# ==================== Image Field Mappers ====================
+
+
+def size_field_mapper(
+    allowed_values: list[str] | None = None,
+    provider: str = "unknown",
+    model: str | None = None,
+) -> FieldMapper:
+    """Create a FieldMapper for image size field.
+
+    Args:
+        allowed_values: Optional list of allowed sizes (e.g., ["1024x1024", "1024x1792"])
+        provider: Provider name for error messages
+        model: Optional model name for error messages
+
+    Returns:
+        FieldMapper for size field
+    """
+
+    def converter(_request: GenerationRequest, value: object) -> str | None:
+        if value is None:
+            return None
+
+        size_str = str(value)
+        if allowed_values and size_str not in allowed_values:
+            allowed_str = ", ".join(allowed_values)
+            model_str = f" for {model}" if model else ""
+            raise ValueError(
+                f"Invalid size '{size_str}'{model_str}. Allowed: {allowed_str} ({provider})"
+            )
+        return size_str
+
+    return FieldMapper(source_field="size", converter=converter)
+
+
+def quality_field_mapper(
+    allowed_values: list[str] | None = None,
+) -> FieldMapper:
+    """Create a FieldMapper for image quality field.
+
+    Args:
+        allowed_values: Optional list of allowed quality values
+
+    Returns:
+        FieldMapper for quality field
+    """
+
+    def converter(_request: GenerationRequest, value: object) -> str | None:
+        if value is None:
+            return None
+        quality_str = str(value)
+        if allowed_values and quality_str not in allowed_values:
+            raise ValueError(
+                f"Invalid quality '{quality_str}'. Allowed: {allowed_values}"
+            )
+        return quality_str
+
+    return FieldMapper(source_field="quality", converter=converter)
+
+
+def style_field_mapper(
+    allowed_values: list[str] | None = None,
+) -> FieldMapper:
+    """Create a FieldMapper for image style field.
+
+    Args:
+        allowed_values: Optional list of allowed style values
+
+    Returns:
+        FieldMapper for style field
+    """
+
+    def converter(_request: GenerationRequest, value: object) -> str | None:
+        if value is None:
+            return None
+        style_str = str(value)
+        if allowed_values and style_str not in allowed_values:
+            raise ValueError(f"Invalid style '{style_str}'. Allowed: {allowed_values}")
+        return style_str
+
+    return FieldMapper(source_field="style", converter=converter)
+
+
+def n_images_field_mapper(
+    min_value: int = 1,
+    max_value: int = 10,
+) -> FieldMapper:
+    """Create a FieldMapper for number of images field.
+
+    Args:
+        min_value: Minimum allowed value (default: 1)
+        max_value: Maximum allowed value (default: 10)
+
+    Returns:
+        FieldMapper for n field
+    """
+
+    def converter(_request: GenerationRequest, value: object) -> int | None:
+        if value is None:
+            return None
+        n_value = int(value)
+        if n_value < min_value or n_value > max_value:
+            raise ValueError(
+                f"n must be between {min_value} and {max_value}, got {n_value}"
+            )
+        return n_value
+
+    return FieldMapper(source_field="n", converter=converter)
+
+
+def image_input_field_mapper(
+    required: bool = False,
+) -> FieldMapper:
+    """Create a FieldMapper for image input (img2img, inpainting).
+
+    Extracts the first image from image_list if present.
+
+    Args:
+        required: Whether this field is required
+
+    Returns:
+        FieldMapper for image input
+    """
+
+    def converter(_request: GenerationRequest, value: object) -> str | None:
+        if not value:
+            return None
+
+        # Cast to list of ImageListItem
+        image_list = cast(list[ImageListItem], value)
+        if len(image_list) == 0:
+            return None
+
+        # Get the first image (typically reference type for img2img)
+        first_image = image_list[0]
+        if "image" in first_image:
+            media = first_image["image"]
+            if (
+                isinstance(media, dict)
+                and "content" in media
+                and "content_type" in media
+            ):
+                media_content: MediaContent = {
+                    "content": media["content"],
+                    "content_type": media["content_type"],
+                }
+                return convert_to_data_url(media_content)
+            return str(media)
+        return None
+
+    return FieldMapper(
+        source_field="image_list", converter=converter, required=required
+    )
+
+
+def mask_image_field_mapper() -> FieldMapper:
+    """Create a FieldMapper for mask image (inpainting).
+
+    Returns:
+        FieldMapper for mask_image field
+    """
+
+    def converter(_request: GenerationRequest, value: object) -> str | None:
+        if value is None:
+            return None
+
+        if isinstance(value, dict) and "content" in value and "content_type" in value:
+            media_content: MediaContent = {
+                "content": value["content"],
+                "content_type": value["content_type"],
+            }
+            return convert_to_data_url(media_content)
+        return str(value)
+
+    return FieldMapper(source_field="mask_image", converter=converter)

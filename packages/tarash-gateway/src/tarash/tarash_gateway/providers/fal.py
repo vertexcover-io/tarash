@@ -909,3 +909,27 @@ class FalProviderHandler:
 
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex)
+
+    # ==================== Image Generation (Stub - To Be Implemented) ====================
+
+    async def generate_image_async(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Fal image generation - to be implemented in Phase 3."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} image generation will be implemented in Phase 3."
+        )
+
+    def generate_image(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: SyncProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Fal image generation - to be implemented in Phase 3."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} image generation will be implemented in Phase 3."
+        )

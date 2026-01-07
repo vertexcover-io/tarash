@@ -775,3 +775,29 @@ class RunwayProviderHandler:
             # Get request_id if task exists, otherwise use placeholder
             error_request_id = getattr(task, "id", None) if task is not None else None
             raise self._handle_error(config, request, error_request_id or "unknown", ex)
+
+    # ==================== Image Generation (Not Supported) ====================
+
+    async def generate_image_async(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Runway image generation - not supported."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support image generation. "
+            "Use Fal provider for image generation."
+        )
+
+    def generate_image(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Runway image generation - not supported."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support image generation. "
+            "Use Fal provider for image generation."
+        )

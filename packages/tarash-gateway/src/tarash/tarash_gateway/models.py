@@ -1,4 +1,4 @@
-"""Core data models for video generation."""
+"""Core data models for video and image generation."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -50,10 +50,15 @@ def _empty_image_list() -> list[ImageType]:
     return []
 
 
-# Progress callback types
+# Progress callback types (video)
 SyncProgressCallback = Callable[["VideoGenerationUpdate"], None]
 AsyncProgressCallback = Callable[["VideoGenerationUpdate"], Awaitable[None]]
 ProgressCallback = SyncProgressCallback | AsyncProgressCallback
+
+# Progress callback types (image)
+SyncImageProgressCallback = Callable[["ImageGenerationUpdate"], None]
+AsyncImageProgressCallback = Callable[["ImageGenerationUpdate"], Awaitable[None]]
+ImageProgressCallback = SyncImageProgressCallback | AsyncImageProgressCallback
 
 # ==================== Execution Metadata ====================
 
@@ -213,6 +218,101 @@ class VideoGenerationUpdate(BaseModel):
     error: str | None = None
 
 
+# ==================== Image Generation Models ====================
+
+
+class ImageGenerationConfig(BaseModel):
+    """Configuration for image generation provider."""
+
+    model: str  # e.g., "fal-ai/flux-pro", "dall-e-3"
+    provider: str  # e.g., "fal", "openai"
+    api_key: str
+    base_url: str | None = None
+    api_version: str | None = None  # For Azure OpenAI
+    timeout: int = 120  # 2 minutes default (images are faster)
+    max_poll_attempts: int = 60
+    poll_interval: int = 2  # seconds
+    mock: "MockConfig | None" = None
+    fallback_configs: list["ImageGenerationConfig"] | None = None
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class ImageGenerationRequest(BaseModel):
+    """Image generation request with common parameters."""
+
+    prompt: str
+    negative_prompt: str | None = None
+    size: str | None = None  # "1024x1024", "1024x1792", "1792x1024", etc.
+    quality: str | None = None  # "standard", "hd"
+    style: str | None = None  # "natural", "vivid"
+    n: int | None = None  # Number of images to generate
+    image_list: list[ImageType] = Field(
+        default_factory=_empty_image_list
+    )  # For img2img
+    mask_image: MediaType | None = None  # For inpainting
+    seed: int | None = None
+    aspect_ratio: AspectRatio | None = None  # Alternative to size
+
+    # Model-specific parameters
+    extra_params: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_extra_fields(cls, data: dict[str, object]) -> dict[str, object]:
+        extra_params: dict[str, object] = cast(
+            dict[str, object], data.pop("extra_params", {})
+        )
+
+        # Get all field names defined in the model
+        known_fields = set(cls.model_fields.keys())
+
+        # Extract extra fields
+        extra = {k: v for k, v in data.items() if k not in known_fields}
+
+        # Remove extra fields from data (so Pydantic doesn't complain)
+        for k in extra.keys():
+            _ = data.pop(k)
+
+        extra_params.update(extra)
+
+        # Store in extra_params
+        data["extra_params"] = extra_params
+
+        return data
+
+
+class ImageGenerationResponse(BaseModel):
+    """Normalized image generation response."""
+
+    request_id: str  # Our unique ID for this request
+
+    images: list[str]  # List of URLs or base64 data
+    content_type: str | None = "image/png"
+    status: Literal["completed", "failed"]
+    is_mock: bool = False
+    revised_prompt: str | None = None  # Some providers may revise the prompt
+
+    # Debugging & provider-specific data
+    raw_response: dict[str, object]
+    provider_metadata: dict[str, object] = Field(default_factory=dict)
+    execution_metadata: ExecutionMetadata | None = None
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class ImageGenerationUpdate(BaseModel):
+    """Progress update during image generation."""
+
+    request_id: str
+
+    status: StatusType
+    progress_percent: int | None = Field(None, ge=0, le=100)
+    update: dict[str, object]
+    result: ImageGenerationResponse | None = None
+    error: str | None = None
+
+
 # ==================== Model-Specific Parameters ====================
 
 
@@ -312,19 +412,11 @@ ProviderResponseT = TypeVar("ProviderResponseT", contravariant=True)
 class ProviderHandler(Protocol):
     """Protocol for provider handler implementations.
 
-    Note: This is a relaxed protocol - not all methods need exact signatures.
-    Providers may have variations (e.g., different return types, extra parameters).
-        Convert provider response to VideoGenerationResponse.
-
-        Args:
-            config: Provider configuration
-            request: Original video generation request
-            request_id: Our request ID
-            provider_response: Raw provider response
-
-        Returns:
-            Normalized VideoGenerationResponse
+    Providers implement video and/or image generation methods.
+    Not all providers support both - those that don't will raise NotImplementedError.
     """
+
+    # ==================== Video Generation ====================
 
     async def generate_video_async(
         self,
@@ -333,15 +425,18 @@ class ProviderHandler(Protocol):
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """
-        Generate video asynchronously with progress callback (sync or async).
+        Generate video asynchronously with progress callback.
 
         Args:
             config: Provider configuration
             request: Video generation request
-            on_progress: Optional callback (sync or async) for progress updates
+            on_progress: Optional callback for progress updates
 
         Returns:
             Final VideoGenerationResponse when complete
+
+        Raises:
+            NotImplementedError: If provider doesn't support video generation
         """
         ...
 
@@ -357,9 +452,58 @@ class ProviderHandler(Protocol):
         Args:
             config: Provider configuration
             request: Video generation request
-            on_progress: Optional callback (sync or async) for progress updates
+            on_progress: Optional callback for progress updates
 
         Returns:
             Final VideoGenerationResponse
+
+        Raises:
+            NotImplementedError: If provider doesn't support video generation
+        """
+        ...
+
+    # ==================== Image Generation ====================
+
+    async def generate_image_async(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """
+        Generate image asynchronously with progress callback.
+
+        Args:
+            config: Provider configuration
+            request: Image generation request
+            on_progress: Optional callback for progress updates
+
+        Returns:
+            Final ImageGenerationResponse when complete
+
+        Raises:
+            NotImplementedError: If provider doesn't support image generation
+        """
+        ...
+
+    def generate_image(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """
+        Generate image synchronously (blocking) with progress callback.
+
+        Args:
+            config: Provider configuration
+            request: Image generation request
+            on_progress: Optional callback for progress updates
+
+        Returns:
+            Final ImageGenerationResponse
+
+        Raises:
+            NotImplementedError: If provider doesn't support image generation
         """
         ...

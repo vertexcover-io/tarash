@@ -779,3 +779,29 @@ class Veo3ProviderHandler:
 
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex) from ex
+
+    # ==================== Image Generation (Not Supported) ====================
+
+    async def generate_image_async(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Veo3 image generation - not supported."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support image generation. "
+            "Use Fal provider for image generation."
+        )
+
+    def generate_image(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Veo3 image generation - not supported."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support image generation. "
+            "Use Fal provider for image generation."
+        )

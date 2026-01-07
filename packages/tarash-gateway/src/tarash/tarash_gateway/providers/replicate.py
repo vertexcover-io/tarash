@@ -821,3 +821,29 @@ class ReplicateProviderHandler:
 
         except Exception as ex:
             raise self._handle_error(config, request, prediction_id, ex)
+
+    # ==================== Image Generation (Not Supported) ====================
+
+    async def generate_image_async(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Replicate image generation - not yet implemented."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not yet support image generation. "
+            "Use Fal provider for image generation."
+        )
+
+    def generate_image(
+        self,
+        config: VideoGenerationConfig,
+        request: VideoGenerationRequest,
+        on_progress: ProgressCallback | None = None,
+    ) -> VideoGenerationResponse:
+        """Replicate image generation - not yet implemented."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not yet support image generation. "
+            "Use Fal provider for image generation."
+        )
