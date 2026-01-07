@@ -8,11 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 from typing_extensions import NotRequired, Required, TypedDict
 
-from tarash.tarash_gateway.logging import (
-    log_debug,
-    log_error,
-    log_info,
-)
+from tarash.tarash_gateway.logging import ProviderLogger, log_error
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
@@ -169,18 +165,14 @@ class OpenAIProviderHandler:
         Returns:
             OpenAI (sync) or AsyncOpenAI (async) client instance
         """
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
         # Use API key + base_url as cache key
         cache_key = f"{config.api_key}:{config.base_url or 'default'}:{client_type}"
         if client_type == "async":
             if cache_key not in self._async_client_cache:
-                log_debug(
+                logger.debug(
                     "Creating new async OpenAI client",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "base_url": config.base_url or "default",
-                    },
-                    logger_name=_LOGGER_NAME,
+                    {"base_url": config.base_url or "default"},
                 )
                 client_kwargs = {
                     "api_key": config.api_key,
@@ -201,14 +193,9 @@ class OpenAIProviderHandler:
             return self._async_client_cache[cache_key]
         else:  # sync
             if cache_key not in self._sync_client_cache:
-                log_debug(
+                logger.debug(
                     "Creating new sync OpenAI client",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "base_url": config.base_url or "default",
-                    },
-                    logger_name=_LOGGER_NAME,
+                    {"base_url": config.base_url or "default"},
                 )
                 client_kwargs = {
                     "api_key": config.api_key,
@@ -342,14 +329,10 @@ class OpenAIProviderHandler:
                     content_type,
                 )
 
-        log_info(
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
             "Mapped request to provider format",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "converted_request": openai_params,
-            },
-            logger_name=_LOGGER_NAME,
+            {"converted_request": openai_params},
             redact=True,
         )
 
@@ -376,6 +359,8 @@ class OpenAIProviderHandler:
         """
         video = provider_response["video"]
         video_content = provider_response.get("content")
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger = logger.with_request_id(request_id)
 
         if video.status == "failed":
             error = getattr(video, "error", None)
@@ -384,16 +369,9 @@ class OpenAIProviderHandler:
                 if error
                 else "Video generation failed"
             )
-            log_error(
+            logger.error(
                 "OpenAI video generation failed",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "video_id": video.id,
-                    "error_message": error_msg,
-                },
-                logger_name=_LOGGER_NAME,
+                {"video_id": video.id, "error_message": error_msg},
             )
             raise GenerationFailedError(
                 error_msg,
@@ -407,15 +385,9 @@ class OpenAIProviderHandler:
                 },
             )
         elif video_content is None or len(video_content) == 0:
-            log_error(
+            logger.error(
                 "No video content found in OpenAI response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "video_id": video.id,
-                },
-                logger_name=_LOGGER_NAME,
+                {"video_id": video.id},
             )
             raise GenerationFailedError(
                 "No video content found in response",
@@ -548,10 +520,10 @@ class OpenAIProviderHandler:
 
     def _log_poll_status(
         self,
-        config: VideoGenerationConfig,
-        request_id: str,
+        logger: ProviderLogger,
         video: Video,
         poll_attempts: int,
+        max_poll_attempts: int,
         last_logged_progress: int,
     ) -> int:
         """
@@ -561,44 +533,36 @@ class OpenAIProviderHandler:
         """
         current_status = video.status
         progress = video.progress
-        log_method = None
-        if current_status == "completed" or current_status == "failed":
-            log_method = log_info
-        elif progress != last_logged_progress:
-            log_method = log_info
-        elif poll_attempts % 10 == 0:
-            log_method = log_debug
+        extra: dict[str, object] = {
+            "status": current_status,
+            "progress_percent": progress,
+            "poll_attempt": poll_attempts + 1,
+            "max_attempts": max_poll_attempts,
+        }
 
-        if log_method:
-            log_method(
-                "Progress status update",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "status": current_status,
-                    "progress_percent": progress,
-                    "poll_attempt": poll_attempts + 1,
-                    "max_attempts": config.max_poll_attempts,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+        if current_status == "completed" or current_status == "failed":
+            logger.info("Progress status update", extra)
+        elif progress != last_logged_progress:
+            logger.info("Progress status update", extra)
+        elif poll_attempts % 10 == 0:
+            logger.debug("Progress status update", extra)
+
         return last_logged_progress
 
     def _check_for_timeout(
         self,
+        logger: ProviderLogger,
         video: Video,
         config: VideoGenerationConfig,
-        request_id: str,
         poll_attempts: int,
     ) -> None:
         """
         Check if video generation timed out and raise error if so.
 
         Args:
+            logger: ProviderLogger with request_id bound
             video: Current video object
             config: Provider configuration
-            request_id: Request ID
             poll_attempts: Number of poll attempts made
 
         Raises:
@@ -606,24 +570,20 @@ class OpenAIProviderHandler:
         """
         if video.status not in ("completed", "failed"):
             timeout_seconds = config.max_poll_attempts * config.poll_interval
-            log_error(
+            logger.error(
                 "OpenAI video generation timed out",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
+                {
                     "video_id": video.id,
                     "poll_attempts": poll_attempts,
                     "max_attempts": config.max_poll_attempts,
                     "timeout_seconds": timeout_seconds,
                 },
-                logger_name=_LOGGER_NAME,
             )
             raise TimeoutError(
                 f"Video generation timed out after {config.max_poll_attempts} attempts ({timeout_seconds}s)",
                 provider=config.provider,
                 model=config.model,
-                request_id=request_id,
+                request_id=logger.request_id,
                 raw_response={"status": "timeout", "poll_attempts": poll_attempts},
                 timeout_seconds=timeout_seconds,
             )
@@ -632,8 +592,7 @@ class OpenAIProviderHandler:
         self,
         client: "AsyncOpenAI",
         video: Video,
-        config: VideoGenerationConfig,
-        request_id: str,
+        logger: ProviderLogger,
     ) -> tuple[bytes | None, str | None]:
         """
         Download video content asynchronously if completed.
@@ -641,36 +600,22 @@ class OpenAIProviderHandler:
         Args:
             client: Async OpenAI client
             video: Video object
-            config: Provider configuration
-            request_id: Request ID
+            logger: ProviderLogger with request_id bound
 
         Returns:
             Tuple of (content bytes, content_type) or (None, None) if failed
         """
         if video.status == "completed":
-            log_info(
+            logger.info(
                 "OpenAI video generation completed, downloading content",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "video_id": video.id,
-                },
-                logger_name=_LOGGER_NAME,
+                {"video_id": video.id},
             )
             video_response = await client.videos.download_content(video.id)
             content = await video_response.response.aread()
             content_type = "video/mp4"
-            log_debug(
+            logger.debug(
                 "OpenAI video content downloaded",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "video_id": video.id,
-                    "content_size_bytes": len(content),
-                },
-                logger_name=_LOGGER_NAME,
+                {"video_id": video.id, "content_size_bytes": len(content)},
             )
             return content, content_type
         else:
@@ -680,8 +625,7 @@ class OpenAIProviderHandler:
         self,
         client: "OpenAI",
         video: Video,
-        config: VideoGenerationConfig,
-        request_id: str,
+        logger: ProviderLogger,
     ) -> tuple[bytes | None, str | None]:
         """
         Download video content synchronously if completed.
@@ -689,36 +633,22 @@ class OpenAIProviderHandler:
         Args:
             client: Sync OpenAI client
             video: Video object
-            config: Provider configuration
-            request_id: Request ID
+            logger: ProviderLogger with request_id bound
 
         Returns:
             Tuple of (content bytes, content_type) or (None, None) if failed
         """
         if video.status == "completed":
-            log_info(
+            logger.info(
                 "OpenAI video generation completed, downloading content",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "video_id": video.id,
-                },
-                logger_name=_LOGGER_NAME,
+                {"video_id": video.id},
             )
             video_response = client.videos.download_content(video.id)
             content = video_response.read()
             content_type = "video/mp4"
-            log_debug(
+            logger.debug(
                 "OpenAI video content downloaded",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "video_id": video.id,
-                    "content_size_bytes": len(content),
-                },
-                logger_name=_LOGGER_NAME,
+                {"video_id": video.id, "content_size_bytes": len(content)},
             )
             return content, content_type
         else:
@@ -731,7 +661,7 @@ class OpenAIProviderHandler:
         content_type: str | None,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        request_id: str,
+        logger: ProviderLogger,
     ) -> VideoGenerationResponse:
         """
         Create final VideoGenerationResponse with logging.
@@ -742,23 +672,19 @@ class OpenAIProviderHandler:
             content_type: Content type or None
             config: Provider configuration
             request: Original request
-            request_id: Request ID
+            logger: ProviderLogger with request_id bound
 
         Returns:
             Final VideoGenerationResponse
         """
-        log_debug(
+        logger.debug(
             "Request complete",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
+            {
                 "response": {
                     "video_status": video.status,
                     "content_size": len(content) if content else 0,
                 },
             },
-            logger_name=_LOGGER_NAME,
             redact=True,
         )
 
@@ -767,17 +693,12 @@ class OpenAIProviderHandler:
             "content": content,
             "content_type": content_type,
         }
+        request_id = logger.request_id or ""
         response = self._convert_response(config, request, request_id, response_data)
 
-        log_info(
+        logger.info(
             "Final generated response",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
-                "response": response,
-            },
-            logger_name=_LOGGER_NAME,
+            {"response": response},
             redact=True,
         )
 
@@ -808,6 +729,8 @@ class OpenAIProviderHandler:
             GenerationFailedError: If polling times out or generation fails
         """
         request_id = video.id
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger = logger.with_request_id(request_id)
 
         # Poll for completion
         poll_attempts = 0
@@ -818,7 +741,11 @@ class OpenAIProviderHandler:
 
             # Log status updates
             last_logged_progress = self._log_poll_status(
-                config, request_id, video, poll_attempts, last_logged_progress
+                logger,
+                video,
+                poll_attempts,
+                config.max_poll_attempts,
+                last_logged_progress,
             )
 
             start = time.time()
@@ -837,16 +764,14 @@ class OpenAIProviderHandler:
             poll_attempts += 1
 
         # Check if timed out
-        self._check_for_timeout(video, config, request_id, poll_attempts)
+        self._check_for_timeout(logger, video, config, poll_attempts)
 
         # Download content if completed
-        content, content_type = await self._download_video_async(
-            client, video, config, request_id
-        )
+        content, content_type = await self._download_video_async(client, video, logger)
 
         # Create and return final response
         return self._create_final_response(
-            video, content, content_type, config, request, request_id
+            video, content, content_type, config, request, logger
         )
 
     def _poll_and_download_sync(
@@ -874,6 +799,8 @@ class OpenAIProviderHandler:
             GenerationFailedError: If polling times out or generation fails
         """
         request_id = video.id
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger = logger.with_request_id(request_id)
 
         # Poll for completion
         poll_attempts = 0
@@ -890,7 +817,11 @@ class OpenAIProviderHandler:
 
             # Log status updates
             last_logged_progress = self._log_poll_status(
-                config, request_id, video, poll_attempts, last_logged_progress
+                logger,
+                video,
+                poll_attempts,
+                config.max_poll_attempts,
+                last_logged_progress,
             )
 
             # Wait before next poll
@@ -901,16 +832,14 @@ class OpenAIProviderHandler:
             poll_attempts += 1
 
         # Check if timed out
-        self._check_for_timeout(video, config, request_id, poll_attempts)
+        self._check_for_timeout(logger, video, config, poll_attempts)
 
         # Download content if completed
-        content, content_type = self._download_video_sync(
-            client, video, config, request_id
-        )
+        content, content_type = self._download_video_sync(client, video, logger)
 
         # Create and return final response
         return self._create_final_response(
-            video, content, content_type, config, request, request_id
+            video, content, content_type, config, request, logger
         )
 
     @handle_video_generation_errors
@@ -935,6 +864,7 @@ class OpenAIProviderHandler:
         Returns:
             Final VideoGenerationResponse when complete
         """
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
         client: AsyncOpenAI = self._get_client(config, "async")
         openai_params = self._convert_request(config, request)
 
@@ -944,15 +874,9 @@ class OpenAIProviderHandler:
         )
         is_remix = video_id is not None
 
-        log_debug(
+        logger.debug(
             "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "is_remix": is_remix,
-                "video_id": video_id if is_remix else None,
-            },
-            logger_name=_LOGGER_NAME,
+            {"is_remix": is_remix, "video_id": video_id if is_remix else None},
         )
 
         # Create video job or remix existing video
@@ -970,16 +894,11 @@ class OpenAIProviderHandler:
                 video = await client.videos.create(**openai_params)
 
             request_id = video.id
+            logger = logger.with_request_id(request_id)
 
-            log_debug(
+            logger.debug(
                 "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "is_remix": is_remix,
-                },
-                logger_name=_LOGGER_NAME,
+                {"is_remix": is_remix},
             )
             return await self._poll_and_download_async(
                 client, config, request, video, on_progress
@@ -1009,6 +928,7 @@ class OpenAIProviderHandler:
         Returns:
             Final VideoGenerationResponse
         """
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
         client: OpenAI = self._get_client(config, "sync")
         openai_params = self._convert_request(config, request)
 
@@ -1018,15 +938,9 @@ class OpenAIProviderHandler:
         )
         is_remix = video_id is not None
 
-        log_debug(
+        logger.debug(
             "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "is_remix": is_remix,
-                "video_id": video_id if is_remix else None,
-            },
-            logger_name=_LOGGER_NAME,
+            {"is_remix": is_remix, "video_id": video_id if is_remix else None},
         )
         request_id: str | None = None
         try:
@@ -1041,16 +955,11 @@ class OpenAIProviderHandler:
                 video = client.videos.create(**openai_params)
 
             request_id = video.id
+            logger = logger.with_request_id(request_id)
 
-            log_debug(
+            logger.debug(
                 "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "is_remix": is_remix,
-                },
-                logger_name=_LOGGER_NAME,
+                {"is_remix": is_remix},
             )
 
             return self._poll_and_download_sync(

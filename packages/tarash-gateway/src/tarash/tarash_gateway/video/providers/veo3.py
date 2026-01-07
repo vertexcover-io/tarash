@@ -9,7 +9,7 @@ import httpx
 from google.genai.types import GenerateVideosOperation, VideoGenerationReferenceType
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.logging import log_debug, log_error, log_info
+from tarash.tarash_gateway.logging import ProviderLogger, log_error
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
@@ -361,14 +361,10 @@ class Veo3ProviderHandler:
             "config": generation_config,
         }
 
-        log_info(
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
             "Mapped request to provider format",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "converted_request": api_payload,
-            },
-            logger_name=_LOGGER_NAME,
+            {"converted_request": api_payload},
             redact=True,
         )
 
@@ -607,18 +603,12 @@ class Veo3ProviderHandler:
             Final VideoGenerationResponse when complete
         """
         client = self._get_client(config, "async")
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
 
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger.debug("Starting API call")
 
         request_id = "unknown"
         try:
@@ -628,16 +618,9 @@ class Veo3ProviderHandler:
             )
 
             request_id = operation.name or "unknown"
+            logger = logger.with_request_id(request_id)
 
-            log_debug(
-                "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            logger.debug("Request submitted")
 
             # Poll for completion
             poll_attempts = 0
@@ -653,15 +636,9 @@ class Veo3ProviderHandler:
                         await result
 
                 # Log progress
-                log_info(
+                logger.info(
                     "Progress status update",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "request_id": request_id,
-                        "status": "processing" if not operation.done else "completed",
-                    },
-                    logger_name=_LOGGER_NAME,
+                    {"status": "processing" if not operation.done else "completed"},
                 )
 
                 end_time = time.time()
@@ -686,30 +663,18 @@ class Veo3ProviderHandler:
                     timeout_seconds=timeout_seconds,
                 )
 
-            log_debug(
+            logger.debug(
                 "Request complete",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": operation,
-                },
-                logger_name=_LOGGER_NAME,
+                {"response": operation},
                 redact=True,
             )
 
             # Convert final response
             response = self._convert_response(config, request, request_id, operation)
 
-            log_info(
+            logger.info(
                 "Final generated response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": response,
-                },
-                logger_name=_LOGGER_NAME,
+                {"response": response},
                 redact=True,
             )
 
@@ -737,18 +702,12 @@ class Veo3ProviderHandler:
             Final VideoGenerationResponse
         """
         client = self._get_client(config, "sync")
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
 
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger.debug("Starting API call")
 
         request_id = "unknown"
         try:
@@ -758,16 +717,9 @@ class Veo3ProviderHandler:
             )
 
             request_id = operation.name or "unknown"
+            logger = logger.with_request_id(request_id)
 
-            log_debug(
-                "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            logger.debug("Request submitted")
 
             # Poll for completion
             poll_attempts = 0
@@ -778,15 +730,9 @@ class Veo3ProviderHandler:
                     on_progress(update)
 
                 # Log progress
-                log_info(
+                logger.info(
                     "Progress status update",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "request_id": request_id,
-                        "status": "processing" if not operation.done else "completed",
-                    },
-                    logger_name=_LOGGER_NAME,
+                    {"status": "processing" if not operation.done else "completed"},
                 )
 
                 # Check if done
@@ -814,30 +760,18 @@ class Veo3ProviderHandler:
                     timeout_seconds=timeout_seconds,
                 )
 
-            log_debug(
+            logger.debug(
                 "Request complete",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": operation,
-                },
-                logger_name=_LOGGER_NAME,
+                {"response": operation},
                 redact=True,
             )
 
             # Convert final response
             response = self._convert_response(config, request, request_id, operation)
 
-            log_info(
+            logger.info(
                 "Final generated response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": response,
-                },
-                logger_name=_LOGGER_NAME,
+                {"response": response},
                 redact=True,
             )
 

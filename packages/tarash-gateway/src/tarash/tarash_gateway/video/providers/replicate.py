@@ -4,7 +4,7 @@ import asyncio
 import traceback
 from typing import TYPE_CHECKING, Literal, cast, overload
 
-from tarash.tarash_gateway.logging import log_debug, log_info
+from tarash.tarash_gateway.logging import ProviderLogger
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
@@ -389,14 +389,10 @@ class ReplicateProviderHandler:
         # Merge with extra_params (allows manual overrides)
         api_payload.update(request.extra_params)
 
-        log_info(
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
             "Mapped request to provider format",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "converted_request": api_payload,
-            },
-            logger_name=_LOGGER_NAME,
+            {"converted_request": api_payload},
             redact=True,
         )
 
@@ -605,14 +601,8 @@ class ReplicateProviderHandler:
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call")
 
         prediction_id = ""
 
@@ -639,16 +629,8 @@ class ReplicateProviderHandler:
                 input=replicate_input,
             )
             prediction_id = prediction.id
-
-            log_debug(
-                "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": prediction_id,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            logger = logger.with_request_id(prediction_id)
+            logger.debug("Request submitted")
 
             # Poll for status updates
             poll_interval = config.poll_interval
@@ -667,28 +649,13 @@ class ReplicateProviderHandler:
                     await result
 
                 # Log progress
-                log_info(
-                    "Progress status update",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "request_id": prediction_id,
-                        "status": prediction.status,
-                    },
-                    logger_name=_LOGGER_NAME,
-                )
+                logger.info("Progress status update", {"status": prediction.status})
 
                 # Check if completed
                 if prediction.status == "succeeded":
-                    log_debug(
+                    logger.debug(
                         "Request complete",
-                        context={
-                            "provider": config.provider,
-                            "model": config.model,
-                            "request_id": prediction_id,
-                            "response": prediction.output,
-                        },
-                        logger_name=_LOGGER_NAME,
+                        {"response": prediction.output},
                         redact=True,
                     )
 
@@ -696,15 +663,9 @@ class ReplicateProviderHandler:
                         config, request, prediction_id, prediction.output
                     )
 
-                    log_info(
+                    logger.info(
                         "Final generated response",
-                        context={
-                            "provider": config.provider,
-                            "model": config.model,
-                            "request_id": prediction_id,
-                            "response": response,
-                        },
-                        logger_name=_LOGGER_NAME,
+                        {"response": response},
                         redact=True,
                     )
 
@@ -765,14 +726,8 @@ class ReplicateProviderHandler:
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call")
 
         prediction_id = ""
 
@@ -795,16 +750,8 @@ class ReplicateProviderHandler:
                 input=replicate_input,
             )
             prediction_id = prediction.id
-
-            log_debug(
-                "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": prediction_id,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            logger = logger.with_request_id(prediction_id)
+            logger.debug("Request submitted")
 
             # Poll for status updates
             poll_interval = config.poll_interval
@@ -820,28 +767,13 @@ class ReplicateProviderHandler:
                 on_progress(update)
 
                 # Log progress
-                log_info(
-                    "Progress status update",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "request_id": prediction_id,
-                        "status": prediction.status,
-                    },
-                    logger_name=_LOGGER_NAME,
-                )
+                logger.info("Progress status update", {"status": prediction.status})
 
                 # Check if completed
                 if prediction.status == "succeeded":
-                    log_debug(
+                    logger.debug(
                         "Request complete",
-                        context={
-                            "provider": config.provider,
-                            "model": config.model,
-                            "request_id": prediction_id,
-                            "response": prediction.output,
-                        },
-                        logger_name=_LOGGER_NAME,
+                        {"response": prediction.output},
                         redact=True,
                     )
 
@@ -849,15 +781,9 @@ class ReplicateProviderHandler:
                         config, request, prediction_id, prediction.output
                     )
 
-                    log_info(
+                    logger.info(
                         "Final generated response",
-                        context={
-                            "provider": config.provider,
-                            "model": config.model,
-                            "request_id": prediction_id,
-                            "response": response,
-                        },
-                        logger_name=_LOGGER_NAME,
+                        {"response": response},
                         redact=True,
                     )
 

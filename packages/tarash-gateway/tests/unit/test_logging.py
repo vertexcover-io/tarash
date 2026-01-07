@@ -3,6 +3,8 @@
 import logging
 from unittest.mock import patch, Mock
 
+import pytest
+
 from tarash.tarash_gateway.logging import (
     log_debug,
     log_info,
@@ -11,6 +13,7 @@ from tarash.tarash_gateway.logging import (
     _redact_context,
     _redact_value,
     _get_logger,
+    ProviderLogger,
 )
 
 
@@ -371,3 +374,208 @@ class TestLogError:
                 "Error with both | Context: {'operation': 'download'}" in call_args[0]
             )
             assert call_args[1]["exc_info"] is True
+
+
+# ==================== ProviderLogger Tests ====================
+
+
+@pytest.fixture
+def provider_logger():
+    """Create a basic ProviderLogger for testing."""
+    return ProviderLogger(
+        provider="test-provider",
+        model="test-model",
+        logger_name="test.logger",
+    )
+
+
+@pytest.fixture
+def provider_logger_with_request_id():
+    """Create a ProviderLogger with request_id for testing."""
+    return ProviderLogger(
+        provider="test-provider",
+        model="test-model",
+        logger_name="test.logger",
+        request_id="req-123",
+    )
+
+
+def test_provider_logger_initialization(provider_logger):
+    """ProviderLogger initializes with provider, model, and logger_name."""
+    assert provider_logger.provider == "test-provider"
+    assert provider_logger.model == "test-model"
+    assert provider_logger.logger_name == "test.logger"
+    assert provider_logger.request_id is None
+
+
+def test_provider_logger_initialization_with_request_id(
+    provider_logger_with_request_id,
+):
+    """ProviderLogger can be initialized with request_id."""
+    assert provider_logger_with_request_id.request_id == "req-123"
+
+
+def test_provider_logger_base_context_without_request_id(provider_logger):
+    """Base context includes provider and model but not request_id when None."""
+    context = provider_logger._build_context()
+    assert context == {
+        "provider": "test-provider",
+        "model": "test-model",
+    }
+    assert "request_id" not in context
+
+
+def test_provider_logger_base_context_with_request_id(provider_logger_with_request_id):
+    """Base context includes request_id when provided."""
+    context = provider_logger_with_request_id._build_context()
+    assert context == {
+        "provider": "test-provider",
+        "model": "test-model",
+        "request_id": "req-123",
+    }
+
+
+def test_provider_logger_build_context_merges_extra(provider_logger):
+    """Extra fields are merged with base context."""
+    extra = {"status": "completed", "duration": 5.2}
+    context = provider_logger._build_context(extra)
+
+    assert context == {
+        "provider": "test-provider",
+        "model": "test-model",
+        "status": "completed",
+        "duration": 5.2,
+    }
+
+
+def test_provider_logger_build_context_extra_overrides_base(provider_logger):
+    """Extra fields can override base context fields."""
+    extra = {"provider": "overridden-provider"}
+    context = provider_logger._build_context(extra)
+
+    assert context["provider"] == "overridden-provider"
+    assert context["model"] == "test-model"
+
+
+def test_provider_logger_with_request_id_returns_new_instance(provider_logger):
+    """with_request_id returns a new ProviderLogger instance."""
+    new_logger = provider_logger.with_request_id("req-456")
+
+    assert new_logger is not provider_logger
+    assert new_logger.request_id == "req-456"
+    assert new_logger.provider == provider_logger.provider
+    assert new_logger.model == provider_logger.model
+    assert new_logger.logger_name == provider_logger.logger_name
+
+
+def test_provider_logger_with_request_id_original_unchanged(provider_logger):
+    """with_request_id does not modify the original logger."""
+    provider_logger.with_request_id("req-456")
+
+    assert provider_logger.request_id is None
+
+
+def test_provider_logger_debug_calls_log_debug(provider_logger):
+    """debug() calls log_debug with merged context."""
+    with patch("tarash.tarash_gateway.logging.log_debug") as mock_log_debug:
+        provider_logger.debug("Test message", {"extra_key": "value"})
+
+        mock_log_debug.assert_called_once()
+        call_kwargs = mock_log_debug.call_args[1]
+        assert call_kwargs["context"]["provider"] == "test-provider"
+        assert call_kwargs["context"]["model"] == "test-model"
+        assert call_kwargs["context"]["extra_key"] == "value"
+        assert call_kwargs["logger_name"] == "test.logger"
+        assert call_kwargs["redact"] is False
+
+
+def test_provider_logger_debug_with_redact(provider_logger):
+    """debug() passes redact parameter to log_debug."""
+    with patch("tarash.tarash_gateway.logging.log_debug") as mock_log_debug:
+        provider_logger.debug("Test message", {"api_key": "secret"}, redact=True)
+
+        call_kwargs = mock_log_debug.call_args[1]
+        assert call_kwargs["redact"] is True
+
+
+def test_provider_logger_info_calls_log_info(provider_logger):
+    """info() calls log_info with merged context."""
+    with patch("tarash.tarash_gateway.logging.log_info") as mock_log_info:
+        provider_logger.info("Test message", {"status": "ok"})
+
+        mock_log_info.assert_called_once()
+        call_kwargs = mock_log_info.call_args[1]
+        assert call_kwargs["context"]["provider"] == "test-provider"
+        assert call_kwargs["context"]["status"] == "ok"
+
+
+def test_provider_logger_warning_calls_log_warning(provider_logger):
+    """warning() calls log_warning with merged context."""
+    with patch("tarash.tarash_gateway.logging.log_warning") as mock_log_warning:
+        provider_logger.warning("Test warning")
+
+        mock_log_warning.assert_called_once()
+        call_kwargs = mock_log_warning.call_args[1]
+        assert call_kwargs["context"]["provider"] == "test-provider"
+
+
+def test_provider_logger_error_calls_log_error(provider_logger):
+    """error() calls log_error with merged context."""
+    with patch("tarash.tarash_gateway.logging.log_error") as mock_log_error:
+        provider_logger.error("Test error", {"error_code": 500})
+
+        mock_log_error.assert_called_once()
+        call_kwargs = mock_log_error.call_args[1]
+        assert call_kwargs["context"]["provider"] == "test-provider"
+        assert call_kwargs["context"]["error_code"] == 500
+        assert call_kwargs["exc_info"] is False
+
+
+def test_provider_logger_error_with_exc_info(provider_logger):
+    """error() passes exc_info parameter to log_error."""
+    with patch("tarash.tarash_gateway.logging.log_error") as mock_log_error:
+        provider_logger.error("Test error", exc_info=True)
+
+        call_kwargs = mock_log_error.call_args[1]
+        assert call_kwargs["exc_info"] is True
+
+
+def test_provider_logger_debug_without_extra(provider_logger):
+    """debug() works without extra parameter."""
+    with patch("tarash.tarash_gateway.logging.log_debug") as mock_log_debug:
+        provider_logger.debug("Simple message")
+
+        mock_log_debug.assert_called_once()
+        call_kwargs = mock_log_debug.call_args[1]
+        assert call_kwargs["context"] == {
+            "provider": "test-provider",
+            "model": "test-model",
+        }
+
+
+def test_provider_logger_includes_request_id_in_logs(provider_logger_with_request_id):
+    """Logs include request_id when set."""
+    with patch("tarash.tarash_gateway.logging.log_info") as mock_log_info:
+        provider_logger_with_request_id.info("Request complete")
+
+        call_kwargs = mock_log_info.call_args[1]
+        assert call_kwargs["context"]["request_id"] == "req-123"
+
+
+def test_provider_logger_chained_with_request_id(provider_logger):
+    """ProviderLogger can be chained with with_request_id for request lifecycle."""
+    with patch("tarash.tarash_gateway.logging.log_debug") as mock_log_debug:
+        # Simulate request lifecycle
+        provider_logger.debug("Starting request")
+
+        # After getting request_id
+        logger_with_id = provider_logger.with_request_id("req-789")
+        logger_with_id.debug("Request submitted")
+
+        # First call should not have request_id
+        first_call_context = mock_log_debug.call_args_list[0][1]["context"]
+        assert "request_id" not in first_call_context
+
+        # Second call should have request_id
+        second_call_context = mock_log_debug.call_args_list[1][1]["context"]
+        assert second_call_context["request_id"] == "req-789"

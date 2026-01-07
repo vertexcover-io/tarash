@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.logging import log_debug, log_error, log_info
+from tarash.tarash_gateway.logging import ProviderLogger, log_error
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
@@ -272,11 +272,8 @@ class RunwayProviderHandler:
         )
 
         if cache_key not in cache:
-            log_debug(
-                f"Creating new {client_type} Runway client",
-                context={"provider": config.provider, "model": config.model},
-                logger_name=_LOGGER_NAME,
-            )
+            logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+            logger.debug(f"Creating new {client_type} Runway client")
             if client_type == "async":
                 async_client: "AsyncRunwayML" = AsyncRunwayML(api_key=config.api_key)
                 self._async_client_cache[cache_key] = async_client
@@ -394,15 +391,10 @@ class RunwayProviderHandler:
                         for img in reference_imgs
                     ]
 
-        log_info(
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
             "Mapped request to provider format",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "endpoint": endpoint,
-                "converted_request": params,
-            },
-            logger_name=_LOGGER_NAME,
+            {"endpoint": endpoint, "converted_request": params},
             redact=True,
         )
 
@@ -631,32 +623,30 @@ class RunwayProviderHandler:
 
             # Log progress
             if task is not None:
-                log_info(
+                logger = ProviderLogger(
+                    config.provider, config.model, _LOGGER_NAME, request_id
+                )
+                logger.info(
                     "Progress status update",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "request_id": request_id,
+                    {
                         "status": task.status,
                         "poll_attempt": poll_attempts + 1,
                     },
-                    logger_name=_LOGGER_NAME,
                 )
 
         # Check timeout
         if task is None or task.status not in _TERMINAL_STATUSES:
             timeout_seconds = config.max_poll_attempts * config.poll_interval
-            log_error(
+            logger = ProviderLogger(
+                config.provider, config.model, _LOGGER_NAME, request_id
+            )
+            logger.error(
                 "Runway video generation timed out",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
+                {
                     "poll_attempts": poll_attempts,
                     "max_attempts": config.max_poll_attempts,
                     "timeout_seconds": timeout_seconds,
                 },
-                logger_name=_LOGGER_NAME,
             )
             raise TimeoutError(
                 f"Video generation timed out after {config.max_poll_attempts} attempts ({timeout_seconds}s)",
@@ -680,15 +670,8 @@ class RunwayProviderHandler:
         client = self._get_client(config, "async")
         endpoint, params = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "endpoint": endpoint,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call", {"endpoint": endpoint})
 
         task: "NewTaskCreatedResponse | AsyncNewTaskCreatedResponse | None" = None
         try:
@@ -706,48 +689,26 @@ class RunwayProviderHandler:
                 )
             request_id = task.id
 
-            log_debug(
-                "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "endpoint": endpoint,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            logger = logger.with_request_id(request_id)
+            logger.debug("Request submitted", {"endpoint": endpoint})
 
             completed_task = await self._poll_until_complete(
                 client, task.id, config, on_progress, is_async=True
             )
 
-            log_debug(
+            logger.debug(
                 "Request complete",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
+                {
                     "task_status": completed_task.status
                     if completed_task is not None
                     else "unknown",
                 },
-                logger_name=_LOGGER_NAME,
                 redact=True,
             )
 
             response = self._convert_response(config, request, request_id, task)
 
-            log_info(
-                "Final generated response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": response,
-                },
-                logger_name=_LOGGER_NAME,
-                redact=True,
-            )
+            logger.info("Final generated response", {"response": response}, redact=True)
 
             return response
 
@@ -767,31 +728,16 @@ class RunwayProviderHandler:
         client = self._get_client(config, "sync")
         endpoint, params = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "endpoint": endpoint,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call", {"endpoint": endpoint})
 
         task: "NewTaskCreatedResponse | AsyncNewTaskCreatedResponse | None" = None
         try:
             task = self._call_endpoint(client, endpoint, params)
             request_id = task.id
 
-            log_debug(
-                "Request submitted",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "endpoint": endpoint,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            logger = logger.with_request_id(request_id)
+            logger.debug("Request submitted", {"endpoint": endpoint})
 
             # Use asyncio.run for the unified polling (it handles sync correctly)
             completed_task = asyncio.run(
@@ -800,17 +746,13 @@ class RunwayProviderHandler:
                 )
             )
 
-            log_debug(
+            logger.debug(
                 "Request complete",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
+                {
                     "task_status": completed_task.status
                     if completed_task is not None
                     else "unknown",
                 },
-                logger_name=_LOGGER_NAME,
                 redact=True,
             )
 
@@ -825,17 +767,7 @@ class RunwayProviderHandler:
                 config, request, request_id, completed_task
             )
 
-            log_info(
-                "Final generated response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": response,
-                },
-                logger_name=_LOGGER_NAME,
-                redact=True,
-            )
+            logger.info("Final generated response", {"response": response}, redact=True)
 
             return response
 

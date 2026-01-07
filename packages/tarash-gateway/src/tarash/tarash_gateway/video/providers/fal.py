@@ -9,7 +9,7 @@ from fal_client import AsyncRequestHandle, SyncRequestHandle
 from fal_client.client import FalClientHTTPError
 
 import httpx
-from tarash.tarash_gateway.logging import log_debug, log_error, log_info
+from tarash.tarash_gateway.logging import ProviderLogger, log_error
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
@@ -505,17 +505,14 @@ class FalProviderHandler:
         # Use API key + base_url as cache key
         cache_key = f"{config.api_key}:{config.base_url or 'default'}"
 
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+
         if client_type == "async":
             # Don't cache AsyncClient - create new instance for each request
             # This prevents "Event Loop closed" errors
-            log_debug(
+            logger.debug(
                 "Creating new async Fal client",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "base_url": config.base_url or "default",
-                },
-                logger_name=_LOGGER_NAME,
+                {"base_url": config.base_url or "default"},
             )
             return fal_client.AsyncClient(
                 key=config.api_key,
@@ -523,14 +520,9 @@ class FalProviderHandler:
             )
         else:  # sync
             if cache_key not in self._sync_client_cache:
-                log_debug(
+                logger.debug(
                     "Creating new sync Fal client",
-                    context={
-                        "provider": config.provider,
-                        "model": config.model,
-                        "base_url": config.base_url or "default",
-                    },
-                    logger_name=_LOGGER_NAME,
+                    {"base_url": config.base_url or "default"},
                 )
                 self._sync_client_cache[cache_key] = fal_client.SyncClient(
                     key=config.api_key,
@@ -569,14 +561,10 @@ class FalProviderHandler:
         # Merge with extra_params (allows manual overrides)
         api_payload.update(request.extra_params)
 
-        log_info(
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
             "Mapped request to provider format",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "converted_request": api_payload,
-            },
-            logger_name=_LOGGER_NAME,
+            {"converted_request": api_payload},
             redact=True,
         )
 
@@ -747,17 +735,14 @@ class FalProviderHandler:
         update = parse_fal_status(request_id, event)
         elapsed_time = time.time() - start_time
 
-        log_info(
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME, request_id)
+        logger.info(
             "Progress status update",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
+            {
                 "status": update.status,
                 "progress_percent": update.progress_percent,
                 "time_elapsed_seconds": round(elapsed_time, 2),
             },
-            logger_name=_LOGGER_NAME,
         )
 
         return update
@@ -844,14 +829,8 @@ class FalProviderHandler:
         # Build Fal input (let validation errors propagate)
         fal_input = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call")
 
         # Submit to Fal using async API
         handler = await client.submit(
@@ -860,48 +839,20 @@ class FalProviderHandler:
         )
 
         request_id = handler.request_id
-
-        log_debug(
-            "Request submitted",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = logger.with_request_id(request_id)
+        logger.debug("Request submitted")
 
         try:
             result = await self._process_events_async(
                 config, request_id, handler, on_progress
             )
 
-            log_debug(
-                "Request complete",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": result,
-                },
-                logger_name=_LOGGER_NAME,
-                redact=True,
-            )
+            logger.debug("Request complete", {"response": result}, redact=True)
 
             # Parse response
             response = self._convert_response(config, request, request_id, result)
 
-            log_info(
-                "Final generated response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": response,
-                },
-                logger_name=_LOGGER_NAME,
-                redact=True,
-            )
+            logger.info("Final generated response", {"response": response}, redact=True)
 
             return response
 
@@ -931,14 +882,8 @@ class FalProviderHandler:
         # Build Fal input (let validation errors propagate)
         fal_input = self._convert_request(config, request)
 
-        log_debug(
-            "Starting API call",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call")
 
         # Submit to Fal
         handler = client.submit(
@@ -946,47 +891,19 @@ class FalProviderHandler:
             arguments=fal_input,
         )
         request_id = handler.request_id
-
-        log_debug(
-            "Request submitted",
-            context={
-                "provider": config.provider,
-                "model": config.model,
-                "request_id": request_id,
-            },
-            logger_name=_LOGGER_NAME,
-        )
+        logger = logger.with_request_id(request_id)
+        logger.debug("Request submitted")
 
         try:
             result = self._process_events_sync(config, request_id, handler, on_progress)
 
-            log_debug(
-                "Request complete",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": result,
-                },
-                logger_name=_LOGGER_NAME,
-                redact=True,
-            )
+            logger.debug("Request complete", {"response": result}, redact=True)
 
             # Parse response
             fal_result = cast(AnyDict, result)
             response = self._convert_response(config, request, request_id, fal_result)
 
-            log_info(
-                "Final generated response",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "response": response,
-                },
-                logger_name=_LOGGER_NAME,
-                redact=True,
-            )
+            logger.info("Final generated response", {"response": response}, redact=True)
 
             return response
 

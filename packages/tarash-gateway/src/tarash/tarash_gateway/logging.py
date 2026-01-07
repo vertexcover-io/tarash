@@ -1,6 +1,7 @@
 """Logging utilities for tarash-gateway."""
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 # Sensitive fields that should be sanitized in logs
@@ -194,3 +195,113 @@ def log_error(
         logger.error(f"{message} | Context: {context}", exc_info=exc_info)
     else:
         logger.error(message, exc_info=exc_info)
+
+
+@dataclass
+class ProviderLogger:
+    """Logger with pre-bound provider context.
+
+    Reduces boilerplate by automatically including provider, model, and request_id
+    in all log messages. Use `with_request_id()` to create a new logger with
+    request context bound.
+
+    Example:
+        logger = ProviderLogger("fal", "minimax", "tarash.providers.fal")
+        logger.debug("Creating client", {"base_url": "default"})
+
+        # After getting request_id:
+        logger = logger.with_request_id(request_id)
+        logger.info("Request submitted")  # Includes request_id automatically
+    """
+
+    provider: str
+    model: str
+    logger_name: str
+    request_id: str | None = None
+    _base_context: dict[str, object] = field(
+        default_factory=lambda: cast(dict[str, object], {}), repr=False
+    )
+
+    def __post_init__(self) -> None:
+        """Build base context from provider/model/request_id."""
+        self._base_context = {
+            "provider": self.provider,
+            "model": self.model,
+        }
+        if self.request_id is not None:
+            self._base_context["request_id"] = self.request_id
+
+    def _build_context(
+        self, extra: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        """Merge base context with extra fields."""
+        if extra is None:
+            return dict(self._base_context)
+        return {**self._base_context, **extra}
+
+    def with_request_id(self, request_id: str) -> "ProviderLogger":
+        """Return a new logger with request_id bound to context."""
+        return ProviderLogger(
+            provider=self.provider,
+            model=self.model,
+            logger_name=self.logger_name,
+            request_id=request_id,
+        )
+
+    def debug(
+        self,
+        message: str,
+        extra: dict[str, object] | None = None,
+        redact: bool = False,
+    ) -> None:
+        """Log a debug message with provider context."""
+        log_debug(
+            message,
+            context=cast(dict[str, Any], self._build_context(extra)),
+            logger_name=self.logger_name,
+            redact=redact,
+        )
+
+    def info(
+        self,
+        message: str,
+        extra: dict[str, object] | None = None,
+        redact: bool = False,
+    ) -> None:
+        """Log an info message with provider context."""
+        log_info(
+            message,
+            context=cast(dict[str, Any], self._build_context(extra)),
+            logger_name=self.logger_name,
+            redact=redact,
+        )
+
+    def warning(
+        self,
+        message: str,
+        extra: dict[str, object] | None = None,
+        redact: bool = False,
+    ) -> None:
+        """Log a warning message with provider context."""
+        log_warning(
+            message,
+            context=cast(dict[str, Any], self._build_context(extra)),
+            logger_name=self.logger_name,
+            redact=redact,
+        )
+
+    def error(
+        self,
+        message: str,
+        extra: dict[str, object] | None = None,
+        redact: bool = False,
+        exc_info: bool = False,
+    ) -> None:
+        """Log an error message with provider context."""
+        log_error(
+            message,
+            context=cast(dict[str, Any], self._build_context(extra)),
+            logger_name=self.logger_name,
+            redact=redact,
+            exc_info=exc_info,
+        )
