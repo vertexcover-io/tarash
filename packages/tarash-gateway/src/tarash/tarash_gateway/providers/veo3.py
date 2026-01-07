@@ -10,7 +10,7 @@ from google.genai.types import GenerateVideosOperation, VideoGenerationReference
 from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.logging import ProviderLogger, log_error
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -19,7 +19,7 @@ from tarash.tarash_gateway.video.exceptions import (
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     AnyDict,
     MediaContent,
     MediaType,
@@ -30,7 +30,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.video.utils import validate_model_params
+from tarash.tarash_gateway.utils import validate_model_params
 
 has_genai = True
 has_aiohttp = False
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from google.genai.types import GenerateVideosConfig
 
 # Logger name constant
-_LOGGER_NAME = "tarash.tarash_gateway.video.providers.veo3"
+_LOGGER_NAME = "tarash.tarash_gateway.providers.veo3"
 
 
 class Veo3VideoParams(TypedDict, total=False):

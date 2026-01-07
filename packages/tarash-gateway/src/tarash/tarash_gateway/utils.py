@@ -9,7 +9,7 @@ import httpx
 from pydantic import TypeAdapter
 
 from tarash.tarash_gateway.logging import log_debug, log_error
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     HTTPError,
     TarashException,
     ValidationError,

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 from typing_extensions import NotRequired, Required, TypedDict
 
 from tarash.tarash_gateway.logging import ProviderLogger, log_error
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -18,7 +18,7 @@ from tarash.tarash_gateway.video.exceptions import (
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     MediaContent,
     ProgressCallback,
     StatusType,
@@ -27,7 +27,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.video.utils import (
+from tarash.tarash_gateway.utils import (
     download_media_from_url,
     get_filename_from_url,
     validate_duration,
@@ -66,7 +66,7 @@ except ImportError:
     has_openai = False
 
 # Logger name constant
-_LOGGER_NAME = "tarash.tarash_gateway.video.providers.openai"
+_LOGGER_NAME = "tarash.tarash_gateway.providers.openai"
 
 
 # Supported video sizes for OpenAI Sora

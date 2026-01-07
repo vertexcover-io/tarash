@@ -5,7 +5,7 @@ import traceback
 from typing import TYPE_CHECKING, Literal, cast, overload
 
 from tarash.tarash_gateway.logging import ProviderLogger
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -14,7 +14,7 @@ from tarash.tarash_gateway.video.exceptions import (
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     AnyDict,
     MediaContent,
     ProgressCallback,
@@ -24,7 +24,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.video.providers.field_mappers import (
+from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
     duration_field_mapper,
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from replicate.types import Prediction
 
 # Logger name constant
-_LOGGER_NAME = "tarash.tarash_gateway.video.providers.replicate"
+_LOGGER_NAME = "tarash.tarash_gateway.providers.replicate"
 
 # Provider name constant
 _PROVIDER_NAME = "replicate"
@@ -123,7 +123,7 @@ WAN_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Helper function to create a filtered image list mapper
 def _create_reference_images_mapper() -> FieldMapper:
     """Create a FieldMapper for reference_images (filters by type='reference')."""
-    from tarash.tarash_gateway.video.utils import convert_to_data_url
+    from tarash.tarash_gateway.utils import convert_to_data_url
 
     def converter(_request: VideoGenerationRequest, value: object) -> list[str] | None:
         if not value or not isinstance(value, list):
@@ -252,7 +252,7 @@ def parse_replicate_status(prediction: Prediction) -> VideoGenerationUpdate:
     Returns:
         VideoGenerationUpdate with normalized status
     """
-    from tarash.tarash_gateway.video.models import StatusType
+    from tarash.tarash_gateway.models import StatusType
 
     status = prediction.status
     prediction_id = prediction.id

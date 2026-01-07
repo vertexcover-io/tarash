@@ -1,18 +1,18 @@
 """Public API for video generation."""
 
 from tarash.tarash_gateway.logging import log_debug, log_info
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     ProviderHandler,
     ProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.video.orchestrator import ExecutionOrchestrator
-from tarash.tarash_gateway.video.providers.fal import FAL_MODEL_REGISTRY
-from tarash.tarash_gateway.video.providers.field_mappers import FieldMapper
-from tarash.tarash_gateway.video.providers.replicate import REPLICATE_MODEL_REGISTRY
-from tarash.tarash_gateway.video.registry import register_provider as _register_provider
+from tarash.tarash_gateway.orchestrator import ExecutionOrchestrator
+from tarash.tarash_gateway.providers.fal import FAL_MODEL_REGISTRY
+from tarash.tarash_gateway.providers.field_mappers import FieldMapper
+from tarash.tarash_gateway.providers.replicate import REPLICATE_MODEL_REGISTRY
+from tarash.tarash_gateway.registry import register_provider as _register_provider
 
 # ==================== Provider Registry ====================
 
@@ -66,7 +66,7 @@ def register_provider_field_mapping(
         model_mappings: Dict mapping model names/prefixes to their field mappers
 
     Examples:
-        >>> from tarash.tarash_gateway.video.providers.field_mappers import (
+        >>> from tarash.tarash_gateway.providers.field_mappers import (
         ...     passthrough_field_mapper,
         ...     duration_field_mapper,
         ... )

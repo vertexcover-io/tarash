@@ -13,10 +13,8 @@ from typing import ClassVar, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from tarash.tarash_gateway.video.exceptions import TarashException
-
-# Type alias for video generation status
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.exceptions import TarashException
+from tarash.tarash_gateway.models import (
     AspectRatio,
     MediaContent,
     MediaType,
@@ -28,7 +26,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationUpdate,
     StatusType,
 )
-from tarash.tarash_gateway.video.utils import (
+from tarash.tarash_gateway.utils import (
     download_media_from_url,
     download_media_from_url_async,
 )

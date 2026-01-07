@@ -10,7 +10,7 @@ from fal_client.client import FalClientHTTPError
 
 import httpx
 from tarash.tarash_gateway.logging import ProviderLogger, log_error
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -19,7 +19,7 @@ from tarash.tarash_gateway.video.exceptions import (
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     ProgressCallback,
     SyncProgressCallback,
     VideoGenerationConfig,
@@ -28,7 +28,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationUpdate,
     AnyDict,
 )
-from tarash.tarash_gateway.video.providers.field_mappers import (
+from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
     duration_field_mapper,
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     )
 
 # Logger name constant
-_LOGGER_NAME = "tarash.tarash_gateway.video.providers.fal"
+_LOGGER_NAME = "tarash.tarash_gateway.providers.fal"
 
 # Provider name constant
 _PROVIDER_NAME = "fal"

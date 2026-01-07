@@ -19,7 +19,7 @@ from collections.abc import Awaitable
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 if TYPE_CHECKING:
-    from tarash.tarash_gateway.video.mock import MockConfig
+    from tarash.tarash_gateway.mock import MockConfig
 
 # ==================== Type Aliases ====================
 AnyDict: TypeAlias = dict[str, Any]  # pyright: ignore[reportExplicitAny]

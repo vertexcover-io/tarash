@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast, overload
 from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.logging import ProviderLogger, log_error
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -17,7 +17,7 @@ from tarash.tarash_gateway.video.exceptions import (
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     AnyDict,
     MediaType,
     ProgressCallback,
@@ -26,7 +26,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.video.utils import validate_duration, validate_model_params
+from tarash.tarash_gateway.utils import validate_duration, validate_model_params
 
 try:
     from runwayml import AsyncRunwayML, RunwayML
@@ -78,7 +78,7 @@ else:
         UnprocessableEntityError = Exception  # type: ignore[assignment, misc]
 
 # Logger name constant
-_LOGGER_NAME = "tarash.tarash_gateway.video.providers.runway"
+_LOGGER_NAME = "tarash.tarash_gateway.providers.runway"
 
 # Aspect ratio to size mappings
 TEXT_TO_VIDEO_RATIOS: dict[str, str] = {

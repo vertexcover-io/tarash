@@ -3,12 +3,12 @@
 from typing import cast
 
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
-from tarash.tarash_gateway.video.exceptions import ValidationError
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.exceptions import ValidationError
+from tarash.tarash_gateway.models import (
     ProviderHandler,
     VideoGenerationConfig,
 )
-from tarash.tarash_gateway.video.providers import (
+from tarash.tarash_gateway.providers import (
     FalProviderHandler,
     OpenAIProviderHandler,
     ReplicateProviderHandler,
@@ -34,7 +34,7 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
     """
     # Check mock first
     if config.mock and config.mock.enabled:
-        from tarash.tarash_gateway.video.mock import MockProviderHandler
+        from tarash.tarash_gateway.mock import MockProviderHandler
 
         log_info(
             "Using mock handler",

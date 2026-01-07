@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 from typing_extensions import TypedDict
 
-from tarash.tarash_gateway.video.exceptions import ValidationError
-from tarash.tarash_gateway.video.models import VideoGenerationConfig
-from tarash.tarash_gateway.video.providers.openai import OpenAIProviderHandler
+from tarash.tarash_gateway.exceptions import ValidationError
+from tarash.tarash_gateway.models import VideoGenerationConfig
+from tarash.tarash_gateway.providers.openai import OpenAIProviderHandler
 
 if TYPE_CHECKING:
     from openai import AsyncAzureOpenAI, AzureOpenAI

@@ -8,11 +8,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Callable, Literal, TypedDict, cast
 
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     MediaContent,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.video.utils import convert_to_data_url, validate_duration
+from tarash.tarash_gateway.utils import convert_to_data_url, validate_duration
 
 
 # Type alias for image list items

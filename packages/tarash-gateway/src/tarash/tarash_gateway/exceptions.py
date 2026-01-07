@@ -11,7 +11,7 @@ from tarash.tarash_gateway.logging import log_error
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
-    from tarash.tarash_gateway.video.models import (
+    from tarash.tarash_gateway.models import (
         AnyDict,
         VideoGenerationConfig,
         VideoGenerationRequest,

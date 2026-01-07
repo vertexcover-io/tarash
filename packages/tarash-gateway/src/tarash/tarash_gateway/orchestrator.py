@@ -3,8 +3,8 @@
 from datetime import datetime
 
 from tarash.tarash_gateway.logging import log_error, log_info
-from tarash.tarash_gateway.video.exceptions import is_retryable_error
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.exceptions import is_retryable_error
+from tarash.tarash_gateway.models import (
     AttemptMetadata,
     ExecutionMetadata,
     ProgressCallback,
@@ -12,7 +12,7 @@ from tarash.tarash_gateway.video.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.video.registry import get_handler
+from tarash.tarash_gateway.registry import get_handler
 
 
 class ExecutionOrchestrator:

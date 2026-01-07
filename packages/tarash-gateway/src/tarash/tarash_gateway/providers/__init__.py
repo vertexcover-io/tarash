@@ -1,10 +1,10 @@
 """Provider implementations."""
 
-from tarash.tarash_gateway.video.providers.azure_openai import (
+from tarash.tarash_gateway.providers.azure_openai import (
     AzureOpenAIProviderHandler,
     AzureOpenAIVideoParams,
 )
-from tarash.tarash_gateway.video.providers.field_mappers import (
+from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
     duration_field_mapper,
@@ -14,7 +14,7 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
     single_image_field_mapper,
     video_url_field_mapper,
 )
-from tarash.tarash_gateway.video.providers.fal import (
+from tarash.tarash_gateway.providers.fal import (
     FalProviderHandler,
     FAL_MODEL_REGISTRY,
     get_field_mappers,
@@ -26,18 +26,18 @@ from tarash.tarash_gateway.video.providers.fal import (
     GENERIC_FIELD_MAPPERS,
     parse_fal_status,
 )
-from tarash.tarash_gateway.video.providers.openai import (
+from tarash.tarash_gateway.providers.openai import (
     OpenAIProviderHandler,
     OpenAIVideoParams,
     parse_openai_video_status,
 )
-from tarash.tarash_gateway.video.providers.veo3 import (
+from tarash.tarash_gateway.providers.veo3 import (
     Veo3ProviderHandler,
     Veo3VideoParams,
     parse_veo3_operation,
 )
 
-from tarash.tarash_gateway.video.providers.replicate import (
+from tarash.tarash_gateway.providers.replicate import (
     ReplicateProviderHandler,
     REPLICATE_MODEL_REGISTRY,
     get_replicate_field_mappers,
@@ -47,7 +47,7 @@ from tarash.tarash_gateway.video.providers.replicate import (
     WAN_FIELD_MAPPERS,
     GENERIC_REPLICATE_FIELD_MAPPERS,
 )
-from tarash.tarash_gateway.video.providers.runway import (
+from tarash.tarash_gateway.providers.runway import (
     RunwayProviderHandler,
     RunwayVideoParams,
     parse_runway_task_status,
