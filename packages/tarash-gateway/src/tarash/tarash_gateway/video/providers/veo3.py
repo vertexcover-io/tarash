@@ -3,30 +3,11 @@
 import asyncio
 import time
 import traceback
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal, cast, overload
 
+import httpx
 from google.genai.types import GenerateVideosOperation, VideoGenerationReferenceType
 from typing_extensions import TypedDict
-
-try:
-    import httpx
-    from google import genai
-    from google.genai.client import AsyncClient, Client
-    from google.genai.errors import ClientError
-    from google.genai.types import GenerateVideosConfig
-
-    # google.genai can use either httpx or aiohttp for async
-    try:
-        import aiohttp
-
-        has_aiohttp = True
-    except ImportError:
-        aiohttp = None
-        has_aiohttp = False
-except ImportError:
-    genai = None
-    has_aiohttp = False
-
 
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import (
@@ -39,8 +20,11 @@ from tarash.tarash_gateway.video.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
+    AnyDict,
+    MediaContent,
     MediaType,
     ProgressCallback,
+    SyncProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -48,8 +32,26 @@ from tarash.tarash_gateway.video.models import (
 )
 from tarash.tarash_gateway.video.utils import validate_model_params
 
+has_genai = True
+has_aiohttp = False
+try:
+    from google.genai.client import AsyncClient, Client
+    from google.genai.errors import ClientError
+    from google.genai.types import GenerateVideosConfig
+
+    # google.genai can use either httpx or aiohttp for async
+    try:
+        import aiohttp  # type: ignore[import-not-found] # noqa: F401
+
+        has_aiohttp = True
+    except ImportError:
+        pass
+except ImportError:
+    has_genai = False
+
 if TYPE_CHECKING:
     from google.genai.client import AsyncClient, Client
+    from google.genai.errors import ClientError
     from google.genai.types import GenerateVideosConfig
 
 # Logger name constant
@@ -62,22 +64,22 @@ class Veo3VideoParams(TypedDict, total=False):
     person_generation: Literal["allow_all", "dont_allow", "allow_adult"]
 
 
-def _convert_to_image(image: MediaType) -> dict[str, Any]:
+def _convert_to_image(image: MediaType) -> AnyDict:
     """Parse last frame image."""
     if isinstance(image, dict) and "content" in image and "content_type" in image:
         return {"image_bytes": image["content"], "mime_type": image["content_type"]}
     elif isinstance(image, str):
         return {"gcs_uri": image}
-    return {}  # type: ignore[return-value]
+    return {}
 
 
-def _convert_to_video(video: MediaType) -> dict[str, Any]:
+def _convert_to_video(video: MediaType) -> AnyDict:
     """Convert video to google-genai format."""
     if isinstance(video, dict) and "content" in video and "content_type" in video:
         return {"video_bytes": video["content"], "mime_type": video["content_type"]}
     elif isinstance(video, str):
         return {"uri": video}
-    return {}  # type: ignore[return-value]
+    return {}
 
 
 def parse_veo3_operation(operation: GenerateVideosOperation) -> VideoGenerationUpdate:
@@ -94,6 +96,7 @@ def parse_veo3_operation(operation: GenerateVideosOperation) -> VideoGenerationU
     return VideoGenerationUpdate(
         request_id=operation.name or "unknown",
         status=status_str,
+        progress_percent=None,
         update={"metadata": metadata},
     )
 
@@ -103,18 +106,27 @@ class Veo3ProviderHandler:
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
-        self._sync_client_cache: dict[str, Any] = {}
-        self._async_client_cache: dict[str, Any] = {}
-        try:
-            import google.genai  # noqa: F401
-        except ImportError:
+        if not has_genai:
             raise ImportError(
                 "google-genai is required for Veo3 provider. "
-                "Install with: pip install tarash-gateway[veo3]"
+                + "Install with: pip install tarash-gateway[veo3]"
             )
 
+        self._sync_client_cache: dict[str, Client] = {}
+        self._async_client_cache: dict[str, AsyncClient] = {}
+
+    @overload
     def _get_client(
-        self, config: VideoGenerationConfig, client_type: str
+        self, config: VideoGenerationConfig, client_type: Literal["async"]
+    ) -> AsyncClient: ...
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync"]
+    ) -> Client: ...
+
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync", "async"]
     ) -> AsyncClient | Client:
         """
         Get or create google-genai client for the given config.
@@ -126,10 +138,10 @@ class Veo3ProviderHandler:
         Returns:
             genai.Client instance (sync) or genai.Client.aio (async)
         """
-        if genai is None:
+        if not has_genai:
             raise ImportError(
                 "google-genai is required for Veo3 provider. "
-                "Install with: pip install tarash-gateway[veo3]"
+                + "Install with: pip install tarash-gateway[veo3]"
             )
 
         # Use API key + base_url as cache key
@@ -176,7 +188,7 @@ class Veo3ProviderHandler:
 
     def _validate_params(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> dict[str, Any]:
+    ) -> AnyDict:
         """
         Validate model_params using Veo3-specific schema.
 
@@ -200,7 +212,7 @@ class Veo3ProviderHandler:
 
     def _convert_request(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> dict[str, Any]:
+    ) -> AnyDict:
         """
         Convert VideoGenerationRequest to google-genai format.
 
@@ -218,7 +230,7 @@ class Veo3ProviderHandler:
         model_params = self._validate_params(config, request)
 
         # Build GenerateVideosConfig params
-        config_params: dict[str, Any] = {
+        config_params: AnyDict = {
             **model_params,
         }
 
@@ -235,8 +247,9 @@ class Veo3ProviderHandler:
         if request.aspect_ratio is not None:
             config_params["aspect_ratio"] = request.aspect_ratio
 
-        if request.number_of_videos is not None:
-            config_params["number_of_videos"] = int(request.number_of_videos)
+        # number_of_videos has default value of 1, always set if different from 1
+        if request.number_of_videos != 1:
+            config_params["number_of_videos"] = request.number_of_videos
 
         if request.generate_audio is not None:
             config_params["generate_audio"] = request.generate_audio
@@ -315,7 +328,10 @@ class Veo3ProviderHandler:
                     if "reference_images" not in config_params:
                         config_params["reference_images"] = []
 
-                    config_params["reference_images"].append(
+                    reference_images = cast(
+                        list[AnyDict], config_params["reference_images"]
+                    )
+                    reference_images.append(
                         {
                             "image": _convert_to_image(image_item["image"]),
                             "reference_type": VideoGenerationReferenceType.ASSET,
@@ -325,7 +341,10 @@ class Veo3ProviderHandler:
                     if "reference_images" not in config_params:
                         config_params["reference_images"] = []
 
-                    config_params["reference_images"].append(
+                    reference_images = cast(
+                        list[AnyDict], config_params["reference_images"]
+                    )
+                    reference_images.append(
                         {
                             "image": _convert_to_image(image_item["image"]),
                             "reference_type": VideoGenerationReferenceType.STYLE,
@@ -358,7 +377,7 @@ class Veo3ProviderHandler:
     def _convert_response(
         self,
         config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        _request: VideoGenerationRequest,
         request_id: str,
         operation: GenerateVideosOperation,
     ) -> VideoGenerationResponse:
@@ -367,7 +386,7 @@ class Veo3ProviderHandler:
 
         Args:
             config: Provider configuration
-            request: Original video generation request
+            _request: Original video generation request (unused)
             request_id: Our request ID (operation name)
             operation: Completed operation from google-genai
 
@@ -407,13 +426,35 @@ class Veo3ProviderHandler:
             )
 
         video_obj = generated_videos[0].video
+        if video_obj is None:
+            raise GenerationFailedError(
+                "Video object is None in generated_videos",
+                provider=config.provider,
+                raw_response={"operation": str(operation)},
+            )
+
+        video: MediaType
         if video_obj.uri:
             video = video_obj.uri
         else:
-            video = {
-                "content": video_obj.video_bytes,
-                "content_type": video_obj.mime_type,
-            }
+            # Ensure video_bytes is bytes for MediaContent
+            video_bytes = video_obj.video_bytes
+            mime_type = video_obj.mime_type
+
+            if video_bytes is None or mime_type is None:
+                raise GenerationFailedError(
+                    "Video object has no URI and no video_bytes/mime_type",
+                    provider=config.provider,
+                    raw_response={"operation": str(operation)},
+                )
+
+            if isinstance(video_bytes, str):
+                video_bytes = video_bytes.encode()
+
+            video = MediaContent(
+                content=video_bytes,
+                content_type=mime_type,
+            )
 
         return VideoGenerationResponse(
             request_id=request_id,
@@ -427,7 +468,7 @@ class Veo3ProviderHandler:
     def _handle_error(
         self,
         config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        _request: VideoGenerationRequest,
         request_id: str,
         ex: Exception,
     ) -> TarashException:
@@ -457,9 +498,16 @@ class Veo3ProviderHandler:
             )
 
         # aiohttp errors (if aiohttp is used instead of httpx)
-        if has_aiohttp and aiohttp:
+        # Check exception type names for aiohttp errors to avoid import issues
+        if has_aiohttp:
+            ex_type_name = type(ex).__name__
+            ex_module = type(ex).__module__
+
             # aiohttp timeout errors
-            if isinstance(ex, (aiohttp.ServerTimeoutError, aiohttp.ClientTimeout)):
+            if ex_module.startswith("aiohttp") and ex_type_name in (
+                "ServerTimeoutError",
+                "ClientTimeout",
+            ):
                 return TimeoutError(
                     f"Request timed out: {str(ex)}",
                     provider=config.provider,
@@ -470,8 +518,9 @@ class Veo3ProviderHandler:
                 )
 
             # aiohttp connection errors
-            if isinstance(
-                ex, (aiohttp.ClientConnectionError, aiohttp.ClientConnectorError)
+            if ex_module.startswith("aiohttp") and ex_type_name in (
+                "ClientConnectionError",
+                "ClientConnectorError",
             ):
                 return HTTPConnectionError(
                     f"Connection error: {str(ex)}",
@@ -482,18 +531,23 @@ class Veo3ProviderHandler:
                 )
 
         # Google GenAI ClientError (includes validation and HTTP errors)
-        if isinstance(ex, ClientError):
-            raw_response = {
-                "status_code": ex.code,
-                "message": ex.message,
-                "error_details": ex.details,
+        if has_genai and isinstance(ex, ClientError):
+            error_code = ex.code
+            error_message: str = ex.message or str(ex)
+            # ex.details is a dict from google-genai SDK, but type is not exported
+            # Use type: ignore since SDK doesn't export details type
+            error_details = cast(AnyDict, ex.details if ex.details else {})  # type: ignore[arg-type]
+            raw_response: AnyDict = {
+                "status_code": error_code,
+                "message": error_message,
+                "error_details": error_details,
                 "error_type": ex.status,
             }
 
             # Validation errors (400, 422)
-            if ex.code in (400, 422):
+            if error_code == 400 or error_code == 422:
                 return ValidationError(
-                    ex.message,
+                    error_message,
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
@@ -502,12 +556,12 @@ class Veo3ProviderHandler:
 
             # All other HTTP errors
             return HTTPError(
-                ex.message,
+                error_message,
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
                 raw_response=raw_response,
-                status_code=ex.code,
+                status_code=error_code,
             )
 
         # Unknown errors
@@ -553,6 +607,7 @@ class Veo3ProviderHandler:
             Final VideoGenerationResponse when complete
         """
         client = self._get_client(config, "async")
+
         # Build Veo3 input (let validation errors propagate)
         veo3_kwargs = self._convert_request(config, request)
 
@@ -565,8 +620,8 @@ class Veo3ProviderHandler:
             logger_name=_LOGGER_NAME,
         )
 
+        request_id = "unknown"
         try:
-            request_id = None
             operation = await client.models.generate_videos(
                 model=config.model,
                 **veo3_kwargs,
@@ -668,7 +723,7 @@ class Veo3ProviderHandler:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
+        on_progress: SyncProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """
         Generate video synchronously (blocking).
@@ -695,8 +750,8 @@ class Veo3ProviderHandler:
             logger_name=_LOGGER_NAME,
         )
 
+        request_id = "unknown"
         try:
-            request_id = None
             operation = client.models.generate_videos(
                 model=config.model,
                 **veo3_kwargs,

@@ -2,7 +2,7 @@
 
 import asyncio
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Literal, cast, overload
 
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.video.exceptions import (
@@ -15,7 +15,10 @@ from tarash.tarash_gateway.video.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
+    AnyDict,
+    MediaContent,
     ProgressCallback,
+    SyncProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -31,6 +34,7 @@ from tarash.tarash_gateway.video.providers.field_mappers import (
     single_image_field_mapper,
 )
 
+has_replicate = True
 try:
     import replicate
     from replicate import AsyncReplicate, Replicate
@@ -42,7 +46,12 @@ try:
     BadRequestError = replicate.BadRequestError
     UnprocessableEntityError = replicate.UnprocessableEntityError
 except (ImportError, Exception):
-    replicate = None
+    has_replicate = False
+
+if TYPE_CHECKING:
+    import replicate
+    from replicate import AsyncReplicate, Replicate
+    from replicate.types import Prediction
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.replicate"
@@ -102,7 +111,9 @@ WAN_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "num_frames": FieldMapper(
         source_field="duration_seconds",
-        converter=lambda req, val: val * 24 if val else None,  # Approximate fps
+        converter=lambda req, val: cast(int, val) * 24
+        if val
+        else None,  # Approximate fps
         required=False,
     ),
     "seed": passthrough_field_mapper("seed"),
@@ -112,25 +123,36 @@ WAN_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Helper function to create a filtered image list mapper
 def _create_reference_images_mapper() -> FieldMapper:
     """Create a FieldMapper for reference_images (filters by type='reference')."""
-    from tarash.tarash_gateway.video.providers.field_mappers import convert_to_data_url
+    from tarash.tarash_gateway.video.utils import convert_to_data_url
 
-    def converter(
-        request: VideoGenerationRequest, value: list | None
-    ) -> list[str] | None:
-        if not value:
+    def converter(_request: VideoGenerationRequest, value: object) -> list[str] | None:
+        if not value or not isinstance(value, list):
             return None
 
+        # Type narrow the list to list[object]
+        value_list = cast(list[object], value)
+
         # Filter images with type="reference"
-        urls = []
-        for item in value:
-            if isinstance(item, dict):
-                # Check if this is a reference image
-                if item.get("type") == "reference" and "image" in item:
-                    media = item["image"]
-                    if isinstance(media, dict) and "content" in media:
-                        urls.append(convert_to_data_url(media))
+        urls: list[str] = []
+        for item in value_list:
+            # Type narrow to dict
+            if not isinstance(item, dict):
+                continue
+
+            item_dict = cast(dict[str, object], item)
+
+            # Check if this is a reference image
+            if item_dict.get("type") == "reference" and "image" in item_dict:
+                media = item_dict["image"]
+                if isinstance(media, dict) and "content" in media:
+                    urls.append(convert_to_data_url(cast(MediaContent, media)))
+                else:
+                    # Media is a URL string or convertible to string
+                    if isinstance(media, str):
+                        urls.append(media)
                     else:
-                        urls.append(str(media))
+                        # Cast to object for str() conversion
+                        urls.append(str(cast(object, media)))
 
         return urls if urls else None
 
@@ -214,7 +236,7 @@ def get_replicate_field_mappers(model_name: str) -> dict[str, FieldMapper]:
 # ==================== Status Parsing ====================
 
 
-def parse_replicate_status(prediction: Any) -> VideoGenerationUpdate:
+def parse_replicate_status(prediction: Prediction) -> VideoGenerationUpdate:
     """Parse Replicate prediction status into VideoGenerationUpdate.
 
     Replicate prediction statuses:
@@ -230,11 +252,13 @@ def parse_replicate_status(prediction: Any) -> VideoGenerationUpdate:
     Returns:
         VideoGenerationUpdate with normalized status
     """
-    status = getattr(prediction, "status", "unknown")
-    prediction_id = getattr(prediction, "id", "unknown")
+    from tarash.tarash_gateway.video.models import StatusType
+
+    status = prediction.status
+    prediction_id = prediction.id
 
     # Map Replicate status to our status
-    status_map = {
+    status_map: dict[str, StatusType] = {
         "starting": "queued",
         "processing": "processing",
         "succeeded": "completed",
@@ -242,39 +266,40 @@ def parse_replicate_status(prediction: Any) -> VideoGenerationUpdate:
         "canceled": "failed",
     }
 
-    normalized_status = status_map.get(status, "processing")
+    normalized_status: StatusType = status_map.get(status, "processing")
 
     # Build update dict with available info
-    update_data: dict[str, Any] = {
+    update_data: AnyDict = {
         "replicate_status": status,
     }
 
-    # Add progress if available
-    progress = getattr(prediction, "progress", None)
-    progress_percent = None
-    if progress:
+    # Add progress if available (progress is a dynamic attribute, not in type definition)
+    progress: object | None = getattr(prediction, "progress", None)
+    progress_percent: int | None = None
+    if progress is not None:
         if hasattr(progress, "percentage"):
-            progress_percent = int(progress.percentage)
-            update_data["progress"] = progress.percentage
+            percentage = getattr(progress, "percentage")
+            progress_percent = int(cast(float, percentage))
+            update_data["progress"] = percentage
         if hasattr(progress, "current") and hasattr(progress, "total"):
-            update_data["current"] = progress.current
-            update_data["total"] = progress.total
+            update_data["current"] = getattr(progress, "current")
+            update_data["total"] = getattr(progress, "total")
 
     # Add logs if available
-    logs = getattr(prediction, "logs", None)
+    logs = prediction.logs
     if logs:
         # Only include last portion to avoid huge updates
         update_data["logs"] = logs[-500:] if len(logs) > 500 else logs
 
     # Add error if failed
-    error = getattr(prediction, "error", None)
+    error = prediction.error
 
     return VideoGenerationUpdate(
         request_id=prediction_id,
-        status=normalized_status,  # type: ignore
+        status=normalized_status,
         progress_percent=progress_percent,
         update=update_data,
-        error=str(error) if error else None,
+        error=error,
     )
 
 
@@ -286,36 +311,66 @@ class ReplicateProviderHandler:
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
-        if replicate is None:
+        if not has_replicate:
             raise ImportError(
                 "replicate is required for Replicate provider. "
-                "Install with: pip install tarash-gateway[replicate]"
+                + "Install with: pip install tarash-gateway[replicate]"
             )
 
-        self._client_cache: dict[str, Replicate] = {}
+        self._sync_client_cache: dict[str, Replicate] = {}
+        self._async_client_cache: dict[str, AsyncReplicate] = {}
 
-    def _get_client(self, config: VideoGenerationConfig) -> Replicate:
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["async"]
+    ) -> AsyncReplicate: ...
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync"]
+    ) -> Replicate: ...
+
+    def _get_client(
+        self,
+        config: VideoGenerationConfig,
+        client_type: Literal["sync", "async"] = "sync",
+    ) -> Replicate | AsyncReplicate:
         """Get or create Replicate client for the given config.
 
         Args:
             config: Provider configuration
+            client_type: Type of client to create ("sync" or "async")
 
         Returns:
-            replicate.Replicate instance (v2.0.0 API)
+            Replicate or AsyncReplicate instance (v2.0.0 API)
         """
+        if not has_replicate:
+            raise ImportError(
+                "replicate is required for Replicate provider. "
+                + "Install with: pip install tarash-gateway[replicate]"
+            )
+
         # Use API key as cache key
         cache_key = config.api_key
 
-        if cache_key not in self._client_cache:
-            self._client_cache[cache_key] = Replicate(bearer_token=config.api_key)
-
-        return self._client_cache[cache_key]
+        if client_type == "async":
+            if cache_key not in self._async_client_cache:
+                self._async_client_cache[cache_key] = AsyncReplicate(
+                    bearer_token=config.api_key
+                )
+            return self._async_client_cache[cache_key]
+        else:
+            if cache_key not in self._sync_client_cache:
+                self._sync_client_cache[cache_key] = Replicate(
+                    bearer_token=config.api_key
+                )
+            return self._sync_client_cache[cache_key]
 
     def _convert_request(
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-    ) -> dict[str, Any]:
+    ) -> AnyDict:
         """Convert VideoGenerationRequest to Replicate model-specific format.
 
         Args:
@@ -350,9 +405,9 @@ class ReplicateProviderHandler:
     def _convert_response(
         self,
         config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        _request: VideoGenerationRequest,
         prediction_id: str,
-        prediction_output: Any,
+        prediction_output: object,
     ) -> VideoGenerationResponse:
         """Convert Replicate prediction output to VideoGenerationResponse.
 
@@ -371,7 +426,7 @@ class ReplicateProviderHandler:
         # - A list of URLs
         # - A dict with 'video' or 'output' key
         # - A FileOutput object with URL
-        video_url = None
+        video_url: str | None = None
 
         if prediction_output is None:
             raise GenerationFailedError(
@@ -382,45 +437,73 @@ class ReplicateProviderHandler:
 
         if isinstance(prediction_output, str):
             video_url = prediction_output
-        elif isinstance(prediction_output, list) and len(prediction_output) > 0:
-            # Take the first item if it's a list
-            first_item = prediction_output[0]
-            if isinstance(first_item, str):
-                video_url = first_item
-            elif hasattr(first_item, "url"):
-                video_url = first_item.url
-            elif hasattr(first_item, "read"):
-                # FileOutput object - get URL
-                video_url = str(first_item)
+        elif isinstance(prediction_output, list):
+            # Type narrow to list
+            output_list = cast(list[object], prediction_output)
+            if len(output_list) > 0:
+                # Take the first item if it's a list
+                first_item = output_list[0]
+                if isinstance(first_item, str):
+                    video_url = first_item
+                elif hasattr(first_item, "url"):
+                    video_url = cast(str, getattr(first_item, "url"))
+                elif hasattr(first_item, "read"):
+                    # FileOutput object - get URL
+                    video_url = str(first_item)
         elif isinstance(prediction_output, dict):
-            video_url = prediction_output.get("video") or prediction_output.get(
-                "output"
+            output_dict = cast(AnyDict, prediction_output)
+            video_url = cast(
+                str | None, output_dict.get("video") or output_dict.get("output")
             )
         elif hasattr(prediction_output, "url"):
-            video_url = prediction_output.url
+            video_url = cast(str, getattr(prediction_output, "url"))
         elif hasattr(prediction_output, "read"):
             # FileOutput object
             video_url = str(prediction_output)
 
         if not video_url:
+            # Convert output to string for error message - handle complex types
+            if isinstance(prediction_output, str):
+                output_str = prediction_output
+            elif isinstance(prediction_output, dict):
+                output_str = repr(cast(dict[str, object], prediction_output))
+            elif isinstance(prediction_output, list):
+                output_str = repr(cast(list[object], prediction_output))
+            elif prediction_output is None:
+                output_str = "None"
+            else:
+                output_str = str(prediction_output)
+
             raise GenerationFailedError(
-                f"Could not extract video URL from Replicate output: {prediction_output}",
+                f"Could not extract video URL from Replicate output: {output_str}",
                 provider=config.provider,
-                raw_response={"output": str(prediction_output)},
+                raw_response={"output": output_str},
             )
+
+        # Convert output to string for raw_response - handle complex types
+        if isinstance(prediction_output, str):
+            output_str = prediction_output
+        elif isinstance(prediction_output, dict):
+            output_str = repr(cast(dict[str, object], prediction_output))
+        elif isinstance(prediction_output, list):
+            output_str = repr(cast(list[object], prediction_output))
+        elif prediction_output is None:
+            output_str = "None"
+        else:
+            output_str = str(prediction_output)
 
         return VideoGenerationResponse(
             request_id=prediction_id,
             video=video_url,
             status="completed",
-            raw_response={"output": str(prediction_output)},
+            raw_response={"output": output_str},
             provider_metadata={"replicate_prediction_id": prediction_id},
         )
 
     def _handle_error(
         self,
         config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        _request: VideoGenerationRequest,
         prediction_id: str,
         ex: Exception,
     ) -> TarashException:
@@ -534,14 +617,17 @@ class ReplicateProviderHandler:
         prediction_id = ""
 
         try:
-            # Create async client (v2.0.0 API)
-            async_client = AsyncReplicate(bearer_token=config.api_key)
+            # Get async client (v2.0.0 API)
+            async_client = self._get_client(config, "async")
 
             # Use run for simple case without progress
             if on_progress is None:
-                output = await async_client.run(
-                    config.model,
-                    input=replicate_input,
+                output = cast(
+                    object,
+                    await async_client.run(
+                        config.model,
+                        input=replicate_input,
+                    ),
                 )
                 # Generate a pseudo prediction ID since run doesn't return one
                 prediction_id = f"replicate-{id(output)}"
@@ -575,11 +661,10 @@ class ReplicateProviderHandler:
                 )
 
                 # Send progress update
-                if on_progress:
-                    update = parse_replicate_status(prediction)
-                    result = on_progress(update)
-                    if asyncio.iscoroutine(result):
-                        await result
+                update = parse_replicate_status(prediction)
+                result = on_progress(update)
+                if asyncio.iscoroutine(result):
+                    await result
 
                 # Log progress
                 log_info(
@@ -663,7 +748,7 @@ class ReplicateProviderHandler:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
+        on_progress: SyncProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """Generate video synchronously (blocking).
 
@@ -675,7 +760,7 @@ class ReplicateProviderHandler:
         Returns:
             Final VideoGenerationResponse
         """
-        client = self._get_client(config)
+        client = self._get_client(config, "sync")
 
         # Build Replicate input
         replicate_input = self._convert_request(config, request)
@@ -694,9 +779,12 @@ class ReplicateProviderHandler:
         try:
             # For simple case without progress, use run() (v2.0.0 API)
             if on_progress is None:
-                output = client.run(
-                    config.model,
-                    input=replicate_input,
+                output = cast(
+                    object,
+                    client.run(
+                        config.model,
+                        input=replicate_input,
+                    ),
                 )
                 prediction_id = f"replicate-{id(output)}"
                 return self._convert_response(config, request, prediction_id, output)
@@ -728,10 +816,8 @@ class ReplicateProviderHandler:
                 # Reload prediction status (v2.0.0 API)
                 prediction = client.predictions.get(prediction_id=prediction.id)
 
-                # Send progress update
-                if on_progress:
-                    update = parse_replicate_status(prediction)
-                    on_progress(update)
+                update = parse_replicate_status(prediction)
+                on_progress(update)
 
                 # Log progress
                 log_info(

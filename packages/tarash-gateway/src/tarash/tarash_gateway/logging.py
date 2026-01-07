@@ -1,7 +1,7 @@
 """Logging utilities for tarash-gateway."""
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 # Sensitive fields that should be sanitized in logs
 _SENSITIVE_FIELDS = {
@@ -43,12 +43,18 @@ def _redact_value(value: Any) -> Any:
 
     # Handle dicts - recursively process each value
     if isinstance(value, dict):
-        return {k: _redact_value(v) for k, v in value.items()}
+        dict_value = cast(dict[str, object], value)
+        return {k: _redact_value(v) for k, v in dict_value.items()}
 
-    # Handle lists and tuples - recursively process each item
-    if isinstance(value, (list, tuple)):
-        redacted = [_redact_value(item) for item in value]
-        return redacted if isinstance(value, list) else tuple(redacted)
+    # Handle lists - recursively process each item
+    if isinstance(value, list):
+        list_value = cast(list[object], value)
+        return [_redact_value(item) for item in list_value]
+
+    # Handle tuples - recursively process each item
+    if isinstance(value, tuple):
+        tuple_value = cast(tuple[object, ...], value)
+        return tuple(_redact_value(item) for item in tuple_value)
 
     # Handle long strings - truncate with ellipsis
     if isinstance(value, str) and len(value) > 100:
@@ -67,7 +73,7 @@ def _redact_context(context: dict[str, Any] | None) -> dict[str, Any]:
     if not context:
         return {}
 
-    redacted = {}
+    redacted: dict[str, Any] = {}
     for key, value in context.items():
         key_lower = key.lower()
         # Check if any sensitive field is in the key name

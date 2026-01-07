@@ -3,10 +3,12 @@
 import asyncio
 import time
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, cast, Literal, overload
 
+from fal_client import AsyncRequestHandle, SyncRequestHandle
 from fal_client.client import FalClientHTTPError
 
+import httpx
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import (
     GenerationFailedError,
@@ -19,10 +21,12 @@ from tarash.tarash_gateway.video.exceptions import (
 )
 from tarash.tarash_gateway.video.models import (
     ProgressCallback,
+    SyncProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
+    AnyDict,
 )
 from tarash.tarash_gateway.video.providers.field_mappers import (
     FieldMapper,
@@ -47,8 +51,21 @@ try:
         Queued,
         InProgress,
     )
+
+    has_fal_client = True
 except ImportError:
-    pass
+    has_fal_client = False
+
+if TYPE_CHECKING:
+    import fal_client
+    from fal_client import (
+        AsyncClient,
+        SyncClient,
+        Status,
+        Completed,
+        Queued,
+        InProgress,
+    )
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.fal"
@@ -408,6 +425,7 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
         return VideoGenerationUpdate(
             request_id=request_id,
             status="completed",
+            progress_percent=100,
             update={
                 "metrics": status.metrics,
                 "logs": status.logs,
@@ -417,12 +435,14 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
         return VideoGenerationUpdate(
             request_id=request_id,
             status="queued",
+            progress_percent=None,
             update={"position": status.position},
         )
     elif isinstance(status, InProgress):
         return VideoGenerationUpdate(
             request_id=request_id,
             status="processing",
+            progress_percent=None,
             update={"logs": status.logs},
         )
     else:
@@ -437,21 +457,29 @@ class FalProviderHandler:
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
-
-        try:
-            import fal_client  # noqa: F401
-        except ImportError:
+        if not has_fal_client:
             raise ImportError(
                 "fal-client is required for Fal provider. "
-                "Install with: pip install tarash-gateway[fal]"
+                + "Install with: pip install tarash-gateway[fal]"
             )
 
-        self._sync_client_cache: dict[str, Any] = {}
+        self._sync_client_cache: dict[str, SyncClient] = {}
+        self._async_client_cache: dict[str, AsyncClient] = {}
         # Note: AsyncClient is NOT cached to avoid "Event Loop closed" errors
         # Each async request creates a new client to ensure proper cleanup
 
+    @overload
     def _get_client(
-        self, config: VideoGenerationConfig, client_type: str
+        self, config: VideoGenerationConfig, client_type: Literal["async"]
+    ) -> AsyncClient: ...
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync"]
+    ) -> SyncClient: ...
+
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync", "async"]
     ) -> AsyncClient | SyncClient:
         """
         Get or create Fal client for the given config.
@@ -468,6 +496,11 @@ class FalProviderHandler:
             "Event Loop closed" errors that occur when cached clients outlive
             the event loop they were created in.
         """
+        if not has_fal_client:
+            raise ImportError(
+                "fal-client is required for Fal provider. "
+                + "Install with: pip install tarash-gateway[fal]"
+            )
 
         # Use API key + base_url as cache key
         cache_key = f"{config.api_key}:{config.base_url or 'default'}"
@@ -509,7 +542,7 @@ class FalProviderHandler:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-    ) -> dict[str, Any]:
+    ) -> AnyDict:
         """Convert VideoGenerationRequest to model-specific format.
 
         Process:
@@ -552,9 +585,9 @@ class FalProviderHandler:
     def _convert_response(
         self,
         config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        _request: VideoGenerationRequest,
         request_id: str,
-        provider_response: Any,
+        provider_response: AnyDict,
     ) -> VideoGenerationResponse:
         """
         Convert Fal response to VideoGenerationResponse.
@@ -573,56 +606,47 @@ class FalProviderHandler:
         video_url = None
         audio_url = None
 
-        if isinstance(provider_response, dict):
-            # Try different response formats
-            if "video" in provider_response and isinstance(
-                provider_response["video"], dict
-            ):
-                video_url = provider_response["video"].get("url")
-            elif "video_url" in provider_response:
-                video_url = provider_response["video_url"]
+        # Try different response formats
+        if "video" in provider_response and isinstance(
+            provider_response["video"], dict
+        ):
+            video_dict = cast(dict[str, object], provider_response["video"])
+            video_url = cast(str, video_dict.get("url"))
+        elif "video_url" in provider_response:
+            video_url = cast(str, provider_response["video_url"])
 
-            if "audio" in provider_response and isinstance(
-                provider_response["audio"], dict
-            ):
-                audio_url = provider_response["audio"].get("url")
-            elif "audio_url" in provider_response:
-                audio_url = provider_response["audio_url"]
+        if "audio" in provider_response and isinstance(
+            provider_response["audio"], dict
+        ):
+            audio_dict = cast(dict[str, object], provider_response["audio"])
+            audio_url = cast(str, audio_dict.get("url"))
+        elif "audio_url" in provider_response:
+            audio_url = cast(str, provider_response["audio_url"])
 
         if not video_url:
             raise GenerationFailedError(
                 f"No video URL found in Fal response: {provider_response}",
                 provider=config.provider,
                 model=config.model,
-                raw_response=provider_response
-                if isinstance(provider_response, dict)
-                else {},
+                raw_response=provider_response,
             )
 
         return VideoGenerationResponse(
             request_id=request_id,
             video=video_url,
             audio_url=audio_url,
-            duration=provider_response.get("duration")
-            if isinstance(provider_response, dict)
-            else None,
-            resolution=provider_response.get("resolution")
-            if isinstance(provider_response, dict)
-            else None,
-            aspect_ratio=provider_response.get("aspect_ratio")
-            if isinstance(provider_response, dict)
-            else None,
+            duration=provider_response.get("duration"),
+            resolution=cast(str, provider_response.get("resolution")),
+            aspect_ratio=cast(str, provider_response.get("aspect_ratio")),
             status="completed",
-            raw_response=provider_response
-            if isinstance(provider_response, dict)
-            else {"data": str(provider_response)},
+            raw_response=provider_response,
             provider_metadata={},
         )
 
     def _handle_error(
         self,
         config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        _request: VideoGenerationRequest,
         request_id: str,
         ex: Exception,
     ) -> TarashException:
@@ -653,7 +677,7 @@ class FalProviderHandler:
 
         # Fal HTTP errors
         if isinstance(ex, FalClientHTTPError):
-            raw_response = {
+            raw_response: dict[str, object] = {
                 "status_code": ex.status_code,
                 "response_headers": ex.response_headers,
                 "response": ex.response.content,
@@ -742,9 +766,9 @@ class FalProviderHandler:
         self,
         config: VideoGenerationConfig,
         request_id: str,
-        handler: Any,
+        handler: AsyncRequestHandle,
         on_progress: ProgressCallback | None = None,
-    ) -> Any:
+    ) -> AnyDict:
         """Process events asynchronously and return final result.
 
         Args:
@@ -774,9 +798,9 @@ class FalProviderHandler:
         self,
         config: VideoGenerationConfig,
         request_id: str,
-        handler: Any,
-        on_progress: Any | None = None,
-    ) -> Any:
+        handler: SyncRequestHandle,
+        on_progress: SyncProgressCallback | None = None,
+    ) -> object:
         """Process events synchronously and return final result.
 
         Args:
@@ -865,12 +889,7 @@ class FalProviderHandler:
             )
 
             # Parse response
-            fal_result = (
-                result
-                if isinstance(result, dict)
-                else (result.data if hasattr(result, "data") else {})
-            )
-            response = self._convert_response(config, request, request_id, fal_result)
+            response = self._convert_response(config, request, request_id, result)
 
             log_info(
                 "Final generated response",
@@ -894,7 +913,7 @@ class FalProviderHandler:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        on_progress: Any | None = None,
+        on_progress: SyncProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """
         Generate video synchronously (blocking).
@@ -954,11 +973,7 @@ class FalProviderHandler:
             )
 
             # Parse response
-            fal_result = (
-                result
-                if isinstance(result, dict)
-                else (result.data if hasattr(result, "data") else {})
-            )
+            fal_result = cast(AnyDict, result)
             response = self._convert_response(config, request, request_id, fal_result)
 
             log_info(

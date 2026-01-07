@@ -15,8 +15,11 @@ from tarash.tarash_gateway.video.models import (
 )
 from tarash.tarash_gateway.video.providers.azure_openai import (
     AzureOpenAIProviderHandler,
-    parse_azure_video_status,
 )
+from tarash.tarash_gateway.video.providers.openai import parse_openai_video_status
+
+# Azure uses the same status parsing as OpenAI
+parse_azure_video_status = parse_openai_video_status
 
 
 # ==================== Fixtures ====================

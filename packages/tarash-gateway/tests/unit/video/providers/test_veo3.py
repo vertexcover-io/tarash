@@ -1020,7 +1020,7 @@ async def test_handle_video_generation_errors_async_propagates_known_errors():
     """Test decorator propagates ValidationError, GenerationFailedError, TarashException."""
 
     @handle_video_generation_errors
-    async def async_func(self, config, request):
+    async def async_func(self, config, request, on_progress=None):
         if request.prompt == "validation":
             raise ValidationError("Invalid", provider="veo3")
         elif request.prompt == "provider":
@@ -1057,7 +1057,7 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
     """Test decorator propagates known errors for sync functions."""
 
     @handle_video_generation_errors
-    def sync_func(self, config, request):
+    def sync_func(self, config, request, on_progress=None):
         if request.prompt == "validation":
             raise ValidationError("Invalid", provider="veo3")
         elif request.prompt == "unknown":

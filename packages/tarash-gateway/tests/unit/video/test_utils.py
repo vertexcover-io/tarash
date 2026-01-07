@@ -138,6 +138,7 @@ class TestDownloadMediaFromUrl:
         mock_response = Mock()
         mock_response.content = test_content
         mock_response.headers = {"content-type": test_content_type}
+        mock_response.raise_for_status.return_value = mock_response
 
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -160,6 +161,7 @@ class TestDownloadMediaFromUrl:
         mock_response = Mock()
         mock_response.content = test_content
         mock_response.headers = {}  # No content-type header
+        mock_response.raise_for_status.return_value = mock_response
 
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -252,6 +254,7 @@ class TestDownloadMediaFromUrl:
         mock_response = Mock()
         mock_response.content = test_content
         mock_response.headers = {"content-type": "image/jpeg"}
+        mock_response.raise_for_status.return_value = mock_response
 
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()

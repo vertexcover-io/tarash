@@ -6,7 +6,7 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Any, Literal, overload
 
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, Required, TypedDict
 
 from tarash.tarash_gateway.logging import (
     log_debug,
@@ -23,6 +23,7 @@ from tarash.tarash_gateway.video.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
+    MediaContent,
     ProgressCallback,
     StatusType,
     VideoGenerationConfig,
@@ -44,6 +45,8 @@ if TYPE_CHECKING:
         APIStatusError,
         APITimeoutError,
         AsyncOpenAI,
+        AsyncAzureOpenAI,
+        AzureOpenAI,
         BadRequestError,
         OpenAI,
         UnprocessableEntityError,
@@ -52,7 +55,7 @@ if TYPE_CHECKING:
 
 # Runtime imports with error handling
 try:
-    from openai import AsyncOpenAI, OpenAI
+    from openai import AsyncOpenAI, AsyncAzureOpenAI, AzureOpenAI, OpenAI
     from openai import (
         APIStatusError,
         APIConnectionError,
@@ -94,9 +97,9 @@ class OpenAIVideoResponse(TypedDict):
     Contains the Video object and the HttpxBinaryResponseContent response object.
     """
 
-    video: Video  # OpenAI Video object
-    content: bytes
-    content_type: str
+    video: Required[Video]  # OpenAI Video object (required)
+    content: NotRequired[bytes | None]  # Optional - may be None if download failed
+    content_type: NotRequired[str | None]  # Optional - may be None if download failed
 
 
 def parse_openai_video_status(video: Video) -> VideoGenerationUpdate:
@@ -140,22 +143,22 @@ class OpenAIProviderHandler:
                 "openai is required for OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
 
-        self._sync_client_cache: dict[str, OpenAI] = {}
-        self._async_client_cache: dict[str, AsyncOpenAI] = {}
+        self._sync_client_cache: dict[str, "OpenAI | AzureOpenAI"] = {}
+        self._async_client_cache: dict[str, "AsyncOpenAI | AsyncAzureOpenAI"] = {}
 
     @overload
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["async"]
-    ) -> "AsyncOpenAI": ...
+    ) -> "AsyncOpenAI | AsyncAzureOpenAI": ...
 
     @overload
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["sync"]
-    ) -> "OpenAI": ...
+    ) -> "OpenAI | AzureOpenAI": ...
 
     def _get_client(
         self, config: VideoGenerationConfig, client_type: str
-    ) -> "AsyncOpenAI | OpenAI":
+    ) -> "AsyncOpenAI | AsyncAzureOpenAI | OpenAI | AzureOpenAI":
         """
         Get or create OpenAI client for the given config.
 
@@ -179,14 +182,22 @@ class OpenAIProviderHandler:
                     },
                     logger_name=_LOGGER_NAME,
                 )
-                client_kwargs: dict[str, object] = {
+                client_kwargs = {
                     "api_key": config.api_key,
                     "timeout": config.timeout,
                 }
                 if config.base_url:
                     client_kwargs["base_url"] = config.base_url
 
-                self._async_client_cache[cache_key] = AsyncOpenAI(**client_kwargs)
+                self._async_client_cache[cache_key] = AsyncOpenAI(
+                    api_key=str(client_kwargs["api_key"]),
+                    timeout=float(client_kwargs["timeout"])
+                    if client_kwargs["timeout"]
+                    else None,
+                    base_url=str(client_kwargs.get("base_url"))
+                    if client_kwargs.get("base_url")
+                    else None,
+                )
             return self._async_client_cache[cache_key]
         else:  # sync
             if cache_key not in self._sync_client_cache:
@@ -199,14 +210,22 @@ class OpenAIProviderHandler:
                     },
                     logger_name=_LOGGER_NAME,
                 )
-                client_kwargs: dict[str, Any] = {
+                client_kwargs = {
                     "api_key": config.api_key,
                     "timeout": config.timeout,
                 }
                 if config.base_url:
                     client_kwargs["base_url"] = config.base_url
 
-                self._sync_client_cache[cache_key] = OpenAI(**client_kwargs)
+                self._sync_client_cache[cache_key] = OpenAI(
+                    api_key=str(client_kwargs["api_key"]),
+                    timeout=float(client_kwargs["timeout"])
+                    if client_kwargs["timeout"]
+                    else None,
+                    base_url=str(client_kwargs.get("base_url"))
+                    if client_kwargs.get("base_url")
+                    else None,
+                )
             return self._sync_client_cache[cache_key]
 
     def _validate_params(
@@ -234,7 +253,7 @@ class OpenAIProviderHandler:
 
     def _convert_request(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         """
         Convert VideoGenerationRequest to OpenAI API format.
 
@@ -249,7 +268,7 @@ class OpenAIProviderHandler:
             ValidationError: If more than 1 image is provided
         """
         # Start with validated model_params
-        openai_params: dict[str, object] = self._validate_params(config, request)
+        openai_params: dict[str, Any] = self._validate_params(config, request)
 
         # Required parameters
         openai_params["model"] = config.model
@@ -406,13 +425,19 @@ class OpenAIProviderHandler:
                 raw_response=video.model_dump(),
             )
 
+        # Type narrowing: video_content is guaranteed to be bytes at this point
+        # due to the None check above
+        assert video_content is not None, "video_content should not be None"
+
+        content_type_value = provider_response.get("content_type") or "video/mp4"
+        video_media: MediaContent = {
+            "content": video_content,
+            "content_type": content_type_value,
+        }
         return VideoGenerationResponse(
             request_id=request_id,
-            video={
-                "content": video_content,
-                "content_type": provider_response["content_type"],
-            },
-            content_type=provider_response["content_type"],
+            video=video_media,
+            content_type=content_type_value,
             duration=float(getattr(video, "seconds", 0))
             if hasattr(video, "seconds")
             else None,
@@ -426,7 +451,7 @@ class OpenAIProviderHandler:
         self,
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
-        request_id: str,
+        request_id: str | None,
         ex: Exception,
     ) -> TarashException:
         """Handle errors from OpenAI API."""
@@ -434,7 +459,7 @@ class OpenAIProviderHandler:
             return ex
 
         # API timeout errors
-        if isinstance(ex, APITimeoutError):
+        if has_openai and isinstance(ex, APITimeoutError):
             return TimeoutError(
                 f"Request timed out: {str(ex)}",
                 provider=config.provider,
@@ -445,7 +470,7 @@ class OpenAIProviderHandler:
             )
 
         # API connection errors
-        if isinstance(ex, APIConnectionError):
+        if has_openai and isinstance(ex, APIConnectionError):
             return HTTPConnectionError(
                 f"Connection error: {str(ex)}",
                 provider=config.provider,
@@ -455,12 +480,23 @@ class OpenAIProviderHandler:
             )
 
         # API status errors (4xx, 5xx)
-        if isinstance(ex, APIStatusError):
-            raw_response = {
+        if has_openai and isinstance(ex, APIStatusError):
+            # Extract message from body or use default
+            error_message: str
+            body = ex.body
+            if isinstance(body, dict):
+                # OpenAI SDK body type is complex; safely extract message
+                body_message = body.get("message")  # type: ignore[union-attr]
+                if isinstance(body_message, str):
+                    error_message = body_message
+                else:
+                    error_message = ex.message
+            else:
+                error_message = ex.message
+
+            raw_response: dict[str, object] = {
                 "status_code": ex.status_code,
-                "message": ex.body.get("message", ex.message)
-                if isinstance(ex.body, dict)
-                else ex.message,
+                "message": error_message,
                 "type": ex.type,
                 "param": ex.param,
                 "code": ex.code,
@@ -469,7 +505,7 @@ class OpenAIProviderHandler:
             # Validation errors (400, 422)
             if isinstance(ex, (BadRequestError, UnprocessableEntityError)):
                 return ValidationError(
-                    raw_response["message"],
+                    error_message,
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
@@ -478,7 +514,7 @@ class OpenAIProviderHandler:
 
             # All other HTTP errors (401, 403, 429, 500, etc.)
             return HTTPError(
-                raw_response["message"],
+                error_message,
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
@@ -528,7 +564,7 @@ class OpenAIProviderHandler:
         log_method = None
         if current_status == "completed" or current_status == "failed":
             log_method = log_info
-        elif progress is not None and progress != last_logged_progress:
+        elif progress != last_logged_progress:
             log_method = log_info
         elif poll_attempts % 10 == 0:
             log_method = log_debug
@@ -815,7 +851,7 @@ class OpenAIProviderHandler:
 
     def _poll_and_download_sync(
         self,
-        client: "OpenAI|AsyncOpenAI",
+        client: "OpenAI",
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
         video: Video,
@@ -920,13 +956,15 @@ class OpenAIProviderHandler:
         )
 
         # Create video job or remix existing video
+        request_id: str | None = None
         try:
-            request_id = None
             if is_remix:
                 # Use remix endpoint: POST /videos/{video_id}/remix
                 # Remove video_id from params as it goes in the URL
                 remix_params = {k: v for k, v in openai_params.items() if k != "model"}
-                video = await client.videos.remix(video_id=video_id, **remix_params)
+                video = await client.videos.remix(
+                    video_id=str(video_id), **remix_params
+                )
             else:
                 # Use standard create endpoint
                 video = await client.videos.create(**openai_params)
@@ -990,14 +1028,14 @@ class OpenAIProviderHandler:
             },
             logger_name=_LOGGER_NAME,
         )
+        request_id: str | None = None
         try:
-            request_id = None
             # Create video job or remix existing video
             if is_remix:
                 # Use remix endpoint: POST /videos/{video_id}/remix
                 # Remove video_id from params as it goes in the URL
                 remix_params = {k: v for k, v in openai_params.items() if k != "model"}
-                video = client.videos.remix(video_id=video_id, **remix_params)
+                video = client.videos.remix(video_id=str(video_id), **remix_params)
             else:
                 # Use standard create endpoint
                 video = client.videos.create(**openai_params)

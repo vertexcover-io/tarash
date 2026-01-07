@@ -3,9 +3,8 @@
 import asyncio
 import io
 import time
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
-from runwayml.lib.polling import AsyncAwaitableTaskRetrieveResponse
 from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
@@ -19,6 +18,7 @@ from tarash.tarash_gateway.video.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.video.models import (
+    AnyDict,
     MediaType,
     ProgressCallback,
     VideoGenerationConfig,
@@ -30,7 +30,11 @@ from tarash.tarash_gateway.video.utils import validate_duration, validate_model_
 
 try:
     from runwayml import AsyncRunwayML, RunwayML
-    from runwayml.lib.polling import AsyncNewTaskCreatedResponse, NewTaskCreatedResponse
+    from runwayml.lib.polling import (
+        AsyncAwaitableTaskRetrieveResponse,
+        AsyncNewTaskCreatedResponse,
+        NewTaskCreatedResponse,
+    )  # pyright: ignore[reportMissingTypeStubs]
 
     # Import specific exception types from runwayml SDK
     from runwayml import (
@@ -40,8 +44,38 @@ try:
         BadRequestError,
         UnprocessableEntityError,
     )
+
+    has_runwayml = True
 except ImportError:
-    pass
+    has_runwayml = False
+
+if TYPE_CHECKING:
+    from runwayml import AsyncRunwayML, RunwayML
+    from runwayml.lib.polling import (
+        AsyncAwaitableTaskRetrieveResponse,
+        AsyncNewTaskCreatedResponse,
+        NewTaskCreatedResponse,
+    )  # pyright: ignore[reportMissingTypeStubs]
+    from runwayml import (
+        APIConnectionError,
+        APIStatusError,
+        APITimeoutError,
+        BadRequestError,
+        UnprocessableEntityError,
+    )
+else:
+    # Runtime fallbacks for when runwayml is not installed
+    if not has_runwayml:
+        RunwayML = object  # type: ignore[assignment, misc]
+        AsyncRunwayML = object  # type: ignore[assignment, misc]
+        AsyncAwaitableTaskRetrieveResponse = object  # type: ignore[assignment, misc]
+        AsyncNewTaskCreatedResponse = object  # type: ignore[assignment, misc]
+        NewTaskCreatedResponse = object  # type: ignore[assignment, misc]
+        APIConnectionError = Exception  # type: ignore[assignment, misc]
+        APIStatusError = Exception  # type: ignore[assignment, misc]
+        APITimeoutError = Exception  # type: ignore[assignment, misc]
+        BadRequestError = Exception  # type: ignore[assignment, misc]
+        UnprocessableEntityError = Exception  # type: ignore[assignment, misc]
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.runway"
@@ -118,13 +152,17 @@ def _convert_media_to_file(media: MediaType, default_name: str) -> io.BytesIO | 
     if isinstance(media, str):
         return media
 
-    # MediaContent dict with bytes
-    content_bytes = media["content"]
-    content_type = media["content_type"]
-    ext = content_type.split("/")[-1] if "/" in content_type else "bin"
-    file_obj = io.BytesIO(content_bytes)
-    file_obj.name = f"{default_name}.{ext}"
-    return file_obj
+    # MediaContent dict with bytes (type guard for dict access)
+    if isinstance(media, dict):
+        content_bytes = media["content"]
+        content_type = media["content_type"]
+        ext = content_type.split("/")[-1] if "/" in content_type else "bin"
+        file_obj = io.BytesIO(content_bytes)
+        file_obj.name = f"{default_name}.{ext}"
+        return file_obj
+
+    # Fallback for HttpUrl type (though it should be caught by isinstance(media, str))
+    return str(media)
 
 
 def _convert_aspect_ratio(
@@ -144,7 +182,7 @@ def _convert_aspect_ratio(
     return ratio
 
 
-def _extract_video_url(output: Any) -> str | None:
+def _extract_video_url(output: object) -> str | None:
     """Extract video URL from task output.
 
     Args:
@@ -154,11 +192,12 @@ def _extract_video_url(output: Any) -> str | None:
         Video URL string or None if not found
     """
     if isinstance(output, list):
-        return output[0] if output else None
+        return cast(str, output[0]) if output else None
     if isinstance(output, str):
         return output
     if isinstance(output, dict):
-        return output.get("url")
+        url = output.get("url")  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        return cast(str, url) if url is not None else None
     return None
 
 
@@ -170,7 +209,8 @@ def parse_runway_task_status(
     Args:
         task: Runway task object (Task type not exported by SDK)
     """
-    status_map = {
+    # Map runway status to StatusType literals
+    status_map: dict[str, Literal["queued", "processing", "completed", "failed"]] = {
         "PENDING": "queued",
         "THROTTLED": "queued",
         "RUNNING": "processing",
@@ -179,9 +219,14 @@ def parse_runway_task_status(
         "CANCELLED": "failed",
     }
 
+    # Get status with typed default
+    mapped_status: Literal["queued", "processing", "completed", "failed"] = (
+        status_map.get(task.status, "processing")
+    )
+
     return VideoGenerationUpdate(
         request_id=task.id,
-        status=status_map.get(task.status, "processing"),
+        status=mapped_status,
         progress_percent=None,
         update={"raw_status": task.status},
     )
@@ -192,18 +237,33 @@ class RunwayProviderHandler:
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
-        if RunwayML is None:
+        if not has_runwayml:
             raise ImportError(
                 "runwayml is required for Runway provider. "
                 "Install with: pip install tarash-gateway[runway]"
             )
-        self._sync_client_cache: dict[str, RunwayML] = {}
-        self._async_client_cache: dict[str, AsyncRunwayML] = {}
+        self._sync_client_cache: dict[str, "RunwayML"] = {}
+        self._async_client_cache: dict[str, "AsyncRunwayML"] = {}
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["async"]
+    ) -> "AsyncRunwayML": ...
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync"]
+    ) -> "RunwayML": ...
 
     def _get_client(
-        self, config: VideoGenerationConfig, client_type: str
-    ) -> RunwayML | AsyncRunwayML:
+        self, config: VideoGenerationConfig, client_type: Literal["sync", "async"]
+    ) -> "RunwayML | AsyncRunwayML":
         """Get or create Runway client for the given config."""
+        if not has_runwayml:
+            raise ImportError(
+                "runwayml is required for Runway provider. "
+                "Install with: pip install tarash-gateway[runway]"
+            )
         cache_key = f"{config.api_key}:{client_type}"
         cache = (
             self._async_client_cache
@@ -217,8 +277,14 @@ class RunwayProviderHandler:
                 context={"provider": config.provider, "model": config.model},
                 logger_name=_LOGGER_NAME,
             )
-            ClientClass = AsyncRunwayML if client_type == "async" else RunwayML
-            cache[cache_key] = ClientClass(api_key=config.api_key)
+            if client_type == "async":
+                async_client: "AsyncRunwayML" = AsyncRunwayML(api_key=config.api_key)
+                self._async_client_cache[cache_key] = async_client
+                return async_client
+            else:
+                sync_client: "RunwayML" = RunwayML(api_key=config.api_key)
+                self._sync_client_cache[cache_key] = sync_client
+                return sync_client
 
         return cache[cache_key]
 
@@ -303,6 +369,11 @@ class RunwayProviderHandler:
                 params["duration"] = int(request.duration_seconds)
 
         elif endpoint == "video_to_video":
+            if not request.video:
+                raise ValidationError(
+                    "Video input is required for video-to-video",
+                    provider=config.provider,
+                )
             params["video_uri"] = _convert_media_to_file(request.video, "input_video")
             params["prompt_text"] = request.prompt
             params["ratio"] = _convert_aspect_ratio(
@@ -413,38 +484,46 @@ class RunwayProviderHandler:
             return ex
 
         # API timeout errors
-        if isinstance(ex, APITimeoutError):
+        if has_runwayml and isinstance(ex, APITimeoutError):
+            # APITimeoutError inherits from APIError which has .message
+            error_message = str(ex)
             return TimeoutError(
-                f"Request timed out: {ex.message}",
+                f"Request timed out: {error_message}",
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
-                raw_response={"error": ex.message},
+                raw_response={"error": error_message},
                 timeout_seconds=config.timeout,
             )
 
         # API connection errors
-        if isinstance(ex, APIConnectionError):
+        if has_runwayml and isinstance(ex, APIConnectionError):
+            # APIConnectionError inherits from APIError which has .message
+            error_message = str(ex)
             return HTTPConnectionError(
-                f"Connection error: {ex.message}",
+                f"Connection error: {error_message}",
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
-                raw_response={"error": ex.message},
+                raw_response={"error": error_message},
             )
 
         # API status errors (4xx, 5xx)
-        if isinstance(ex, APIStatusError):
-            raw_response = {
-                "status_code": ex.status_code,
-                "message": ex.message,
-                "body": ex.body,
+        if has_runwayml and isinstance(ex, APIStatusError):
+            # APIStatusError has status_code, inherits message from APIError, and has body
+            error_message = str(ex)
+            # Use getattr to avoid type checking issues with dynamically imported exception types
+            status_code = getattr(ex, "status_code", 0)
+            raw_response: AnyDict = {
+                "status_code": status_code,
+                "message": error_message,
+                "body": getattr(ex, "body", None),
             }
 
             # Validation errors (400, 422)
             if isinstance(ex, (BadRequestError, UnprocessableEntityError)):
                 return ValidationError(
-                    ex.message,
+                    error_message,
                     provider=config.provider,
                     model=config.model,
                     request_id=request_id,
@@ -453,12 +532,12 @@ class RunwayProviderHandler:
 
             # All other HTTP errors (401, 403, 429, 500, etc.)
             return HTTPError(
-                ex.message,
+                error_message,
                 provider=config.provider,
                 model=config.model,
                 request_id=request_id,
                 raw_response=raw_response,
-                status_code=ex.status_code,
+                status_code=status_code,
             )
 
         # Unknown errors
@@ -482,19 +561,25 @@ class RunwayProviderHandler:
         )
 
     def _call_endpoint(
-        self, client: RunwayML | AsyncRunwayML, endpoint: str, params: dict[str, Any]
-    ) -> NewTaskCreatedResponse | AsyncNewTaskCreatedResponse:
-        """Call the appropriate Runway endpoint."""
+        self, client: "RunwayML | AsyncRunwayML", endpoint: str, params: dict[str, Any]
+    ) -> "NewTaskCreatedResponse | AsyncNewTaskCreatedResponse":
+        """Call the appropriate Runway endpoint.
+
+        Both sync and async clients have identical API structure, so we use the same
+        endpoint_map for both. The difference is in what they return (sync value vs coroutine),
+        which is handled at the call site with asyncio.iscoroutine().
+        """
         endpoint_map = {
             "text_to_video": lambda: client.text_to_video.create(**params),
             "image_to_video": lambda: client.image_to_video.create(**params),
             "video_to_video": lambda: client.video_to_video.create(**params),
         }
-        return endpoint_map[endpoint]()
+        result = endpoint_map[endpoint]()
+        return result  # type: ignore[return-value]
 
     async def _poll_until_complete(
         self,
-        client: RunwayML | AsyncRunwayML,
+        client: "RunwayML | AsyncRunwayML",
         task_id: str,
         config: VideoGenerationConfig,
         on_progress: ProgressCallback | None,
@@ -515,11 +600,18 @@ class RunwayProviderHandler:
         request_id = task_id
         poll_attempts = 0
 
+        task: Any = None  # Will hold the retrieved task object
+
         while poll_attempts < config.max_poll_attempts:
             # Wait and retrieve updated status
             if is_async:
                 await asyncio.sleep(config.poll_interval)
-                task = await client.tasks.retrieve(task_id)
+                # AsyncRunwayML client returns awaitable - must await it
+                task_response = client.tasks.retrieve(task_id)
+                if asyncio.iscoroutine(task_response):
+                    task = await task_response
+                else:
+                    task = task_response
             else:
                 time.sleep(config.poll_interval)
                 task = client.tasks.retrieve(task_id)
@@ -527,31 +619,32 @@ class RunwayProviderHandler:
             poll_attempts += 1
 
             # Report progress
-            if on_progress:
+            if on_progress and task is not None:
                 update = parse_runway_task_status(task)
                 result = on_progress(update)
                 if is_async and asyncio.iscoroutine(result):
                     await result
 
             # Check if terminal
-            if task.status in _TERMINAL_STATUSES:
+            if task is not None and task.status in _TERMINAL_STATUSES:
                 break
 
             # Log progress
-            log_info(
-                "Progress status update",
-                context={
-                    "provider": config.provider,
-                    "model": config.model,
-                    "request_id": request_id,
-                    "status": task.status,
-                    "poll_attempt": poll_attempts + 1,
-                },
-                logger_name=_LOGGER_NAME,
-            )
+            if task is not None:
+                log_info(
+                    "Progress status update",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                        "request_id": request_id,
+                        "status": task.status,
+                        "poll_attempt": poll_attempts + 1,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
 
         # Check timeout
-        if task.status not in _TERMINAL_STATUSES:
+        if task is None or task.status not in _TERMINAL_STATUSES:
             timeout_seconds = config.max_poll_attempts * config.poll_interval
             log_error(
                 "Runway video generation timed out",
@@ -597,8 +690,20 @@ class RunwayProviderHandler:
             logger_name=_LOGGER_NAME,
         )
 
+        task: "NewTaskCreatedResponse | AsyncNewTaskCreatedResponse | None" = None
         try:
-            task = await self._call_endpoint(client, endpoint, params)
+            task_result = self._call_endpoint(client, endpoint, params)
+            if asyncio.iscoroutine(task_result):
+                task = await task_result
+            else:
+                task = task_result
+            if task is None:
+                raise GenerationFailedError(
+                    "Failed to create task",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id="unknown",
+                )
             request_id = task.id
 
             log_debug(
@@ -612,8 +717,8 @@ class RunwayProviderHandler:
                 logger_name=_LOGGER_NAME,
             )
 
-            task = await self._poll_until_complete(
-                client, task, config, on_progress, is_async=True
+            completed_task = await self._poll_until_complete(
+                client, task.id, config, on_progress, is_async=True
             )
 
             log_debug(
@@ -622,7 +727,9 @@ class RunwayProviderHandler:
                     "provider": config.provider,
                     "model": config.model,
                     "request_id": request_id,
-                    "task_status": task.status,
+                    "task_status": completed_task.status
+                    if completed_task is not None
+                    else "unknown",
                 },
                 logger_name=_LOGGER_NAME,
                 redact=True,
@@ -645,7 +752,9 @@ class RunwayProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, getattr(task, "id", None), ex)
+            # Get request_id if task exists, otherwise use placeholder
+            error_request_id = getattr(task, "id", None) if task is not None else None
+            raise self._handle_error(config, request, error_request_id or "unknown", ex)
 
     @handle_video_generation_errors
     def generate_video(
@@ -668,6 +777,7 @@ class RunwayProviderHandler:
             logger_name=_LOGGER_NAME,
         )
 
+        task: "NewTaskCreatedResponse | AsyncNewTaskCreatedResponse | None" = None
         try:
             task = self._call_endpoint(client, endpoint, params)
             request_id = task.id
@@ -684,7 +794,7 @@ class RunwayProviderHandler:
             )
 
             # Use asyncio.run for the unified polling (it handles sync correctly)
-            task = asyncio.run(
+            completed_task = asyncio.run(
                 self._poll_until_complete(
                     client, task.id, config, on_progress, is_async=False
                 )
@@ -696,13 +806,24 @@ class RunwayProviderHandler:
                     "provider": config.provider,
                     "model": config.model,
                     "request_id": request_id,
-                    "task_status": task.status,
+                    "task_status": completed_task.status
+                    if completed_task is not None
+                    else "unknown",
                 },
                 logger_name=_LOGGER_NAME,
                 redact=True,
             )
 
-            response = self._convert_response(config, request, request_id, task)
+            if completed_task is None:
+                raise GenerationFailedError(
+                    "Task completed but result is None",
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                )
+            response = self._convert_response(
+                config, request, request_id, completed_task
+            )
 
             log_info(
                 "Final generated response",
@@ -719,4 +840,6 @@ class RunwayProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, getattr(task, "id", None), ex)
+            # Get request_id if task exists, otherwise use placeholder
+            error_request_id = getattr(task, "id", None) if task is not None else None
+            raise self._handle_error(config, request, error_request_id or "unknown", ex)

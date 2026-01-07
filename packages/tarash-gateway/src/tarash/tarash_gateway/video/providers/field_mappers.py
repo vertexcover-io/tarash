@@ -4,14 +4,23 @@ This module provides a declarative way to map VideoGenerationRequest fields
 to provider-specific API formats using FieldMapper objects.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Callable, Literal, TypedDict, cast
 
 from tarash.tarash_gateway.video.models import (
-    ImageType,
+    MediaContent,
     VideoGenerationRequest,
 )
 from tarash.tarash_gateway.video.utils import convert_to_data_url, validate_duration
+
+
+# Type alias for image list items
+class ImageListItem(TypedDict, total=False):
+    """Type for items in the image_list field."""
+
+    type: str
+    image: str | MediaContent
 
 
 # ==================== Field Mapping Framework ====================
@@ -28,14 +37,14 @@ class FieldMapper:
     """
 
     source_field: str
-    converter: Callable[[VideoGenerationRequest, Any], Any]
+    converter: Callable[[VideoGenerationRequest, object], object]
     required: bool = False
 
 
 def apply_field_mappers(
     field_mappers: dict[str, FieldMapper],
     request: VideoGenerationRequest,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Apply field mappers to convert VideoGenerationRequest to API format.
 
     Args:
@@ -48,7 +57,7 @@ def apply_field_mappers(
     Raises:
         ValueError: If a required field is None or missing
     """
-    result = {}
+    result: dict[str, object] = {}
 
     for api_field_name, mapper in field_mappers.items():
         # Get the source value from the request
@@ -113,11 +122,12 @@ def duration_field_mapper(
         >>> duration_field_mapper("int")
     """
 
-    def converter(
-        request: VideoGenerationRequest, value: int | None
-    ) -> str | int | None:
+    def converter(_request: VideoGenerationRequest, value: object) -> str | int | None:
         if value is None:
             return None
+
+        # Ensure value is an int for duration
+        duration_value = int(value) if isinstance(value, (int, float, str)) else 0
 
         # Validate allowed values
         if allowed_values:
@@ -127,18 +137,21 @@ def duration_field_mapper(
                     int(v.rstrip("s")) for v in allowed_values if isinstance(v, str)
                 ]
                 # Use shared validation function
-                validate_duration(value, allowed_seconds, provider, model)
-                return f"{value}s" if add_suffix else str(value)
+                _ = validate_duration(duration_value, allowed_seconds, provider, model)
+                return f"{duration_value}s" if add_suffix else str(duration_value)
             else:  # int
-                # Validate with shared function
-                validate_duration(value, allowed_values, provider, model)
-                return value
+                # For int type, allowed_values should be list[int]
+                # Cast is safe because caller should provide list[int] when field_type is "int"
+                _ = validate_duration(
+                    duration_value, cast(Sequence[int], allowed_values), provider, model
+                )
+                return duration_value
 
         # No validation, just convert
         if field_type == "str":
-            return f"{value}s" if add_suffix else str(value)
+            return f"{duration_value}s" if add_suffix else str(duration_value)
         else:
-            return value
+            return duration_value
 
     return FieldMapper(source_field="duration_seconds", converter=converter)
 
@@ -164,20 +177,27 @@ def single_image_field_mapper(
         FieldMapper for image_list -> image_url (single string)
     """
 
-    def converter(
-        request: VideoGenerationRequest, value: list[ImageType] | None
-    ) -> str | None:
-        if not value or len(value) == 0:
+    def converter(_request: VideoGenerationRequest, value: object) -> str | None:
+        if not value:
+            return None
+
+        # Cast to list of ImageListItem for type safety
+        image_list = cast(list[ImageListItem], value)
+        if len(image_list) == 0:
             return None
 
         # Filter images by the specified type
         # For "reference", also accept "first_frame" for backward compatibility
         if image_type == "reference":
-            filtered_images = [
-                img for img in value if img["type"] in ("reference", "first_frame")
+            filtered_images: list[ImageListItem] = [
+                img
+                for img in image_list
+                if img.get("type") in ("reference", "first_frame")
             ]
         else:
-            filtered_images = [img for img in value if img["type"] == image_type]
+            filtered_images = [
+                img for img in image_list if img.get("type") == image_type
+            ]
 
         if len(filtered_images) == 0:
             return None
@@ -194,15 +214,22 @@ def single_image_field_mapper(
 
         # Extract the image
         target_image = filtered_images[0]
-        if isinstance(target_image, dict) and "image" in target_image:
+        if "image" in target_image:
             media = target_image["image"]
-            if isinstance(media, dict) and "content" in media:
-                return convert_to_data_url(media)
+            # Check if media is MediaContent (dict with 'content' and 'content_type')
+            if (
+                isinstance(media, dict)
+                and "content" in media
+                and "content_type" in media
+            ):
+                # Type narrowing: we know media is a dict with required keys
+                media_content: MediaContent = {
+                    "content": media["content"],
+                    "content_type": media["content_type"],
+                }
+                return convert_to_data_url(media_content)
             return str(media)
-        elif isinstance(target_image, str):
-            return target_image
-
-        return None
+        return str(target_image)
 
     return FieldMapper(
         source_field="image_list", converter=converter, required=required
@@ -223,25 +250,38 @@ def image_list_field_mapper(
         FieldMapper for image_list -> image_urls (list of strings)
     """
 
-    def converter(request: VideoGenerationRequest, value: list | None) -> list[str]:
+    def converter(_request: VideoGenerationRequest, value: object) -> list[str]:
         if not value:
             return []
 
+        # Cast to list of ImageListItem for type safety
+        image_list = cast(list[ImageListItem], value)
+
         # Filter by image type if specified
-        filtered_items = value
+        filtered_items: list[ImageListItem]
         if image_type is not None:
             filtered_items = [
-                item
-                for item in value
-                if isinstance(item, dict) and item.get("type") == image_type
+                item for item in image_list if item.get("type") == image_type
             ]
+        else:
+            filtered_items = image_list
 
-        urls = []
+        urls: list[str] = []
         for item in filtered_items:
-            if isinstance(item, dict) and "image" in item:
+            if "image" in item:
                 media = item["image"]
-                if isinstance(media, dict) and "content" in media:
-                    urls.append(convert_to_data_url(media))
+                # Check if media is MediaContent (dict with 'content' and 'content_type')
+                if (
+                    isinstance(media, dict)
+                    and "content" in media
+                    and "content_type" in media
+                ):
+                    # Type narrowing: we know media is a dict with required keys
+                    media_content: MediaContent = {
+                        "content": media["content"],
+                        "content_type": media["content_type"],
+                    }
+                    urls.append(convert_to_data_url(media_content))
                 else:
                     urls.append(str(media))
             elif isinstance(item, str):
@@ -279,11 +319,16 @@ def extra_params_field_mapper(param_name: str, required: bool = False) -> FieldM
     Returns:
         FieldMapper for extra_params -> value
     """
+
+    def converter(_request: VideoGenerationRequest, val: object) -> object:
+        if isinstance(val, dict):
+            extra_params = cast(dict[str, object], val)
+            return extra_params.get(param_name)
+        return None
+
     return FieldMapper(
         source_field="extra_params",
-        converter=lambda req, val: val.get(param_name)
-        if isinstance(val, dict)
-        else None,
+        converter=converter,
         required=required,
     )
 
@@ -299,15 +344,27 @@ def video_url_field_mapper(required: bool = False) -> FieldMapper:
     Returns:
         FieldMapper for video -> video_url
     """
+
+    def converter(_request: VideoGenerationRequest, val: object) -> str | None:
+        # Check if val is MediaContent (dict with 'content' and 'content_type')
+        if isinstance(val, dict) and "content" in val and "content_type" in val:
+            # Type narrowing: we know val is a dict with required keys
+            media_content: MediaContent = {
+                "content": val["content"],
+                "content_type": val["content_type"],
+            }
+            return convert_to_data_url(media_content)
+        elif isinstance(val, str):
+            # val is a URL string
+            return val
+        elif val is not None:
+            # val is some other type - convert to string
+            return f"{val}"
+        return None
+
     return FieldMapper(
         source_field="video",
-        converter=lambda req, val: (
-            convert_to_data_url(val)
-            if isinstance(val, dict) and "content" in val
-            else str(val)
-            if val
-            else None
-        ),
+        converter=converter,
         required=required,
     )
 

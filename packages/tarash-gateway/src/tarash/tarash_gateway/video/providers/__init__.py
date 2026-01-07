@@ -3,7 +3,6 @@
 from tarash.tarash_gateway.video.providers.azure_openai import (
     AzureOpenAIProviderHandler,
     AzureOpenAIVideoParams,
-    parse_azure_video_status,
 )
 from tarash.tarash_gateway.video.providers.field_mappers import (
     FieldMapper,
@@ -82,7 +81,6 @@ __all__ = [
     # Azure OpenAI
     "AzureOpenAIProviderHandler",
     "AzureOpenAIVideoParams",
-    "parse_azure_video_status",
     # Replicate
     "ReplicateProviderHandler",
     "REPLICATE_MODEL_REGISTRY",

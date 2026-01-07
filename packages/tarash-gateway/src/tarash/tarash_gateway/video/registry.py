@@ -1,5 +1,7 @@
 """Provider handler registry and handler resolution."""
 
+from typing import cast
+
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import (
@@ -50,15 +52,21 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
             logger_name="tarash.tarash_gateway.video.registry",
         )
         if provider == "fal":
-            _HANDLER_INSTANCES[provider] = FalProviderHandler()
+            _HANDLER_INSTANCES[provider] = cast(ProviderHandler, FalProviderHandler())
         elif provider == "veo3":
-            _HANDLER_INSTANCES[provider] = Veo3ProviderHandler()
+            _HANDLER_INSTANCES[provider] = cast(ProviderHandler, Veo3ProviderHandler())
         elif provider == "replicate":
-            _HANDLER_INSTANCES[provider] = ReplicateProviderHandler()
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, ReplicateProviderHandler()
+            )
         elif provider == "openai":
-            _HANDLER_INSTANCES[provider] = OpenAIProviderHandler()
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, OpenAIProviderHandler()
+            )
         elif provider == "runway":
-            _HANDLER_INSTANCES[provider] = RunwayProviderHandler()
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, RunwayProviderHandler()
+            )
         else:
             log_error(
                 "Unsupported provider",

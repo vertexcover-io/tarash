@@ -99,41 +99,13 @@ reportImplicitStringConcatenation = "none"
 
 
 [tool.pyright]
-pythonVersion = "3.12"
-typeCheckingMode = "basic"
-useLibraryCodeForTypes = true
-
-# Paths
+typeCheckingMode = "strict"
 include = ["src"]
 exclude = [
     "**/node_modules",
     "**/__pycache__",
     "**/.*",
 ]
-
-# Type checking settings
-reportUnusedImport = "warning"
-reportUnusedVariable = "warning"
-reportDuplicateImport = "warning"
-reportConstantRedefinition = "error"
-reportIncompatibleMethodOverride = "error"
-reportIncompatibleVariableOverride = "error"
-reportImplicitStringConcatenation = "none"
-
-# Allow Any types - common in provider integrations
-reportUnknownArgumentType = "none"
-reportUnknownVariableType = "none"
-reportUnknownMemberType = "none"
-reportMissingTypeStubs = "none"
-
-# Relaxed settings for practical use
-reportMissingTypeArgument = "none"
-reportGeneralTypeIssues = "none"
-reportOptionalMemberAccess = "none"
-reportOptionalSubscript = "none"
-reportPrivateImportUsage = "none"
-
-# Ignore missing imports for third-party libraries without type stubs
 ignore = [
     "fal_client",
     "replicate",

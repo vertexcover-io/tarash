@@ -40,7 +40,6 @@ __all__ = [
     "Resolution",
     "AspectRatio",
     "ImageType",
-    "VideoType",
     # Exceptions
     "TarashException",
     "ValidationError",

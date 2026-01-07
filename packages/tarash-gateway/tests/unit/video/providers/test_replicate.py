@@ -240,14 +240,14 @@ def test_parse_replicate_status_with_progress():
 
 def test_init_creates_empty_cache(handler):
     """Test that handler initializes with empty client cache."""
-    assert handler._client_cache == {}
+    assert handler._sync_client_cache == {}
 
 
 def test_init_raises_import_error_without_replicate():
     """Test that ImportError is raised when replicate is not installed."""
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.replicate",
-        None,
+        "tarash.tarash_gateway.video.providers.replicate.has_replicate",
+        False,
     ):
         with pytest.raises(ImportError, match="replicate is required"):
             ReplicateProviderHandler()
@@ -258,7 +258,7 @@ def test_init_raises_import_error_without_replicate():
 
 def test_get_client_creates_and_caches_client(handler, base_config, mock_replicate):
     """Test client creation and caching."""
-    handler._client_cache.clear()
+    handler._sync_client_cache.clear()
 
     client1 = handler._get_client(base_config)
     client2 = handler._get_client(base_config)
@@ -268,7 +268,7 @@ def test_get_client_creates_and_caches_client(handler, base_config, mock_replica
 
 def test_get_client_creates_different_clients_for_different_keys(handler):
     """Test different clients for different API keys."""
-    handler._client_cache.clear()
+    handler._sync_client_cache.clear()
 
     mock_client1 = MagicMock()
     mock_client2 = MagicMock()
@@ -593,7 +593,7 @@ def test_generate_video_success_without_progress(handler, base_config, base_requ
         "tarash.tarash_gateway.video.providers.replicate.Replicate",
         return_value=mock_client,
     ):
-        handler._client_cache.clear()
+        handler._sync_client_cache.clear()
         result = handler.generate_video(base_config, base_request)
 
         assert result.video == "https://example.com/video.mp4"
@@ -637,7 +637,7 @@ def test_generate_video_success_with_progress_callback(
         mock_prediction_3,  # Second poll: succeeded
     ]
 
-    handler._client_cache.clear()
+    handler._sync_client_cache.clear()
 
     progress_calls = []
 
@@ -670,7 +670,7 @@ def test_generate_video_handles_failure(
     # v2.0.0 API: predictions.get returns the failed prediction
     mock_replicate.predictions.get.return_value = mock_prediction
 
-    handler._client_cache.clear()
+    handler._sync_client_cache.clear()
 
     with pytest.raises(GenerationFailedError, match="Model crashed"):
         handler.generate_video(base_config, base_request, on_progress=lambda x: None)
@@ -697,7 +697,7 @@ def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
     # v2.0.0 API: predictions.get keeps returning processing status
     mock_replicate.predictions.get.return_value = mock_prediction
 
-    handler._client_cache.clear()
+    handler._sync_client_cache.clear()
 
     with patch("time.sleep"):
         with pytest.raises(TimeoutError, match="timed out"):

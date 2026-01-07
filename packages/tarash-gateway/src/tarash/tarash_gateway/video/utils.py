@@ -1,6 +1,7 @@
 """Utility functions for video generation."""
 
 import base64
+from collections.abc import Sequence
 from typing import cast
 from urllib.parse import urlparse
 
@@ -234,7 +235,7 @@ def get_filename_from_url(url: str) -> str:
 
 def validate_duration(
     duration_seconds: int | None,
-    allowed_values: list[int],
+    allowed_values: Sequence[int],
     provider: str,
     model: str | None = None,
 ) -> int | None:

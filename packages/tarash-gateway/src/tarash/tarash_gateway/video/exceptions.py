@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
     from tarash.tarash_gateway.video.models import (
+        AnyDict,
         VideoGenerationConfig,
         VideoGenerationRequest,
         VideoGenerationResponse,
@@ -32,7 +33,7 @@ class TarashException(Exception):
     provider: str | None
     model: str | None
     request_id: str | None
-    raw_response: dict[str, object] | None
+    raw_response: AnyDict | None
 
     def __init__(
         self,
@@ -40,7 +41,7 @@ class TarashException(Exception):
         provider: str | None = None,
         model: str | None = None,
         request_id: str | None = None,
-        raw_response: dict[str, object] | None = None,
+        raw_response: AnyDict | None = None,
     ):
         self.message = message
         self.provider = provider

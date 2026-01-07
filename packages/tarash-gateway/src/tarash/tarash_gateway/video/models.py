@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     ClassVar,
     Literal,
     Protocol,
+    TypeAlias,
     TypeVar,
     TypedDict,
     cast,
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
     from tarash.tarash_gateway.video.mock import MockConfig
 
 # ==================== Type Aliases ====================
+AnyDict: TypeAlias = dict[str, Any]  # pyright: ignore[reportExplicitAny]
 
 Resolution = Literal["360p", "480p", "720p", "1080p", "4k"]
 AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
@@ -42,11 +45,15 @@ class ImageType(TypedDict):
     type: Literal["reference", "first_frame", "last_frame", "asset", "style"]
 
 
-# Progress callback can be sync or async
-ProgressCallback = (
-    Callable[["VideoGenerationUpdate"], None]
-    | Callable[["VideoGenerationUpdate"], Awaitable[None]]
-)
+def _empty_image_list() -> list[ImageType]:
+    """Factory function for empty image list with proper type."""
+    return []
+
+
+# Progress callback types
+SyncProgressCallback = Callable[["VideoGenerationUpdate"], None]
+AsyncProgressCallback = Callable[["VideoGenerationUpdate"], Awaitable[None]]
+ProgressCallback = SyncProgressCallback | AsyncProgressCallback
 
 # ==================== Execution Metadata ====================
 
@@ -134,7 +141,7 @@ class VideoGenerationRequest(BaseModel):
     resolution: Resolution | None = None
     aspect_ratio: AspectRatio | None = None
     generate_audio: bool | None = None
-    image_list: list[ImageType] = Field(default_factory=list)
+    image_list: list[ImageType] = Field(default_factory=_empty_image_list)
     video: MediaType | None = None
     seed: int | None = None
     number_of_videos: int = 1

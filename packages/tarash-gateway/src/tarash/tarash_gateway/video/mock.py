@@ -178,9 +178,7 @@ class MockConfig(BaseModel):
     """Configuration for mocking video generation responses."""
 
     enabled: bool
-    responses: list[MockResponse] = Field(
-        default_factory=lambda: [MockResponse(weight=1.0)]
-    )
+    responses: list[MockResponse] | None = None
     polling: MockPollingConfig | None = None
 
     @model_validator(mode="before")
@@ -190,11 +188,11 @@ class MockConfig(BaseModel):
         if data.get("enabled") and not data.get("responses"):
             data["responses"] = [MockResponse(weight=1.0)]
 
-        responses = cast(list[MockResponse], data["responses"])
-
-        # Validate total weight if responses provided
+        # Only validate responses if they exist
+        responses = data.get("responses")
         if responses:
-            total_weight = sum(r.weight for r in responses)
+            responses_list = cast(list[MockResponse], responses)
+            total_weight = sum(r.weight for r in responses_list)
             if total_weight <= 0:
                 raise ValueError("Total weight must be positive")
 

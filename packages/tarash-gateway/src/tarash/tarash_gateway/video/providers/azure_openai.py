@@ -1,16 +1,20 @@
 """Azure OpenAI provider handler for Sora video generation."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
-from typing_extensions import TypedDict, override
+from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import VideoGenerationConfig
 from tarash.tarash_gateway.video.providers.openai import OpenAIProviderHandler
 
+if TYPE_CHECKING:
+    from openai import AsyncAzureOpenAI, AzureOpenAI
 
 try:
     from openai import AsyncAzureOpenAI, AzureOpenAI
+
+    has_azure_openai = True
 except ImportError:
     has_azure_openai = False
 
@@ -33,7 +37,7 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
     """
 
     # Default API version for Azure OpenAI video generation
-    DEFAULT_API_VERSION = "2024-05-01-preview"
+    DEFAULT_API_VERSION: str = "2024-05-01-preview"
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
@@ -42,8 +46,9 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
                 "azure-openai is required for Azure OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
 
-        self._sync_client_cache: dict[str, AzureOpenAI] = {}
-        self._async_client_cache: dict[str, AsyncAzureOpenAI] = {}
+        # Use parent class union types for compatibility
+        super().__init__()
+        # Caches are already initialized by parent with correct union types
 
     def _parse_azure_config(self, config: VideoGenerationConfig) -> dict[str, Any]:
         """Parse Azure-specific configuration from VideoGenerationConfig.
@@ -98,7 +103,16 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
             "timeout": config.timeout,
         }
 
-    @override
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["async"]
+    ) -> "AsyncAzureOpenAI": ...
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync"]
+    ) -> "AzureOpenAI": ...
+
     def _get_client(
         self, config: VideoGenerationConfig, client_type: str
     ) -> "AsyncAzureOpenAI | AzureOpenAI":
@@ -126,8 +140,8 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
         if client_type == "async":
             if cache_key not in self._async_client_cache:
                 self._async_client_cache[cache_key] = AsyncAzureOpenAI(**azure_kwargs)
-            return self._async_client_cache[cache_key]
+            return self._async_client_cache[cache_key]  # pyright: ignore[reportReturnType]
         else:  # sync
             if cache_key not in self._sync_client_cache:
                 self._sync_client_cache[cache_key] = AzureOpenAI(**azure_kwargs)
-            return self._sync_client_cache[cache_key]
+            return self._sync_client_cache[cache_key]  # pyright: ignore[reportReturnType]
