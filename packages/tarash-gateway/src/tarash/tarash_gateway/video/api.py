@@ -2,6 +2,7 @@
 
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.video.models import (
+    ProviderHandler,
     ProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
@@ -27,7 +28,7 @@ _FIELD_MAPPER_REGISTRIES: dict[str, dict[str, dict[str, FieldMapper]]] = {
 
 def register_provider(
     provider: str,
-    handler: "ProviderHandler",  # noqa: F821
+    handler: ProviderHandler,
 ) -> None:
     """Register a custom provider handler.
 

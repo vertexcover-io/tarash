@@ -9,22 +9,24 @@ import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import ClassVar, Literal, cast
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from tarash.tarash_gateway.video.exceptions import TarashException
+
+# Type alias for video generation status
 from tarash.tarash_gateway.video.models import (
     AspectRatio,
     MediaContent,
     MediaType,
     ProgressCallback,
-    ProviderHandler,
     Resolution,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
+    StatusType,
 )
 from tarash.tarash_gateway.video.utils import (
     download_media_from_url,
@@ -119,14 +121,12 @@ class MockPollingConfig(BaseModel):
     """Configuration for simulating polling updates."""
 
     enabled: bool = True
-    status_sequence: list[Literal["queued", "processing", "completed", "failed"]] = (
-        Field(  # type: ignore[assignment]
-            default_factory=lambda: ["queued", "processing", "completed"]
-        )
+    status_sequence: list[StatusType] = Field(  # type: ignore[assignment]
+        default_factory=lambda: ["queued", "processing", "completed"]
     )
     delay_between_updates: float = 0.5
     progress_percentages: list[int] | None = None
-    custom_updates: list[dict[str, Any]] | None = None
+    custom_updates: list[dict[str, object]] | None = None
 
     @model_validator(mode="after")
     def validate_polling_config(self) -> "MockPollingConfig":
@@ -142,7 +142,7 @@ class MockPollingConfig(BaseModel):
             raise ValueError("custom_updates length must match status_sequence length")
         return self
 
-    model_config = {"frozen": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
 
 class MockResponse(BaseModel):
@@ -169,38 +169,41 @@ class MockResponse(BaseModel):
             raise ValueError("weight must be positive")
         return self
 
-    model_config = {"frozen": True, "arbitrary_types_allowed": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        frozen=True, arbitrary_types_allowed=True
+    )
 
 
 class MockConfig(BaseModel):
     """Configuration for mocking video generation responses."""
 
     enabled: bool
-    responses: list[MockResponse] | None = None
+    responses: list[MockResponse] = Field(
+        default_factory=lambda: [MockResponse(weight=1.0)]
+    )
     polling: MockPollingConfig | None = None
 
     @model_validator(mode="before")
     @classmethod
-    def validate_config(cls, data: dict) -> dict:
-        if isinstance(data, dict):
-            # Default to single success response if enabled and no responses provided
-            if data.get("enabled") and not data.get("responses"):
-                data["responses"] = [MockResponse(weight=1.0)]
+    def validate_config(cls, data: dict[str, object]) -> dict[str, object]:
+        # Default to single success response if enabled and no responses provided
+        if data.get("enabled") and not data.get("responses"):
+            data["responses"] = [MockResponse(weight=1.0)]
 
-            # Validate total weight if responses provided
-            if data.get("responses"):
-                total_weight = sum(r.weight for r in data["responses"])
-                if total_weight <= 0:
-                    raise ValueError("Total weight must be positive")
+        responses = cast(list[MockResponse], data["responses"])
+
+        # Validate total weight if responses provided
+        if responses:
+            total_weight = sum(r.weight for r in responses)
+            if total_weight <= 0:
+                raise ValueError("Total weight must be positive")
 
         return data
 
-    model_config = {"frozen": True, "arbitrary_types_allowed": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        frozen=True, arbitrary_types_allowed=True
+    )
 
-
-# Rebuild VideoGenerationConfig now that MockConfig is defined
-# This resolves the forward reference in models.py
-VideoGenerationConfig.model_rebuild()
 
 # Cache directory
 MOCK_CACHE_DIR = Path.home() / ".tarash" / "mock_cache"
@@ -275,7 +278,7 @@ def _download_cached_sync(url: str) -> bytes:
 
     # Let exceptions from download_media_from_url propagate
     content, _ = download_media_from_url(url, provider="mock")
-    cache_file.write_bytes(content)
+    _ = cache_file.write_bytes(content)
     return content
 
 
@@ -302,12 +305,12 @@ async def _download_cached_async(url: str) -> bytes:
 
     # Let exceptions from download_media_from_url_async propagate
     content, _ = await download_media_from_url_async(url, provider="mock")
-    cache_file.write_bytes(content)
+    _ = cache_file.write_bytes(content)
     _async_cache[url] = content
 
     # Limit memory cache
     if len(_async_cache) > 128:
-        _async_cache.pop(next(iter(_async_cache)))
+        _ = _async_cache.pop(next(iter(_async_cache)))
 
     return content
 
@@ -320,9 +323,7 @@ def _convert_to_content_sync(video: MediaType) -> MediaContent:
     if isinstance(video, dict) and "content" in video:
         return video
 
-    if isinstance(video, (HttpUrl, str)) and str(video).startswith(
-        ("http://", "https://")
-    ):
+    if str(video).startswith(("http://", "https://")):
         content = _download_cached_sync(str(video))
         return {"content": content, "content_type": "video/mp4"}
 
@@ -345,9 +346,7 @@ async def _convert_to_content_async(video: MediaType) -> MediaContent:
     if isinstance(video, dict) and "content" in video:
         return video
 
-    if isinstance(video, (HttpUrl, str)) and str(video).startswith(
-        ("http://", "https://")
-    ):
+    if str(video).startswith(("http://", "https://")):
         content = await _download_cached_async(str(video))
         return {"content": content, "content_type": "video/mp4"}
 
@@ -503,9 +502,9 @@ async def _create_success_async(
 
 def _polling_update(
     request_id: str,
-    status: str,
+    status: StatusType,
     progress: int | None,
-    custom: dict[str, Any] | None,
+    custom: dict[str, object] | None,
     result: VideoGenerationResponse | None = None,
     error: str | None = None,
 ) -> VideoGenerationUpdate:
@@ -550,7 +549,7 @@ def _simulate_polling_sync(
             error if status == "failed" else None,
         )
 
-        callback(update)
+        _ = callback(update)
 
         if idx < len(config.status_sequence) - 1:
             time.sleep(config.delay_between_updates)
@@ -589,7 +588,7 @@ async def _simulate_polling_async(
         if asyncio.iscoroutinefunction(callback):
             await callback(update)
         else:
-            callback(update)
+            _ = callback(update)
 
         if idx < len(config.status_sequence) - 1:
             await asyncio.sleep(config.delay_between_updates)
@@ -669,7 +668,7 @@ async def handle_mock_request_async(
 # ==================== Provider Handler ====================
 
 
-class MockProviderHandler(ProviderHandler):
+class MockProviderHandler:
     """Provider handler for mock video generation.
 
     This handler wraps the mock logic and presents it as a standard ProviderHandler,

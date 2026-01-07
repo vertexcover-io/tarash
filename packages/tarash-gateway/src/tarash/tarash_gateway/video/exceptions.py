@@ -1,26 +1,38 @@
-"""Exceptions for video generation."""
-
 import functools
 import inspect
 import traceback
-from typing import TYPE_CHECKING, Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
 from tarash.tarash_gateway.logging import log_error
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from tarash.tarash_gateway.video.models import (
         VideoGenerationConfig,
         VideoGenerationRequest,
         VideoGenerationResponse,
+        ProviderHandler,
+        ProgressCallback,
     )
 
-F = TypeVar("F", bound=Callable[..., Any])
+F = TypeVar(
+    "F",
+    bound=Callable[..., "VideoGenerationResponse | Awaitable[VideoGenerationResponse]"],
+)
 
 
 class TarashException(Exception):
     """Base exception for all Tarash video generation errors."""
+
+    message: str
+    provider: str | None
+    model: str | None
+    request_id: str | None
+    raw_response: dict[str, object] | None
 
     def __init__(
         self,
@@ -28,7 +40,7 @@ class TarashException(Exception):
         provider: str | None = None,
         model: str | None = None,
         request_id: str | None = None,
-        raw_response: dict[str, Any] | None = None,
+        raw_response: dict[str, object] | None = None,
     ):
         self.message = message
         self.provider = provider
@@ -53,13 +65,15 @@ class ContentModerationError(TarashException):
 class HTTPError(TarashException):
     """HTTP-level error from provider API."""
 
+    status_code: int | None
+
     def __init__(
         self,
         message: str,
         provider: str | None = None,
         model: str | None = None,
         request_id: str | None = None,
-        raw_response: dict[str, Any] | None = None,
+        raw_response: dict[str, object] | None = None,
         status_code: int | None = None,
     ):
         super().__init__(message, provider, model, request_id, raw_response)
@@ -81,13 +95,15 @@ class HTTPConnectionError(TarashException):
 class TimeoutError(TarashException):
     """Request timed out."""
 
+    timeout_seconds: float | None
+
     def __init__(
         self,
         message: str,
         provider: str | None = None,
         model: str | None = None,
         request_id: str | None = None,
-        raw_response: dict[str, Any] | None = None,
+        raw_response: dict[str, object] | None = None,
         timeout_seconds: float | None = None,
     ):
         super().__init__(message, provider, model, request_id, raw_response)
@@ -133,7 +149,7 @@ def is_retryable_error(error: Exception) -> bool:
     return False
 
 
-def handle_video_generation_errors(func: Callable) -> Callable:
+def handle_video_generation_errors(func: F) -> F:
     """Decorator to handle only truly unhandled exceptions.
 
     - ValidationError, ContentModerationError, HTTPError, GenerationFailedError: Let propagate
@@ -145,14 +161,13 @@ def handle_video_generation_errors(func: Callable) -> Callable:
 
         @functools.wraps(func)
         async def async_wrapper(
-            self: Any,
+            self: "ProviderHandler",
             config: "VideoGenerationConfig",
             request: "VideoGenerationRequest",
-            *args: Any,
-            **kwargs: Any,
+            on_progress: "ProgressCallback | None" = None,
         ) -> "VideoGenerationResponse":
             try:
-                return await func(self, config, request, *args, **kwargs)
+                return await func(self, config, request, on_progress)  # pyright: ignore[reportAny]
             except (
                 PydanticValidationError,
                 TarashException,
@@ -181,19 +196,18 @@ def handle_video_generation_errors(func: Callable) -> Callable:
                     },
                 ) from ex
 
-        return async_wrapper
+        return cast(F, async_wrapper)
     else:
 
         @functools.wraps(func)
         def sync_wrapper(
-            self: Any,
+            self: "ProviderHandler",
             config: "VideoGenerationConfig",
             request: "VideoGenerationRequest",
-            *args: Any,
-            **kwargs: Any,
+            on_progress: "ProgressCallback | None" = None,
         ) -> "VideoGenerationResponse":
             try:
-                return func(self, config, request, *args, **kwargs)
+                return func(self, config, request, on_progress)  # pyright: ignore[reportReturnType]
             except (
                 PydanticValidationError,
                 TarashException,
@@ -222,4 +236,4 @@ def handle_video_generation_errors(func: Callable) -> Callable:
                     },
                 ) from ex
 
-        return sync_wrapper
+        return cast(F, sync_wrapper)

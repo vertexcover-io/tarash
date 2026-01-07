@@ -2,19 +2,17 @@
 
 from typing import Any
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, override
 
 from tarash.tarash_gateway.video.exceptions import ValidationError
 from tarash.tarash_gateway.video.models import VideoGenerationConfig
 from tarash.tarash_gateway.video.providers.openai import OpenAIProviderHandler
-from tarash.tarash_gateway.video.providers.openai import parse_openai_video_status
 
 
 try:
     from openai import AsyncAzureOpenAI, AzureOpenAI
 except ImportError:
-    AsyncAzureOpenAI = None
-    AzureOpenAI = None
+    has_azure_openai = False
 
 
 class AzureOpenAIVideoParams(TypedDict, total=False):
@@ -39,14 +37,13 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
-        if AzureOpenAI is None:
+        if not has_azure_openai:
             raise ImportError(
-                "openai is required for Azure OpenAI provider. "
-                "Install with: pip install tarash-gateway[openai]"
+                "azure-openai is required for Azure OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
 
-        self._sync_client_cache: dict[str, Any] = {}
-        self._async_client_cache: dict[str, Any] = {}
+        self._sync_client_cache: dict[str, AzureOpenAI] = {}
+        self._async_client_cache: dict[str, AsyncAzureOpenAI] = {}
 
     def _parse_azure_config(self, config: VideoGenerationConfig) -> dict[str, Any]:
         """Parse Azure-specific configuration from VideoGenerationConfig.
@@ -72,8 +69,7 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
         """
         if not config.base_url:
             raise ValidationError(
-                "Azure OpenAI requires base_url to be set to your Azure endpoint "
-                "(e.g., https://my-resource.openai.azure.com/)",
+                "Azure OpenAI requires base_url to be set to your Azure endpoint (e.g., https://my-resource.openai.azure.com/)",
                 provider=config.provider,
                 model=config.model,
             )
@@ -102,6 +98,7 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
             "timeout": config.timeout,
         }
 
+    @override
     def _get_client(
         self, config: VideoGenerationConfig, client_type: str
     ) -> "AsyncAzureOpenAI | AzureOpenAI":
@@ -115,6 +112,11 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
         Returns:
             AzureOpenAI (sync) or AsyncAzureOpenAI (async) client instance
         """
+        if not has_azure_openai:
+            raise ImportError(
+                "azure-openai is required for Azure OpenAI provider. Install with: pip install tarash-gateway[openai]"
+            )
+
         # Use API key + base_url + api_version as cache key
         api_version = config.api_version or self.DEFAULT_API_VERSION
         cache_key = f"{config.api_key}:{config.base_url or 'default'}:{api_version}:{client_type}"
@@ -129,12 +131,3 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
             if cache_key not in self._sync_client_cache:
                 self._sync_client_cache[cache_key] = AzureOpenAI(**azure_kwargs)
             return self._sync_client_cache[cache_key]
-
-
-# Export the parse function for compatibility
-def parse_azure_video_status(video: Any):
-    """Parse Azure OpenAI video object to VideoGenerationUpdate.
-
-    For compatibility - Azure uses the same format as OpenAI.
-    """
-    return parse_openai_video_status(video)

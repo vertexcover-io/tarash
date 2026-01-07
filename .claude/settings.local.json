@@ -16,7 +16,8 @@
       "Bash(uv sync:*)",
       "Bash(git worktree:*)",
       "Bash(git -c color.status=always status)",
-      "Bash(git -c color.diff=always diff --stat)"
+      "Bash(git -c color.diff=always diff --stat)",
+      "Bash(uv run:*)"
     ],
     "deny": [],
     "ask": []

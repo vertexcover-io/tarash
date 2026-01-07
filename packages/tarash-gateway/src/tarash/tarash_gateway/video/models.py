@@ -4,16 +4,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
-    Any,
-    Awaitable,
     Callable,
+    ClassVar,
     Literal,
     Protocol,
+    TypeVar,
     TypedDict,
-    Union,
+    cast,
 )
+from collections.abc import Awaitable
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 if TYPE_CHECKING:
     from tarash.tarash_gateway.video.mock import MockConfig
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 Resolution = Literal["360p", "480p", "720p", "1080p", "4k"]
 AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
 Base64 = str
+StatusType = Literal["queued", "processing", "completed", "failed"]
 
 
 class MediaContent(TypedDict):
@@ -32,7 +34,7 @@ class MediaContent(TypedDict):
     content_type: str
 
 
-MediaType = Union[Base64, HttpUrl, MediaContent]
+MediaType = Base64 | HttpUrl | MediaContent
 
 
 class ImageType(TypedDict):
@@ -41,10 +43,10 @@ class ImageType(TypedDict):
 
 
 # Progress callback can be sync or async
-ProgressCallback = Union[
-    Callable[["VideoGenerationUpdate"], None],
-    Callable[["VideoGenerationUpdate"], Awaitable[None]],
-]
+ProgressCallback = (
+    Callable[["VideoGenerationUpdate"], None]
+    | Callable[["VideoGenerationUpdate"], Awaitable[None]]
+)
 
 # ==================== Execution Metadata ====================
 
@@ -118,7 +120,7 @@ class VideoGenerationConfig(BaseModel):
     mock: "MockConfig | None" = None  # Mock configuration
     fallback_configs: list["VideoGenerationConfig"] | None = None  # Fallback chain
 
-    model_config = {"frozen": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
 
 # ==================== Request ====================
@@ -140,15 +142,14 @@ class VideoGenerationRequest(BaseModel):
     enhance_prompt: bool | None = None
 
     # Model-specific parameters
-    extra_params: dict[str, Any] = Field(default_factory=dict)
+    extra_params: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
-    def capture_extra_fields(cls, data: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(data, dict):
-            return data
-
-        extra_params = data.pop("extra_params", {})
+    def capture_extra_fields(cls, data: dict[str, object]) -> dict[str, object]:
+        extra_params: dict[str, object] = cast(
+            dict[str, object], data.pop("extra_params", {})
+        )
 
         # Get all field names defined in the model
         known_fields = set(cls.model_fields.keys())
@@ -158,7 +159,7 @@ class VideoGenerationRequest(BaseModel):
 
         # Remove extra fields from data (so Pydantic doesn't complain)
         for k in extra.keys():
-            data.pop(k)
+            _ = data.pop(k)
 
         extra_params.update(extra)
 
@@ -186,11 +187,11 @@ class VideoGenerationResponse(BaseModel):
     is_mock: bool = False  # Indicates if this is a mock response
 
     # Debugging & provider-specific data
-    raw_response: dict[str, Any]
-    provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    raw_response: dict[str, object]
+    provider_metadata: dict[str, object] = Field(default_factory=dict)
     execution_metadata: ExecutionMetadata | None = None  # Fallback execution tracking
 
-    model_config = {"frozen": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
 
 class VideoGenerationUpdate(BaseModel):
@@ -198,9 +199,9 @@ class VideoGenerationUpdate(BaseModel):
 
     request_id: str  # Same ID across all updates for this request
 
-    status: Literal["queued", "processing", "completed", "failed"]
+    status: StatusType
     progress_percent: int | None = Field(None, ge=0, le=100)
-    update: dict[str, Any]
+    update: dict[str, object]
     result: VideoGenerationResponse | None = None
     error: str | None = None
 
@@ -259,7 +260,7 @@ class KlingCameraConfig(BaseModel):
         description="Camera focal length change. Negative=zoom out (wider), positive=zoom in (narrower)",
     )
 
-    model_config = {"extra": "forbid"}
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
 
 
 class KlingCameraControl(BaseModel):
@@ -280,7 +281,7 @@ class KlingCameraControl(BaseModel):
         None, description="Required for 'simple' type, must be None for other types"
     )
 
-    model_config = {"extra": "forbid"}
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
 
 
 # Kling
@@ -296,52 +297,16 @@ class KlingVideoParams(BaseVideoParams):
 
 # ==================== Provider Handler Protocol ====================
 
+ClientT = TypeVar("ClientT", covariant=True)
+RequestT = TypeVar("RequestT", covariant=True)
+ProviderResponseT = TypeVar("ProviderResponseT", contravariant=True)
+
 
 class ProviderHandler(Protocol):
     """Protocol for provider handler implementations.
 
     Note: This is a relaxed protocol - not all methods need exact signatures.
     Providers may have variations (e.g., different return types, extra parameters).
-    """
-
-    def _get_client(
-        self, config: VideoGenerationConfig, *args: Any, **kwargs: Any
-    ) -> Any:
-        """
-        Get or create provider client.
-
-        Args:
-            config: Provider configuration
-            *args, **kwargs: Provider-specific arguments (e.g., client_type)
-
-        Returns:
-            Provider-specific client instance
-        """
-        ...
-
-    def _convert_request(
-        self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> Any:
-        """
-        Convert VideoGenerationRequest to provider-specific format.
-
-        Args:
-            config: Provider configuration
-            request: Video generation request
-
-        Returns:
-            Provider-specific request payload (dict or tuple)
-        """
-        ...
-
-    def _convert_response(
-        self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        request_id: str,
-        provider_response: Any,
-    ) -> VideoGenerationResponse:
-        """
         Convert provider response to VideoGenerationResponse.
 
         Args:
@@ -352,8 +317,7 @@ class ProviderHandler(Protocol):
 
         Returns:
             Normalized VideoGenerationResponse
-        """
-        ...
+    """
 
     async def generate_video_async(
         self,

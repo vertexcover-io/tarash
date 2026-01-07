@@ -4,9 +4,8 @@ import asyncio
 import io
 import time
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
-from openai.types import Video
 from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.logging import (
@@ -25,6 +24,7 @@ from tarash.tarash_gateway.video.exceptions import (
 )
 from tarash.tarash_gateway.video.models import (
     ProgressCallback,
+    StatusType,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -37,6 +37,20 @@ from tarash.tarash_gateway.video.utils import (
     validate_model_params,
 )
 
+# Import OpenAI types for type checking
+if TYPE_CHECKING:
+    from openai import (
+        APIConnectionError,
+        APIStatusError,
+        APITimeoutError,
+        AsyncOpenAI,
+        BadRequestError,
+        OpenAI,
+        UnprocessableEntityError,
+    )
+    from openai.types import Video
+
+# Runtime imports with error handling
 try:
     from openai import AsyncOpenAI, OpenAI
     from openai import (
@@ -46,8 +60,11 @@ try:
         BadRequestError,
         UnprocessableEntityError,
     )
+    from openai.types import Video
+
+    has_openai = True
 except ImportError:
-    pass
+    has_openai = False
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.video.providers.openai"
@@ -82,7 +99,7 @@ class OpenAIVideoResponse(TypedDict):
     content_type: str
 
 
-def parse_openai_video_status(video: Any) -> VideoGenerationUpdate:
+def parse_openai_video_status(video: Video) -> VideoGenerationUpdate:
     """Parse OpenAI video object to VideoGenerationUpdate.
 
     Args:
@@ -95,7 +112,7 @@ def parse_openai_video_status(video: Any) -> VideoGenerationUpdate:
     progress = getattr(video, "progress", None)
 
     # Normalize status to our standard values
-    status_map = {
+    status_map: dict[str, StatusType] = {
         "queued": "queued",
         "pending": "queued",
         "in_progress": "processing",
@@ -118,14 +135,23 @@ class OpenAIProviderHandler:
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
-        if OpenAI is None:
+        if not has_openai:
             raise ImportError(
-                "openai is required for OpenAI provider. "
-                "Install with: pip install tarash-gateway[openai]"
+                "openai is required for OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
 
-        self._sync_client_cache: dict[str, Any] = {}
-        self._async_client_cache: dict[str, Any] = {}
+        self._sync_client_cache: dict[str, OpenAI] = {}
+        self._async_client_cache: dict[str, AsyncOpenAI] = {}
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["async"]
+    ) -> "AsyncOpenAI": ...
+
+    @overload
+    def _get_client(
+        self, config: VideoGenerationConfig, client_type: Literal["sync"]
+    ) -> "OpenAI": ...
 
     def _get_client(
         self, config: VideoGenerationConfig, client_type: str
@@ -142,7 +168,6 @@ class OpenAIProviderHandler:
         """
         # Use API key + base_url as cache key
         cache_key = f"{config.api_key}:{config.base_url or 'default'}:{client_type}"
-
         if client_type == "async":
             if cache_key not in self._async_client_cache:
                 log_debug(
@@ -154,7 +179,7 @@ class OpenAIProviderHandler:
                     },
                     logger_name=_LOGGER_NAME,
                 )
-                client_kwargs: dict[str, Any] = {
+                client_kwargs: dict[str, object] = {
                     "api_key": config.api_key,
                     "timeout": config.timeout,
                 }
@@ -209,7 +234,7 @@ class OpenAIProviderHandler:
 
     def _convert_request(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """
         Convert VideoGenerationRequest to OpenAI API format.
 
@@ -224,7 +249,7 @@ class OpenAIProviderHandler:
             ValidationError: If more than 1 image is provided
         """
         # Start with validated model_params
-        openai_params: dict[str, Any] = self._validate_params(config, request)
+        openai_params: dict[str, object] = self._validate_params(config, request)
 
         # Required parameters
         openai_params["model"] = config.model
@@ -790,7 +815,7 @@ class OpenAIProviderHandler:
 
     def _poll_and_download_sync(
         self,
-        client: "OpenAI",
+        client: "OpenAI|AsyncOpenAI",
         config: VideoGenerationConfig,
         request: VideoGenerationRequest,
         video: Video,
@@ -946,7 +971,7 @@ class OpenAIProviderHandler:
         Returns:
             Final VideoGenerationResponse
         """
-        client = self._get_client(config, "sync")
+        client: OpenAI = self._get_client(config, "sync")
         openai_params = self._convert_request(config, request)
 
         # Check if this is a remix request (video_id in extra_params)

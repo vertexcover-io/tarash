@@ -1,7 +1,7 @@
 """Utility functions for video generation."""
 
 import base64
-from typing import Any
+from typing import cast
 from urllib.parse import urlparse
 
 import httpx
@@ -13,15 +13,16 @@ from tarash.tarash_gateway.video.exceptions import (
     TarashException,
     ValidationError,
 )
+from tarash.tarash_gateway.video.models import MediaContent
 
 
 def validate_model_params(
     *,
-    schema: type[Any],  # TypedDict type
-    data: dict[str, Any],
+    schema: type[object],  # TypedDict type
+    data: dict[str, object],
     provider: str,
     model: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
     Validate data against a TypedDict adapter and return validated dict.
 
@@ -43,7 +44,7 @@ def validate_model_params(
     try:
         # Use Pydantic's TypeAdapter for TypedDict validation
         adapter = TypeAdapter(schema)
-        validated = adapter.validate_python(data)
+        validated = cast(dict[str, object], adapter.validate_python(data))
 
         # Remove None values from the validated dict
         return {k: v for k, v in validated.items() if v is not None}
@@ -54,7 +55,7 @@ def validate_model_params(
         ) from e
 
 
-def convert_to_data_url(media_content: dict[str, Any]) -> str:
+def convert_to_data_url(media_content: MediaContent) -> str:
     """
     Convert MediaContent dict to base64 data URL.
 
@@ -90,10 +91,10 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
     try:
         with httpx.Client(timeout=30.0) as client:
             response = client.get(url)
-            response.raise_for_status()
+            response = response.raise_for_status()
 
-            content_type = response.headers.get(
-                "content-type", "application/octet-stream"
+            content_type: str = cast(
+                str, response.headers.get("content-type", "application/octet-stream")
             )
             content_size = len(response.content)
             log_debug(
@@ -162,10 +163,10 @@ async def download_media_from_url_async(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url)
-            response.raise_for_status()
+            response = response.raise_for_status()
 
-            content_type = response.headers.get(
-                "content-type", "application/octet-stream"
+            content_type: str = cast(
+                str, response.headers.get("content-type", "application/octet-stream")
             )
             content_size = len(response.content)
             log_debug(
@@ -262,8 +263,7 @@ def validate_duration(
     if duration_seconds not in allowed_values:
         model_info = f" ({model})" if model else ""
         raise ValidationError(
-            f"Invalid duration for {provider}{model_info}: {duration_seconds} seconds. "
-            f"Allowed values: {', '.join(map(str, allowed_values))}",
+            f"Invalid duration for {provider}{model_info}: {duration_seconds} seconds. Allowed values: {', '.join(map(str, allowed_values))}",
             provider=provider,
         )
 

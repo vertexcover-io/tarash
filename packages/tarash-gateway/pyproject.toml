@@ -32,7 +32,6 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-xdist>=3.0.0",
     "pytest-cov>=4.0.0",
-    "mypy>=1.8.0",
 ]
 
 [build-system]
@@ -94,48 +93,57 @@ exclude_lines = [
 [tool.coverage.html]
 directory = "htmlcov"
 
-[tool.mypy]
-python_version = "3.12"
-warn_unused_configs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-check_untyped_defs = true
-strict_equality = true
+[tool.basedpyright]
+reportAny = "off"
+reportImplicitStringConcatenation = "none"
 
-# Allow Any types - common in provider integrations
-warn_return_any = false
-disallow_any_unimported = false
-disallow_any_explicit = false
-disallow_any_generics = false
 
-# Relaxed settings for practical use
-disallow_untyped_defs = false
-disallow_untyped_calls = false
-disallow_incomplete_defs = false
-warn_no_return = false
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = true
 
 # Paths
-mypy_path = "src"
-namespace_packages = true
-explicit_package_bases = true
-
-# Per-module options for third-party libraries without type stubs
-[[tool.mypy.overrides]]
-module = [
-    "fal_client.*",
-    "replicate.*",
-    "runwayml.*",
-    "google.genai.*",
-    "google.cloud.*",
-    "google.*",
-    "aiohttp.*",
-    "openai.*",
+include = ["src"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
 ]
-ignore_missing_imports = true
 
-# Allow tests to have more flexibility with types
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-check_untyped_defs = false
+# Type checking settings
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+reportDuplicateImport = "warning"
+reportConstantRedefinition = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportImplicitStringConcatenation = "none"
+
+# Allow Any types - common in provider integrations
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+reportMissingTypeStubs = "none"
+
+# Relaxed settings for practical use
+reportMissingTypeArgument = "none"
+reportGeneralTypeIssues = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateImportUsage = "none"
+
+# Ignore missing imports for third-party libraries without type stubs
+ignore = [
+    "fal_client",
+    "replicate",
+    "runwayml",
+    "google.genai",
+    "google.cloud",
+    "aiohttp",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.407",
+]
