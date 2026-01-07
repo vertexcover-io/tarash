@@ -20,13 +20,19 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    AnyDict,
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    ImageGenerationUpdate,
+    ImageProgressCallback,
     ProgressCallback,
+    SyncImageProgressCallback,
     SyncProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
-    AnyDict,
 )
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
@@ -380,6 +386,109 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # Future models...
     # "fal-ai/hunyuan-video": HUNYUAN_FIELD_MAPPERS,
 }
+
+# ==================== Image Generation Field Mappings ====================
+
+# FLUX models field mappings (common for dev, schnell, pro)
+FLUX_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "image_size": passthrough_field_mapper(
+        "size"
+    ),  # "square_hd", "landscape_4_3", etc.
+    "num_images": passthrough_field_mapper("n"),
+}
+
+# Recraft V3 field mappings
+RECRAFT_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "image_size": passthrough_field_mapper("size"),
+    "n": passthrough_field_mapper("n"),
+    "style": passthrough_field_mapper(
+        "style"
+    ),  # "realistic_image", "digital_illustration", etc.
+}
+
+# Ideogram V3 field mappings
+IDEOGRAM_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "image_size": passthrough_field_mapper("size"),
+    "num_images": passthrough_field_mapper("n"),
+    "style_type": passthrough_field_mapper(
+        "style"
+    ),  # "AUTO", "GENERAL", "REALISTIC", etc.
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+}
+
+# Generic image field mappings (fallback)
+GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "image_size": passthrough_field_mapper("size"),
+    "num_images": passthrough_field_mapper("n"),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+}
+
+# Image model registry for Fal
+FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    # FLUX models
+    "fal-ai/flux-pro": FLUX_IMAGE_FIELD_MAPPERS,
+    "fal-ai/flux/schnell": FLUX_IMAGE_FIELD_MAPPERS,
+    "fal-ai/flux/dev": FLUX_IMAGE_FIELD_MAPPERS,
+    "fal-ai/flux": FLUX_IMAGE_FIELD_MAPPERS,  # Prefix match for all flux variants
+    # Recraft
+    "fal-ai/recraft-v3": RECRAFT_IMAGE_FIELD_MAPPERS,
+    "fal-ai/recraft": RECRAFT_IMAGE_FIELD_MAPPERS,
+    # Ideogram
+    "fal-ai/ideogram/v3": IDEOGRAM_IMAGE_FIELD_MAPPERS,
+    "fal-ai/ideogram": IDEOGRAM_IMAGE_FIELD_MAPPERS,
+}
+
+
+def get_image_field_mappers(model_name: str) -> dict[str, FieldMapper]:
+    """Get the field mappers for a given image model.
+
+    Args:
+        model_name: Full model name (e.g., "fal-ai/flux/dev")
+
+    Returns:
+        Dict mapping API field names to FieldMapper objects
+    """
+    return get_field_mappers_from_registry(
+        model_name, FAL_IMAGE_MODEL_REGISTRY, GENERIC_IMAGE_FIELD_MAPPERS
+    )
+
+
+def parse_fal_image_status(request_id: str, status: Status) -> ImageGenerationUpdate:
+    """Parse Fal status update into ImageGenerationUpdate."""
+    if isinstance(status, Completed):
+        return ImageGenerationUpdate(
+            request_id=request_id,
+            status="completed",
+            progress_percent=100,
+            update={
+                "metrics": status.metrics,
+                "logs": status.logs,
+            },
+        )
+    elif isinstance(status, Queued):
+        return ImageGenerationUpdate(
+            request_id=request_id,
+            status="queued",
+            progress_percent=None,
+            update={"position": status.position},
+        )
+    elif isinstance(status, InProgress):
+        return ImageGenerationUpdate(
+            request_id=request_id,
+            status="processing",
+            progress_percent=None,
+            update={"logs": status.logs},
+        )
+    else:
+        raise ValueError(f"Unknown status: {status}")
 
 
 def get_field_mappers(model_name: str) -> dict[str, FieldMapper]:
@@ -910,26 +1019,258 @@ class FalProviderHandler:
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex)
 
-    # ==================== Image Generation (Stub - To Be Implemented) ====================
+    # ==================== Image Generation ====================
 
+    def _convert_image_request(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+    ) -> dict[str, object]:
+        """Convert ImageGenerationRequest to Fal API format."""
+        field_mappers = get_image_field_mappers(config.model)
+        return apply_field_mappers(field_mappers, request)
+
+    def _convert_image_response(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        request_id: str,
+        fal_result: AnyDict,
+    ) -> ImageGenerationResponse:
+        """Convert Fal response to ImageGenerationResponse."""
+        # Extract image URLs from Fal response
+        # Fal typically returns {"images": [{"url": "..."}, ...]}
+        images_data = fal_result.get("images", [])
+        image_urls: list[str] = []
+        for img in images_data:
+            if isinstance(img, dict):
+                url = img.get("url")
+                if url:
+                    image_urls.append(str(url))
+            elif isinstance(img, str):
+                image_urls.append(img)
+
+        # Check for revised prompt (some models return this)
+        revised_prompt = fal_result.get("revised_prompt")
+
+        return ImageGenerationResponse(
+            request_id=request_id,
+            images=image_urls,
+            content_type="image/png",
+            status="completed",
+            is_mock=False,
+            revised_prompt=str(revised_prompt) if revised_prompt else None,
+            raw_response=fal_result,
+            provider_metadata={
+                "model": config.model,
+                "provider": config.provider,
+            },
+        )
+
+    def _handle_image_error(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        request_id: str,
+        ex: Exception,
+    ) -> TarashException:
+        """Convert exceptions to TarashException for image generation."""
+        # Reuse video error handling logic
+        return self._handle_error(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                base_url=config.base_url,
+            ),
+            VideoGenerationRequest(prompt=request.prompt),
+            request_id,
+            ex,
+        )
+
+    @handle_video_generation_errors
     async def generate_image_async(
         self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
-    ) -> VideoGenerationResponse:
-        """Fal image generation - to be implemented in Phase 3."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} image generation will be implemented in Phase 3."
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Generate image asynchronously with Fal.
+
+        Args:
+            config: Image generation configuration
+            request: Image generation request
+            on_progress: Optional callback for progress updates
+
+        Returns:
+            ImageGenerationResponse with generated image URLs
+        """
+        client = self._get_client(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                base_url=config.base_url,
+                timeout=config.timeout,
+                max_poll_attempts=config.max_poll_attempts,
+                poll_interval=config.poll_interval,
+            ),
+            "async",
+        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+
+        # Convert request to Fal format
+        fal_kwargs = self._convert_image_request(config, request)
+
+        logger.info(
+            "Mapped request to provider format", {"converted_request": fal_kwargs}
         )
 
+        request_id = "unknown"
+        try:
+            # Submit request to queue
+            handle: AsyncRequestHandle[AnyDict] = await client.submit(
+                config.model,
+                arguments=fal_kwargs,
+            )
+
+            request_id = handle.request_id
+            logger = logger.with_request_id(request_id)
+
+            logger.debug("Image request submitted")
+
+            # Poll for completion
+            poll_attempts = 0
+            while poll_attempts < config.max_poll_attempts:
+                status = await handle.status()
+
+                # Report progress if callback provided
+                if on_progress:
+                    update = parse_fal_image_status(request_id, status)
+                    if asyncio.iscoroutinefunction(on_progress):
+                        await on_progress(update)
+                    else:
+                        on_progress(update)
+
+                logger.info(
+                    "Progress status update",
+                    {"status": type(status).__name__},
+                )
+
+                # Check if complete
+                if isinstance(status, Completed):
+                    break
+
+                # Wait before next poll
+                await asyncio.sleep(config.poll_interval)
+                poll_attempts += 1
+
+            # Get final result
+            result = await handle.get()
+
+            logger.debug("Image request complete", {"response": result}, redact=True)
+
+            # Parse response
+            fal_result = cast(AnyDict, result)
+            response = self._convert_image_response(
+                config, request, request_id, fal_result
+            )
+
+            logger.info("Final generated response", {"response": response}, redact=True)
+
+            return response
+
+        except Exception as ex:
+            raise self._handle_image_error(config, request, request_id, ex)
+
+    @handle_video_generation_errors
     def generate_image(
         self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        on_progress: SyncProgressCallback | None = None,
-    ) -> VideoGenerationResponse:
-        """Fal image generation - to be implemented in Phase 3."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} image generation will be implemented in Phase 3."
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: SyncImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Generate image synchronously with Fal.
+
+        Args:
+            config: Image generation configuration
+            request: Image generation request
+            on_progress: Optional callback for progress updates
+
+        Returns:
+            ImageGenerationResponse with generated image URLs
+        """
+        client = self._get_client(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                base_url=config.base_url,
+                timeout=config.timeout,
+                max_poll_attempts=config.max_poll_attempts,
+                poll_interval=config.poll_interval,
+            ),
+            "sync",
         )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+
+        # Convert request to Fal format
+        fal_kwargs = self._convert_image_request(config, request)
+
+        logger.info(
+            "Mapped request to provider format", {"converted_request": fal_kwargs}
+        )
+
+        request_id = "unknown"
+        try:
+            # Submit request to queue
+            handle: SyncRequestHandle[AnyDict] = client.submit(
+                config.model,
+                arguments=fal_kwargs,
+            )
+
+            request_id = handle.request_id
+            logger = logger.with_request_id(request_id)
+
+            logger.debug("Image request submitted")
+
+            # Poll for completion
+            poll_attempts = 0
+            while poll_attempts < config.max_poll_attempts:
+                status = handle.status()
+
+                # Report progress if callback provided
+                if on_progress:
+                    update = parse_fal_image_status(request_id, status)
+                    on_progress(update)
+
+                logger.info(
+                    "Progress status update",
+                    {"status": type(status).__name__},
+                )
+
+                # Check if complete
+                if isinstance(status, Completed):
+                    break
+
+                # Wait before next poll
+                time.sleep(config.poll_interval)
+                poll_attempts += 1
+
+            # Get final result
+            result = handle.get()
+
+            logger.debug("Image request complete", {"response": result}, redact=True)
+
+            # Parse response
+            fal_result = cast(AnyDict, result)
+            response = self._convert_image_response(
+                config, request, request_id, fal_result
+            )
+
+            logger.info("Final generated response", {"response": response}, redact=True)
+
+            return response
+
+        except Exception as ex:
+            raise self._handle_image_error(config, request, request_id, ex)
