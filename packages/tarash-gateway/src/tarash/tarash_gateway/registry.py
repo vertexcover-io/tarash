@@ -39,7 +39,7 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
         log_info(
             "Using mock handler",
             context={"mock_enabled": True},
-            logger_name="tarash.tarash_gateway.video.registry",
+            logger_name="tarash.tarash_gateway.registry",
         )
         return MockProviderHandler()
 
@@ -49,7 +49,7 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
         log_debug(
             "Selected provider",
             context={"provider": provider},
-            logger_name="tarash.tarash_gateway.video.registry",
+            logger_name="tarash.tarash_gateway.registry",
         )
         if provider == "fal":
             _HANDLER_INSTANCES[provider] = cast(ProviderHandler, FalProviderHandler())
@@ -71,7 +71,7 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
             log_error(
                 "Unsupported provider",
                 context={"provider": provider},
-                logger_name="tarash.tarash_gateway.video.registry",
+                logger_name="tarash.tarash_gateway.registry",
             )
             raise ValidationError(
                 f"Unsupported provider: {provider}",
@@ -108,12 +108,12 @@ def register_provider(
         log_info(
             f"Overwriting existing provider handler: {provider}",
             context={"provider": provider},
-            logger_name="tarash.tarash_gateway.video.registry",
+            logger_name="tarash.tarash_gateway.registry",
         )
 
     _HANDLER_INSTANCES[provider] = handler
     log_debug(
         "Registered custom provider handler",
         context={"provider": provider},
-        logger_name="tarash.tarash_gateway.video.registry",
+        logger_name="tarash.tarash_gateway.registry",
     )

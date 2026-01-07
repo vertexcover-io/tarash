@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from runwayml import BadRequestError
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     TimeoutError,
     ValidationError,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.video.providers.runway import (
+from tarash.tarash_gateway.providers.runway import (
     RunwayProviderHandler,
     _get_endpoint_from_model,
     parse_runway_task_status,
@@ -28,9 +28,7 @@ from tarash.tarash_gateway.video.providers.runway import (
 def mock_sync_client():
     """Patch RunwayML and provide mock."""
     mock = MagicMock()
-    with patch(
-        "tarash.tarash_gateway.video.providers.runway.RunwayML", return_value=mock
-    ):
+    with patch("tarash.tarash_gateway.providers.runway.RunwayML", return_value=mock):
         yield mock
 
 
@@ -39,7 +37,7 @@ def mock_async_client():
     """Patch AsyncRunwayML and provide mock."""
     mock = AsyncMock()
     with patch(
-        "tarash.tarash_gateway.video.providers.runway.AsyncRunwayML", return_value=mock
+        "tarash.tarash_gateway.providers.runway.AsyncRunwayML", return_value=mock
     ):
         yield mock
 

@@ -4,15 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     TimeoutError,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.video.providers.replicate import (
+from tarash.tarash_gateway.providers.replicate import (
     ReplicateProviderHandler,
     get_replicate_field_mappers,
     parse_replicate_status,
@@ -36,7 +36,7 @@ def mock_replicate():
     mock_client.predictions = mock_predictions
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.Replicate",
+        "tarash.tarash_gateway.providers.replicate.Replicate",
         return_value=mock_client,
     ):
         yield mock_client
@@ -45,9 +45,7 @@ def mock_replicate():
 @pytest.fixture
 def handler():
     """Create a ReplicateProviderHandler instance."""
-    with patch(
-        "tarash.tarash_gateway.video.providers.replicate.replicate", MagicMock()
-    ):
+    with patch("tarash.tarash_gateway.providers.replicate.replicate", MagicMock()):
         return ReplicateProviderHandler()
 
 
@@ -246,7 +244,7 @@ def test_init_creates_empty_cache(handler):
 def test_init_raises_import_error_without_replicate():
     """Test that ImportError is raised when replicate is not installed."""
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.has_replicate",
+        "tarash.tarash_gateway.providers.replicate.has_replicate",
         False,
     ):
         with pytest.raises(ImportError, match="replicate is required"):
@@ -287,7 +285,7 @@ def test_get_client_creates_different_clients_for_different_keys(handler):
     )
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.Replicate",
+        "tarash.tarash_gateway.providers.replicate.Replicate",
         side_effect=[mock_client1, mock_client2],
     ):
         client1 = handler._get_client(config1)
@@ -335,7 +333,7 @@ def test_convert_request_with_kling_fields(handler):
 
 def test_convert_request_with_minimax_duration_validation(handler):
     """Test Minimax duration validation (6s or 10s only)."""
-    from tarash.tarash_gateway.video.exceptions import ValidationError
+    from tarash.tarash_gateway.exceptions import ValidationError
 
     config = VideoGenerationConfig(
         model="minimax/video-model",
@@ -376,7 +374,7 @@ def test_convert_request_with_extra_params(handler, base_config, base_request):
 
 def test_convert_request_with_veo31_duration_validation(handler):
     """Test Veo 3.1 duration validation (4, 6, or 8 seconds only)."""
-    from tarash.tarash_gateway.video.exceptions import ValidationError
+    from tarash.tarash_gateway.exceptions import ValidationError
 
     config = VideoGenerationConfig(
         model="google/veo-3.1",
@@ -590,7 +588,7 @@ def test_generate_video_success_without_progress(handler, base_config, base_requ
     mock_client.run.return_value = "https://example.com/video.mp4"
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.Replicate",
+        "tarash.tarash_gateway.providers.replicate.Replicate",
         return_value=mock_client,
     ):
         handler._sync_client_cache.clear()
@@ -717,7 +715,7 @@ async def test_generate_video_async_success_without_progress(
     mock_async_client.run = AsyncMock(return_value="https://example.com/video.mp4")
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
         return_value=mock_async_client,
     ):
         result = await handler.generate_video_async(base_config, base_request)
@@ -773,7 +771,7 @@ async def test_generate_video_async_success_with_progress_callback(
         progress_calls.append(update)
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
         return_value=mock_async_client,
     ):
         with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -805,7 +803,7 @@ async def test_generate_video_async_handles_failure(handler, base_config, base_r
     mock_async_client.predictions.get = AsyncMock(return_value=mock_prediction)
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
         return_value=mock_async_client,
     ):
         with pytest.raises(GenerationFailedError, match="Async model crashed"):
@@ -826,7 +824,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
     )
 
     with patch(
-        "tarash.tarash_gateway.video.providers.replicate.AsyncReplicate",
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
         return_value=mock_async_client,
     ):
         # Error is wrapped by _handle_error which creates "Replicate API error" message

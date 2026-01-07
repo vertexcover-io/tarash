@@ -8,8 +8,8 @@ import pytest
 
 # Import MockConfig to trigger model_rebuild for VideoGenerationConfig
 # This is needed because VideoGenerationConfig uses MockConfig as a forward reference
-from tarash.tarash_gateway.video.mock import MockConfig  # noqa: F401
-from tarash.tarash_gateway.video.models import VideoGenerationConfig
+from tarash.tarash_gateway.mock import MockConfig  # noqa: F401
+from tarash.tarash_gateway.models import VideoGenerationConfig
 
 # Rebuild the model to resolve forward references
 VideoGenerationConfig.model_rebuild()

@@ -5,17 +5,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # Import mock module to trigger VideoGenerationConfig.model_rebuild()
-import tarash.tarash_gateway.video.mock  # noqa: F401
-from tarash.tarash_gateway.video.exceptions import (
+import tarash.tarash_gateway.mock  # noqa: F401
+from tarash.tarash_gateway.exceptions import (
     HTTPError,
     ValidationError,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.video.orchestrator import ExecutionOrchestrator
+from tarash.tarash_gateway.orchestrator import ExecutionOrchestrator
 
 
 def test_collect_fallback_chain_no_fallbacks():
@@ -112,9 +112,7 @@ async def test_execute_async_success_first_attempt():
         raw_response={"status": "completed"},
     )
 
-    with patch(
-        "tarash.tarash_gateway.video.orchestrator.get_handler", return_value=handler
-    ):
+    with patch("tarash.tarash_gateway.orchestrator.get_handler", return_value=handler):
         orchestrator = ExecutionOrchestrator()
         response = await orchestrator.execute_async(config, request)
 
@@ -171,7 +169,7 @@ async def test_execute_async_fallback_on_retryable_error():
         return handler
 
     with patch(
-        "tarash.tarash_gateway.video.orchestrator.get_handler",
+        "tarash.tarash_gateway.orchestrator.get_handler",
         side_effect=get_handler_mock,
     ):
         orchestrator = ExecutionOrchestrator()
@@ -211,9 +209,7 @@ async def test_execute_async_non_retryable_error_no_fallback():
         model="fal-ai/veo3.1",
     )
 
-    with patch(
-        "tarash.tarash_gateway.video.orchestrator.get_handler", return_value=handler
-    ):
+    with patch("tarash.tarash_gateway.orchestrator.get_handler", return_value=handler):
         orchestrator = ExecutionOrchestrator()
         with pytest.raises(ValidationError, match="Invalid prompt"):
             await orchestrator.execute_async(config, request)
@@ -238,9 +234,7 @@ def test_execute_sync_success_first_attempt():
         raw_response={"status": "completed"},
     )
 
-    with patch(
-        "tarash.tarash_gateway.video.orchestrator.get_handler", return_value=handler
-    ):
+    with patch("tarash.tarash_gateway.orchestrator.get_handler", return_value=handler):
         orchestrator = ExecutionOrchestrator()
         response = orchestrator.execute_sync(config, request)
 

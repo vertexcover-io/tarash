@@ -2,12 +2,12 @@
 
 import pytest
 
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     HTTPError,
     TimeoutError,
     ValidationError,
 )
-from tarash.tarash_gateway.video.mock import (
+from tarash.tarash_gateway.mock import (
     MockConfig,
     MockPollingConfig,
     MockResponse,
@@ -15,7 +15,7 @@ from tarash.tarash_gateway.video.mock import (
     handle_mock_request_async,
     handle_mock_request_sync,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
@@ -553,7 +553,7 @@ def test_sync_content_download_with_url(basic_request, monkeypatch):
         return (b"fake_video_content", "video/mp4")
 
     monkeypatch.setattr(
-        "tarash.tarash_gateway.video.mock.download_media_from_url",
+        "tarash.tarash_gateway.mock.download_media_from_url",
         mock_download,
     )
 
@@ -592,7 +592,7 @@ async def test_async_content_download_with_url(basic_request, monkeypatch):
         return (b"fake_async_video_content", "video/mp4")
 
     monkeypatch.setattr(
-        "tarash.tarash_gateway.video.mock.download_media_from_url_async",
+        "tarash.tarash_gateway.mock.download_media_from_url_async",
         mock_download_async,
     )
 

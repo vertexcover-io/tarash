@@ -4,18 +4,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPError,
     TarashException,
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.video.providers.veo3 import (
+from tarash.tarash_gateway.providers.veo3 import (
     Veo3ProviderHandler,
     parse_veo3_operation,
 )
@@ -28,7 +28,7 @@ from tarash.tarash_gateway.video.providers.veo3 import (
 def mock_sync_client():
     """Patch Client and provide mock."""
     mock = MagicMock()
-    with patch("tarash.tarash_gateway.video.providers.veo3.Client", return_value=mock):
+    with patch("tarash.tarash_gateway.providers.veo3.Client", return_value=mock):
         yield mock
 
 
@@ -37,7 +37,7 @@ def mock_async_client():
     """Patch Client for async and provide mock.aio."""
     mock = MagicMock()
     mock.aio = AsyncMock()
-    with patch("tarash.tarash_gateway.video.providers.veo3.Client", return_value=mock):
+    with patch("tarash.tarash_gateway.providers.veo3.Client", return_value=mock):
         yield mock.aio
 
 
@@ -140,7 +140,7 @@ def test_get_client_creates_different_clients_for_different_configs(
     )
 
     with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.veo3.Client",
         side_effect=[mock_client1, mock_client2],
     ):
         client1 = handler._get_client(config1, "sync")
@@ -641,9 +641,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
 
     # Clear cache and patch
     handler._async_client_cache.clear()
-    with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client"
-    ) as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
@@ -672,9 +670,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
         handler._async_client_cache.clear()
         mock_operation.done = False
 
-        with patch(
-            "tarash.tarash_gateway.video.providers.veo3.Client"
-        ) as mock_client_class:
+        with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
             mock_instance = MagicMock()
             mock_instance.aio = mock_async_client
             mock_client_class.return_value = mock_instance
@@ -722,9 +718,7 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
     )
 
     handler._async_client_cache.clear()
-    with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client"
-    ) as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
@@ -744,9 +738,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
     )
 
     handler._async_client_cache.clear()
-    with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client"
-    ) as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
@@ -780,16 +772,12 @@ async def test_generate_video_async_handles_400_client_error(
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
     handler._async_client_cache.clear()
-    with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client"
-    ) as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with patch(
-            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
-        ):
+        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
             with pytest.raises(ValidationError) as exc_info:
                 await handler.generate_video_async(base_config, base_request)
 
@@ -822,16 +810,12 @@ async def test_generate_video_async_handles_500_client_error(
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
     handler._async_client_cache.clear()
-    with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client"
-    ) as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with patch(
-            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
-        ):
+        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
             with pytest.raises(HTTPError) as exc_info:
                 await handler.generate_video_async(base_config, base_request)
 
@@ -885,7 +869,7 @@ def test_generate_video_success_with_progress_callback(
     # Clear cache and patch
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
         result = handler.generate_video(
@@ -904,7 +888,7 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
         with pytest.raises(GenerationFailedError, match="Error while generating video"):
@@ -931,7 +915,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
         with pytest.raises(TarashException, match="timed out"):
@@ -961,12 +945,10 @@ def test_generate_video_handles_400_client_error(handler, base_config, base_requ
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
-        with patch(
-            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
-        ):
+        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
             with pytest.raises(ValidationError) as exc_info:
                 handler.generate_video(base_config, base_request)
 
@@ -997,12 +979,10 @@ def test_generate_video_handles_500_client_error(handler, base_config, base_requ
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.veo3.Client",
         return_value=mock_sync_client,
     ):
-        with patch(
-            "tarash.tarash_gateway.video.providers.veo3.ClientError", MockClientError
-        ):
+        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
             with pytest.raises(HTTPError) as exc_info:
                 handler.generate_video(base_config, base_request)
 

@@ -2,9 +2,9 @@
 
 import pytest
 
-from tarash.tarash_gateway.video.exceptions import ValidationError
-from tarash.tarash_gateway.video.models import VideoGenerationRequest
-from tarash.tarash_gateway.video.providers.fal import (
+from tarash.tarash_gateway.exceptions import ValidationError
+from tarash.tarash_gateway.models import VideoGenerationRequest
+from tarash.tarash_gateway.providers.fal import (
     FieldMapper,
     apply_field_mappers,
     duration_field_mapper,

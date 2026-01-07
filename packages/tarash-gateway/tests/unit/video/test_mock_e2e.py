@@ -8,10 +8,10 @@ The unit tests in test_mock.py cover the mock functionality in detail. These E2E
 
 import pytest
 
-from tarash.tarash_gateway.video.api import generate_video, generate_video_async
-from tarash.tarash_gateway.video.exceptions import ValidationError
-from tarash.tarash_gateway.video.mock import MockConfig, MockResponse
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.api import generate_video, generate_video_async
+from tarash.tarash_gateway.exceptions import ValidationError
+from tarash.tarash_gateway.mock import MockConfig, MockResponse
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )

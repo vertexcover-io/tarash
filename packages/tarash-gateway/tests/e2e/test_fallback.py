@@ -11,8 +11,8 @@ Run with: pytest tests/e2e/test_fallback.py -v --e2e
 
 import pytest
 
-from tarash.tarash_gateway.video import api
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway import api
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )

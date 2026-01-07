@@ -6,18 +6,18 @@ import pytest
 from fal_client.client import FalClientHTTPError
 # from pydantic import ValidationError as Pydantic ValidationError  # Not used with FieldMapper approach
 
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPError,
     TarashException,
     ValidationError,
     handle_video_generation_errors,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.video.providers.fal import (
+from tarash.tarash_gateway.providers.fal import (
     FalProviderHandler,
     get_field_mappers,
     WAN_VIDEO_GENERATION_MAPPERS,
@@ -36,7 +36,7 @@ def mock_sync_client():
     """Patch fal_client.SyncClient and provide mock."""
     mock = MagicMock()
     with patch(
-        "tarash.tarash_gateway.video.providers.fal.fal_client.SyncClient",
+        "tarash.tarash_gateway.providers.fal.fal_client.SyncClient",
         return_value=mock,
     ):
         yield mock
@@ -51,7 +51,7 @@ def mock_async_client():
     """
     mock = AsyncMock()
     with patch(
-        "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient",
+        "tarash.tarash_gateway.providers.fal.fal_client.AsyncClient",
         return_value=mock,
     ):
         yield mock
@@ -115,7 +115,7 @@ def test_get_client_creates_new_async_client_each_time(handler, base_config):
     Each async request gets a fresh client instance.
     """
     with patch(
-        "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient"
+        "tarash.tarash_gateway.providers.fal.fal_client.AsyncClient"
     ) as mock_constructor:
         # Configure mock to return new instances
         mock_constructor.side_effect = [AsyncMock(), AsyncMock()]
@@ -165,7 +165,7 @@ def test_get_client_creates_different_clients_for_different_configs(
     )
 
     with patch(
-        "tarash.tarash_gateway.video.providers.fal.fal_client.SyncClient",
+        "tarash.tarash_gateway.providers.fal.fal_client.SyncClient",
         side_effect=[mock_client1, mock_client2],
     ):
         client1 = handler._get_client(config1, "sync")
@@ -595,7 +595,7 @@ def test_parse_fal_status_completed():
     mock_status = MockCompleted()
 
     # Patch the Completed import in the fal module
-    with patch("tarash.tarash_gateway.video.providers.fal.Completed", MockCompleted):
+    with patch("tarash.tarash_gateway.providers.fal.Completed", MockCompleted):
         result = parse_fal_status("req-1", mock_status)
 
     assert result.request_id == "req-1"
@@ -613,7 +613,7 @@ def test_parse_fal_status_queued():
 
     mock_status = MockQueued()
 
-    with patch("tarash.tarash_gateway.video.providers.fal.Queued", MockQueued):
+    with patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued):
         result = parse_fal_status("req-2", mock_status)
 
     assert result.request_id == "req-2"
@@ -630,7 +630,7 @@ def test_parse_fal_status_in_progress():
 
     mock_status = MockInProgress()
 
-    with patch("tarash.tarash_gateway.video.providers.fal.InProgress", MockInProgress):
+    with patch("tarash.tarash_gateway.providers.fal.InProgress", MockInProgress):
         result = parse_fal_status("req-3", mock_status)
 
     assert result.request_id == "req-3"
@@ -691,12 +691,12 @@ async def test_generate_video_async_success_with_progress_callbacks(
     # Patch AsyncClient (not cached)
     with (
         patch(
-            "tarash.tarash_gateway.video.providers.fal.fal_client.AsyncClient",
+            "tarash.tarash_gateway.providers.fal.fal_client.AsyncClient",
             return_value=mock_async_client,
         ),
-        patch("tarash.tarash_gateway.video.providers.fal.Queued", MockQueued),
-        patch("tarash.tarash_gateway.video.providers.fal.InProgress", MockInProgress),
-        patch("tarash.tarash_gateway.video.providers.fal.Completed", MockCompleted),
+        patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued),
+        patch("tarash.tarash_gateway.providers.fal.InProgress", MockInProgress),
+        patch("tarash.tarash_gateway.providers.fal.Completed", MockCompleted),
     ):
         # Test with sync callback
         progress_calls = []
@@ -833,8 +833,8 @@ def test_generate_video_success_with_progress_callback(
     handler._sync_client_cache.clear()
     mock_sync_client.submit.return_value = mock_handler
     with (
-        patch("tarash.tarash_gateway.video.providers.fal.Queued", MockQueued),
-        patch("tarash.tarash_gateway.video.providers.fal.Completed", MockCompleted),
+        patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued),
+        patch("tarash.tarash_gateway.providers.fal.Completed", MockCompleted),
     ):
         result = handler.generate_video(
             base_config, base_request, on_progress=progress_callback
@@ -1721,7 +1721,7 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
 
 def test_get_field_mappers_kling_o1_all_variants():
     """Test Kling O1 mapper selection for all three variants."""
-    from tarash.tarash_gateway.video.providers.fal import KLING_O1_FIELD_MAPPERS
+    from tarash.tarash_gateway.providers.fal import KLING_O1_FIELD_MAPPERS
 
     # Image-to-video
     assert (

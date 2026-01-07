@@ -14,7 +14,7 @@ from tarash.tarash_gateway.exceptions import (
     TarashException,
     ValidationError,
 )
-from tarash.tarash_gateway.video.models import MediaContent
+from tarash.tarash_gateway.models import MediaContent
 
 
 def validate_model_params(
@@ -87,7 +87,7 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
     log_debug(
         "Downloading media from URL",
         context={"provider": provider, "url": url},
-        logger_name="tarash.tarash_gateway.video.utils",
+        logger_name="tarash.tarash_gateway.utils",
     )
     try:
         with httpx.Client(timeout=30.0) as client:
@@ -106,7 +106,7 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
                     "content_type": content_type,
                     "content_size_bytes": content_size,
                 },
-                logger_name="tarash.tarash_gateway.video.utils",
+                logger_name="tarash.tarash_gateway.utils",
             )
             return response.content, content_type
     except httpx.HTTPStatusError as e:
@@ -117,7 +117,7 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
                 "url": url,
                 "status_code": e.response.status_code,
             },
-            logger_name="tarash.tarash_gateway.video.utils",
+            logger_name="tarash.tarash_gateway.utils",
         )
         raise HTTPError(
             f"Failed to download media from URL: {e}",
@@ -129,7 +129,7 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
         log_error(
             "Failed to download media from URL",
             context={"provider": provider, "url": url},
-            logger_name="tarash.tarash_gateway.video.utils",
+            logger_name="tarash.tarash_gateway.utils",
             exc_info=True,
         )
         raise TarashException(
@@ -159,7 +159,7 @@ async def download_media_from_url_async(
     log_debug(
         "Downloading media from URL (async)",
         context={"provider": provider, "url": url},
-        logger_name="tarash.tarash_gateway.video.utils",
+        logger_name="tarash.tarash_gateway.utils",
     )
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -178,7 +178,7 @@ async def download_media_from_url_async(
                     "content_type": content_type,
                     "content_size_bytes": content_size,
                 },
-                logger_name="tarash.tarash_gateway.video.utils",
+                logger_name="tarash.tarash_gateway.utils",
             )
             return response.content, content_type
     except httpx.HTTPStatusError as e:
@@ -189,7 +189,7 @@ async def download_media_from_url_async(
                 "url": url,
                 "status_code": e.response.status_code,
             },
-            logger_name="tarash.tarash_gateway.video.utils",
+            logger_name="tarash.tarash_gateway.utils",
         )
         raise HTTPError(
             f"Failed to download media from URL: {e}",
@@ -201,7 +201,7 @@ async def download_media_from_url_async(
         log_error(
             "Failed to download media from URL (async)",
             context={"provider": provider, "url": url},
-            logger_name="tarash.tarash_gateway.video.utils",
+            logger_name="tarash.tarash_gateway.utils",
             exc_info=True,
         )
         raise TarashException(

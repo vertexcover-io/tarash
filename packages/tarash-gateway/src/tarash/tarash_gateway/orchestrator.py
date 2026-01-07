@@ -69,7 +69,7 @@ class ExecutionOrchestrator:
                 "primary_provider": config.provider,
                 "primary_model": config.model,
             },
-            logger_name="tarash.tarash_gateway.video.orchestrator",
+            logger_name="tarash.tarash_gateway.orchestrator",
         )
 
         for attempt_number, cfg in enumerate(fallback_chain, start=1):
@@ -95,7 +95,7 @@ class ExecutionOrchestrator:
                         "model": cfg.model,
                         "attempt_number": attempt_number,
                     },
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
                 # Get handler and execute
@@ -128,7 +128,7 @@ class ExecutionOrchestrator:
                         "request_id": response.request_id,
                         "total_attempts": len(attempts),
                     },
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
                 # Return response with metadata (need to create new instance since frozen)
@@ -155,7 +155,7 @@ class ExecutionOrchestrator:
                         "error_message": str(ex),
                         "is_retryable": attempt_metadata.is_retryable,
                     },
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
                 # If error is not retryable, stop immediately
@@ -163,7 +163,7 @@ class ExecutionOrchestrator:
                     log_info(
                         "Non-retryable error encountered, stopping fallback chain",
                         context={"error_type": type(ex).__name__},
-                        logger_name="tarash.tarash_gateway.video.orchestrator",
+                        logger_name="tarash.tarash_gateway.orchestrator",
                     )
                     raise ex
 
@@ -172,14 +172,14 @@ class ExecutionOrchestrator:
                     log_error(
                         "All fallback attempts exhausted",
                         context={"total_attempts": len(attempts)},
-                        logger_name="tarash.tarash_gateway.video.orchestrator",
+                        logger_name="tarash.tarash_gateway.orchestrator",
                     )
                     raise ex
 
                 # Otherwise, continue to next fallback
                 log_info(
                     f"Retryable error, continuing to next fallback ({attempt_number + 1}/{len(fallback_chain)})",
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
         # Should never reach here, but raise last exception if we do
@@ -217,7 +217,7 @@ class ExecutionOrchestrator:
                 "primary_provider": config.provider,
                 "primary_model": config.model,
             },
-            logger_name="tarash.tarash_gateway.video.orchestrator",
+            logger_name="tarash.tarash_gateway.orchestrator",
         )
 
         for attempt_number, cfg in enumerate(fallback_chain, start=1):
@@ -243,7 +243,7 @@ class ExecutionOrchestrator:
                         "model": cfg.model,
                         "attempt_number": attempt_number,
                     },
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
                 # Get handler and execute
@@ -274,7 +274,7 @@ class ExecutionOrchestrator:
                         "request_id": response.request_id,
                         "total_attempts": len(attempts),
                     },
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
                 # Return response with metadata (need to create new instance since frozen)
@@ -301,7 +301,7 @@ class ExecutionOrchestrator:
                         "error_message": str(ex),
                         "is_retryable": attempt_metadata.is_retryable,
                     },
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
                 # If error is not retryable, stop immediately
@@ -309,7 +309,7 @@ class ExecutionOrchestrator:
                     log_info(
                         "Non-retryable error encountered, stopping fallback chain",
                         context={"error_type": type(ex).__name__},
-                        logger_name="tarash.tarash_gateway.video.orchestrator",
+                        logger_name="tarash.tarash_gateway.orchestrator",
                     )
                     raise ex
 
@@ -318,14 +318,14 @@ class ExecutionOrchestrator:
                     log_error(
                         "All fallback attempts exhausted",
                         context={"total_attempts": len(attempts)},
-                        logger_name="tarash.tarash_gateway.video.orchestrator",
+                        logger_name="tarash.tarash_gateway.orchestrator",
                     )
                     raise ex
 
                 # Otherwise, continue to next fallback
                 log_info(
                     f"Retryable error, continuing to next fallback ({attempt_number + 1}/{len(fallback_chain)})",
-                    logger_name="tarash.tarash_gateway.video.orchestrator",
+                    logger_name="tarash.tarash_gateway.orchestrator",
                 )
 
         # Should never reach here, but raise last exception if we do

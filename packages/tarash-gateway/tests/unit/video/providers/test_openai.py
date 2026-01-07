@@ -4,16 +4,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     TimeoutError,
     ValidationError,
 )
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.video.providers.openai import (
+from tarash.tarash_gateway.providers.openai import (
     OpenAIProviderHandler,
     parse_openai_video_status,
 )
@@ -26,9 +26,7 @@ from tarash.tarash_gateway.video.providers.openai import (
 def mock_sync_client():
     """Patch OpenAI and provide mock."""
     mock = MagicMock()
-    with patch(
-        "tarash.tarash_gateway.video.providers.openai.OpenAI", return_value=mock
-    ):
+    with patch("tarash.tarash_gateway.providers.openai.OpenAI", return_value=mock):
         yield mock
 
 
@@ -36,9 +34,7 @@ def mock_sync_client():
 def mock_async_client():
     """Patch AsyncOpenAI and provide mock."""
     mock = AsyncMock()
-    with patch(
-        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI", return_value=mock
-    ):
+    with patch("tarash.tarash_gateway.providers.openai.AsyncOpenAI", return_value=mock):
         yield mock
 
 
@@ -138,7 +134,7 @@ def test_get_client_creates_different_clients_for_different_configs(
     )
 
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        "tarash.tarash_gateway.providers.openai.OpenAI",
         side_effect=[mock_client1, mock_client2],
     ):
         client1 = handler._get_client(config1, "sync")
@@ -519,7 +515,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
     # Clear cache and patch
     handler._async_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+        "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
     ):
         # Test with sync callback
@@ -549,7 +545,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
         mock_video_processing.status = "in_progress"
 
         with patch(
-            "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+            "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
             return_value=mock_async_client,
         ):
             await handler.generate_video_async(
@@ -584,7 +580,7 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
 
     handler._async_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+        "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
     ):
         with pytest.raises(TimeoutError, match="timed out"):
@@ -603,7 +599,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
 
     handler._async_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.AsyncOpenAI",
+        "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
     ):
         with pytest.raises(GenerationFailedError, match="Error while generating video"):
@@ -654,7 +650,7 @@ def test_generate_video_success_with_progress_callback(
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,
     ):
         result = handler.generate_video(
@@ -676,7 +672,7 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,
     ):
         with pytest.raises(GenerationFailedError, match="Error while generating video"):
@@ -707,7 +703,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.video.providers.openai.OpenAI",
+        "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,
     ):
         with pytest.raises(TimeoutError, match="timed out"):

@@ -183,7 +183,7 @@ def handle_video_generation_errors(func: F) -> F:
                         "provider": config.provider,
                         "model": config.model,
                     },
-                    logger_name="tarash.tarash_gateway.video.exceptions",
+                    logger_name="tarash.tarash_gateway.exceptions",
                     exc_info=True,
                 )
                 raise TarashException(
@@ -223,7 +223,7 @@ def handle_video_generation_errors(func: F) -> F:
                         "provider": config.provider,
                         "model": config.model,
                     },
-                    logger_name="tarash.tarash_gateway.video.exceptions",
+                    logger_name="tarash.tarash_gateway.exceptions",
                     exc_info=True,
                 )
                 raise TarashException(

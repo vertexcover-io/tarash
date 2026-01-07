@@ -87,7 +87,7 @@ def register_provider_field_mapping(
             "provider": provider,
             "num_models": len(model_mappings),
         },
-        logger_name="tarash.tarash_gateway.video.api",
+        logger_name="tarash.tarash_gateway.api",
     )
 
 
@@ -141,7 +141,7 @@ async def generate_video_async(
             "config": config,
             "request": request,
         },
-        logger_name="tarash.tarash_gateway.video.api",
+        logger_name="tarash.tarash_gateway.api",
         redact=True,
     )
 
@@ -178,7 +178,7 @@ def generate_video(
             "request": request,
         },
         redact=True,
-        logger_name="tarash.tarash_gateway.video.api",
+        logger_name="tarash.tarash_gateway.api",
     )
 
     # Delegate to orchestrator (handles mock, fallbacks, and execution)

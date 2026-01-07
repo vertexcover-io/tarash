@@ -3,7 +3,7 @@
 from datetime import datetime
 
 
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.models import (
     AttemptMetadata,
     ExecutionMetadata,
     VideoGenerationConfig,

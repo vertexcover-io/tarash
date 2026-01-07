@@ -7,14 +7,14 @@ from typing_extensions import TypedDict
 
 import httpx
 
-from tarash.tarash_gateway.video.utils import (
+from tarash.tarash_gateway.utils import (
     convert_to_data_url,
     download_media_from_url,
     get_filename_from_url,
     validate_duration,
     validate_model_params,
 )
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     HTTPError,
     TarashException,
     ValidationError,

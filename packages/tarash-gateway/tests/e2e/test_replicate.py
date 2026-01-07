@@ -11,8 +11,8 @@ import os
 
 import pytest
 
-from tarash.tarash_gateway.video import api
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway import api
+from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -229,7 +229,7 @@ async def test_replicate_with_extra_params(kling_config):
 @pytest.mark.e2e
 def test_replicate_direct_handler_usage(replicate_api_key):
     """Test using ReplicateProviderHandler directly."""
-    from tarash.tarash_gateway.video.providers.replicate import ReplicateProviderHandler
+    from tarash.tarash_gateway.providers.replicate import ReplicateProviderHandler
 
     handler = ReplicateProviderHandler()
 

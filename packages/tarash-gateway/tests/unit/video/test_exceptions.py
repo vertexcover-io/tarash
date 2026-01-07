@@ -1,6 +1,6 @@
 """Tests for exception utilities and error classification."""
 
-from tarash.tarash_gateway.video.exceptions import (
+from tarash.tarash_gateway.exceptions import (
     ContentModerationError,
     GenerationFailedError,
     HTTPConnectionError,

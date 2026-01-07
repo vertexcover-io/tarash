@@ -3,8 +3,8 @@
 import pytest
 
 # Import mock module to trigger VideoGenerationConfig.model_rebuild()
-import tarash.tarash_gateway.video.mock  # noqa: F401
-from tarash.tarash_gateway.video.api import (
+import tarash.tarash_gateway.mock  # noqa: F401
+from tarash.tarash_gateway.api import (
     _FIELD_MAPPER_REGISTRIES,
     generate_video,
     generate_video_async,
@@ -12,17 +12,17 @@ from tarash.tarash_gateway.video.api import (
     register_provider,
     register_provider_field_mapping,
 )
-from tarash.tarash_gateway.video.exceptions import ValidationError
-from tarash.tarash_gateway.video.models import (
+from tarash.tarash_gateway.exceptions import ValidationError
+from tarash.tarash_gateway.models import (
     ProviderHandler,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.video.providers.field_mappers import (
+from tarash.tarash_gateway.providers.field_mappers import (
     passthrough_field_mapper,
 )
-from tarash.tarash_gateway.video.registry import (
+from tarash.tarash_gateway.registry import (
     _HANDLER_INSTANCES,
     get_handler as _get_handler,
 )
