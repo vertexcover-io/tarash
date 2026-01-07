@@ -1,4 +1,4 @@
-"""Orchestrator for managing video generation execution with fallback support."""
+"""Orchestrator for managing video and image generation execution with fallback support."""
 
 from datetime import datetime
 
@@ -7,6 +7,10 @@ from tarash.tarash_gateway.exceptions import is_retryable_error
 from tarash.tarash_gateway.models import (
     AttemptMetadata,
     ExecutionMetadata,
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    ImageProgressCallback,
     ProgressCallback,
     VideoGenerationConfig,
     VideoGenerationRequest,
@@ -332,3 +336,158 @@ class ExecutionOrchestrator:
         if last_exception:
             raise last_exception
         raise RuntimeError("Fallback chain execution failed unexpectedly")
+
+    # ==================== Image Generation ====================
+
+    @staticmethod
+    def collect_image_fallback_chain(
+        config: ImageGenerationConfig,
+    ) -> list[ImageGenerationConfig]:
+        """Collect fallback chain for image generation."""
+        chain = [config]
+        if config.fallback_configs:
+            for fallback in config.fallback_configs:
+                chain.extend(
+                    ExecutionOrchestrator.collect_image_fallback_chain(fallback)
+                )
+        return chain
+
+    async def execute_image_async(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Execute image generation with fallback support (async)."""
+        fallback_chain = self.collect_image_fallback_chain(config)
+        attempts: list[AttemptMetadata] = []
+        last_exception: Exception | None = None
+
+        for attempt_number, cfg in enumerate(fallback_chain, start=1):
+            started_at = datetime.now()
+            attempt_metadata = AttemptMetadata(
+                provider=cfg.provider,
+                model=cfg.model,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=None,
+                status="failed",
+                error_type=None,
+                error_message=None,
+                is_retryable=None,
+                request_id=None,
+            )
+
+            try:
+                handler = get_handler(cfg)
+                response = await handler.generate_image_async(
+                    cfg, request, on_progress=on_progress
+                )
+
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.status = "success"
+                attempt_metadata.request_id = response.request_id
+                attempts.append(attempt_metadata)
+
+                execution_metadata = ExecutionMetadata(
+                    total_attempts=len(attempts),
+                    successful_attempt=attempt_number,
+                    attempts=attempts,
+                    fallback_triggered=attempt_number > 1,
+                    configs_in_chain=len(fallback_chain),
+                )
+
+                return response.model_copy(
+                    update={"execution_metadata": execution_metadata}
+                )
+
+            except NotImplementedError:
+                raise
+
+            except Exception as ex:
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.error_type = type(ex).__name__
+                attempt_metadata.error_message = str(ex)
+                attempt_metadata.is_retryable = is_retryable_error(ex)
+                attempts.append(attempt_metadata)
+                last_exception = ex
+
+                if not attempt_metadata.is_retryable or attempt_number == len(
+                    fallback_chain
+                ):
+                    raise ex
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Image fallback chain execution failed")
+
+    def execute_image_sync(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Execute image generation with fallback support (sync)."""
+        fallback_chain = self.collect_image_fallback_chain(config)
+        attempts: list[AttemptMetadata] = []
+        last_exception: Exception | None = None
+
+        for attempt_number, cfg in enumerate(fallback_chain, start=1):
+            started_at = datetime.now()
+            attempt_metadata = AttemptMetadata(
+                provider=cfg.provider,
+                model=cfg.model,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=None,
+                status="failed",
+                error_type=None,
+                error_message=None,
+                is_retryable=None,
+                request_id=None,
+            )
+
+            try:
+                handler = get_handler(cfg)
+                response = handler.generate_image(cfg, request, on_progress=on_progress)
+
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.status = "success"
+                attempt_metadata.request_id = response.request_id
+                attempts.append(attempt_metadata)
+
+                execution_metadata = ExecutionMetadata(
+                    total_attempts=len(attempts),
+                    successful_attempt=attempt_number,
+                    attempts=attempts,
+                    fallback_triggered=attempt_number > 1,
+                    configs_in_chain=len(fallback_chain),
+                )
+
+                return response.model_copy(
+                    update={"execution_metadata": execution_metadata}
+                )
+
+            except NotImplementedError:
+                raise
+
+            except Exception as ex:
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.error_type = type(ex).__name__
+                attempt_metadata.error_message = str(ex)
+                attempt_metadata.is_retryable = is_retryable_error(ex)
+                attempts.append(attempt_metadata)
+                last_exception = ex
+
+                if not attempt_metadata.is_retryable or attempt_number == len(
+                    fallback_chain
+                ):
+                    raise ex
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Image fallback chain execution failed")

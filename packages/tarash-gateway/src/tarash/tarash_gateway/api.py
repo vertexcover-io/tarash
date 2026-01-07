@@ -1,7 +1,11 @@
-"""Public API for video generation."""
+"""Public API for video and image generation."""
 
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.models import (
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    ImageProgressCallback,
     ProviderHandler,
     ProgressCallback,
     VideoGenerationConfig,
@@ -183,3 +187,76 @@ def generate_video(
 
     # Delegate to orchestrator (handles mock, fallbacks, and execution)
     return _ORCHESTRATOR.execute_sync(config, request, on_progress=on_progress)
+
+
+# ==================== Image Generation API ====================
+
+
+async def generate_image_async(
+    config: ImageGenerationConfig,
+    request: ImageGenerationRequest,
+    on_progress: ImageProgressCallback | None = None,
+) -> ImageGenerationResponse:
+    """
+    Generate image asynchronously with progress callback.
+
+    Args:
+        config: Provider configuration (may include fallback_configs and mock config)
+        request: Image generation request
+        on_progress: Optional callback for progress updates
+
+    Returns:
+        Final ImageGenerationResponse when complete
+
+    Raises:
+        TarashException: If generation fails on all providers in fallback chain
+        NotImplementedError: If provider doesn't support image generation
+    """
+    log_info(
+        "Image generation request received (async)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    # Delegate to orchestrator
+    return await _ORCHESTRATOR.execute_image_async(
+        config, request, on_progress=on_progress
+    )
+
+
+def generate_image(
+    config: ImageGenerationConfig,
+    request: ImageGenerationRequest,
+    on_progress: ImageProgressCallback | None = None,
+) -> ImageGenerationResponse:
+    """
+    Generate image synchronously (blocking) with progress callback.
+
+    Args:
+        config: Provider configuration (may include fallback_configs and mock config)
+        request: Image generation request
+        on_progress: Optional callback for progress updates
+
+    Returns:
+        Final ImageGenerationResponse when complete
+
+    Raises:
+        TarashException: If generation fails on all providers in fallback chain
+        NotImplementedError: If provider doesn't support image generation
+    """
+    log_info(
+        "Image generation request received (sync)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        redact=True,
+        logger_name="tarash.tarash_gateway.api",
+    )
+
+    # Delegate to orchestrator
+    return _ORCHESTRATOR.execute_image_sync(config, request, on_progress=on_progress)
