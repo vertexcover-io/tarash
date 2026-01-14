@@ -9,11 +9,13 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "tarash-gateway[all]",
+    "tarash-captions[all]",
 ]
 
 [tool.uv.sources]
 tarash-scene-detector = { workspace = true }
 tarash-gateway = { workspace = true }
+tarash-captions = { workspace = true }
 
 [project.scripts]
 tarash = "tarash.cli.cli:main"
