@@ -1215,7 +1215,6 @@ wheels = [
 
 [[package]]
 name = "tarash"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "tarash-gateway", extra = ["all"] },
@@ -1240,7 +1239,6 @@ dev = [
 
 [[package]]
 name = "tarash-gateway"
-version = "0.1.0"
 source = { editable = "packages/tarash-gateway" }
 dependencies = [
     { name = "httpx" },
@@ -1307,14 +1305,13 @@ requires-dist = [
     { name = "runwayml", marker = "extra == 'all'", specifier = ">=3.0.0" },
     { name = "runwayml", marker = "extra == 'runway'", specifier = ">=3.0.0" },
 ]
-provides-extras = ["fal", "veo3", "openai", "replicate", "google", "runway", "all", "dev"]
+provides-extras = ["all", "dev", "fal", "google", "openai", "replicate", "runway", "veo3"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pyright", specifier = ">=1.1.407" }]
 
 [[package]]
 name = "tarash-scene-detector"
-version = "0.1.0"
 source = { editable = "packages/scene_detector" }
 dependencies = [
     { name = "scenedetect", extra = ["opencv"] },

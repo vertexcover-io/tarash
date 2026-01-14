@@ -1,6 +1,6 @@
 [project]
 name = "tarash-gateway"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Unified interface for AI video, image, and audio generation models"
 readme = "README.md"
 authors = [
@@ -35,11 +35,24 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.20,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = "tarash.tarash_gateway"
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tarash"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+]
 
 [tool.pytest.ini_options]
 markers = [

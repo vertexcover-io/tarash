@@ -1,6 +1,11 @@
 """Tarash Gateway - Unified interface for AI generation models."""
 
-__version__ = "0.1.0"
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("tarash-gateway")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.1.0"
 
 from .api import (
     generate_video,

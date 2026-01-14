@@ -1,6 +1,6 @@
 [project]
 name = "tarash"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -19,11 +19,23 @@ tarash-gateway = { workspace = true }
 tarash = "tarash.cli.cli:main"
 
 [build-system]
-requires = ["uv_build>=0.9.20,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = "tarash.cli"
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tarash"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+]
 
 [tool.uv.workspace]
 members = ["packages/*"]
