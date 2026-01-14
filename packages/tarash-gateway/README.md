@@ -8,8 +8,9 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-332%20passed-brightgreen.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-90%2B%25-brightgreen.svg)](htmlcov/)
+[![PyPI version](https://badge.fury.io/py/tarash-gateway.svg)](https://pypi.org/project/tarash-gateway/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/tarash-gateway)](https://pypi.org/project/tarash-gateway/)
+[![codecov](https://codecov.io/gh/vertexcover/tarash/branch/master/graph/badge.svg?path=packages%2Ftarash-gateway)](https://codecov.io/gh/vertexcover/tarash/tree/master/packages/tarash-gateway)
 
 [**Quick Start**](#quick-start) • [**Examples**](#quick-start) • [**Providers**](#supported-providers) • [**Documentation**](#documentation)
 

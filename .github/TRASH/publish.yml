@@ -1,0 +1,50 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"  # Publish on version tags like v0.1.0
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.21"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      # Build tarash-gateway
+      - name: Build tarash-gateway
+        working-directory: packages/tarash-gateway
+        run: uv build --no-sources
+
+      - name: Smoke test tarash-gateway (wheel)
+        run: uv run --isolated --no-project --with packages/tarash-gateway/dist/*.whl python -c "import tarash.tarash_gateway; print(tarash.tarash_gateway.__version__)"
+
+      - name: Publish tarash-gateway to PyPI
+        working-directory: packages/tarash-gateway
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish
+
+      # Build scene_detector (optional - only if publishing separately)
+      # - name: Build tarash-scene-detector
+      #   working-directory: packages/scene_detector
+      #   run: uv build --no-sources
+      #
+      # - name: Publish tarash-scene-detector to PyPI
+      #   working-directory: packages/scene_detector
+      #   env:
+      #     UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      #   run: uv publish
