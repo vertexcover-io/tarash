@@ -99,14 +99,14 @@ class TestGetHandler:
         handler2 = _get_handler(config)
         assert handler is handler2
 
-    def test_get_handler_veo3(self):
-        """Test getting veo3 provider handler."""
+    def test_get_handler_google(self):
+        """Test getting google provider handler."""
         config = VideoGenerationConfig(
-            provider="veo3", model="veo3-test", api_key="test"
+            provider="google", model="veo-3.0-generate-001", api_key="test"
         )
         handler = _get_handler(config)
         assert handler is not None
-        assert "veo3" in _HANDLER_INSTANCES
+        assert "google" in _HANDLER_INSTANCES
 
     def test_get_handler_replicate(self):
         """Test getting replicate provider handler."""

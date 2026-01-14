@@ -1,4 +1,4 @@
-"""Tests for Veo3ProviderHandler."""
+"""Tests for GoogleProviderHandler video generation."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,8 +15,8 @@ from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
-from tarash.tarash_gateway.providers.veo3 import (
-    Veo3ProviderHandler,
+from tarash.tarash_gateway.providers.google import (
+    GoogleProviderHandler,
     parse_veo3_operation,
 )
 
@@ -28,7 +28,7 @@ from tarash.tarash_gateway.providers.veo3 import (
 def mock_sync_client():
     """Patch Client and provide mock."""
     mock = MagicMock()
-    with patch("tarash.tarash_gateway.providers.veo3.Client", return_value=mock):
+    with patch("tarash.tarash_gateway.providers.google.Client", return_value=mock):
         yield mock
 
 
@@ -37,14 +37,15 @@ def mock_async_client():
     """Patch Client for async and provide mock.aio."""
     mock = MagicMock()
     mock.aio = AsyncMock()
-    with patch("tarash.tarash_gateway.providers.veo3.Client", return_value=mock):
+    with patch("tarash.tarash_gateway.providers.google.Client", return_value=mock):
         yield mock.aio
 
 
 @pytest.fixture
 def handler():
-    """Create a Veo3ProviderHandler instance."""
-    return Veo3ProviderHandler()
+    """Create a GoogleProviderHandler instance."""
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        return GoogleProviderHandler()
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def base_config():
     """Create a base VideoGenerationConfig."""
     return VideoGenerationConfig(
         model="veo-3.0-flash-001",
-        provider="veo3",
+        provider="google",
         api_key="test-api-key",
         timeout=600,
         poll_interval=1,
@@ -126,21 +127,21 @@ def test_get_client_creates_different_clients_for_different_configs(
 
     config1 = VideoGenerationConfig(
         model="veo-3.0-flash-001",
-        provider="veo3",
+        provider="google",
         api_key=api_key,
         base_url=base_url,
         timeout=600,
     )
     config2 = VideoGenerationConfig(
         model="veo-3.0-flash-001",
-        provider="veo3",
+        provider="google",
         api_key="different-key",
         base_url="https://different.example.com",
         timeout=600,
     )
 
     with patch(
-        "tarash.tarash_gateway.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.google.Client",
         side_effect=[mock_client1, mock_client2],
     ):
         client1 = handler._get_client(config1, "sync")
@@ -159,8 +160,8 @@ def test_validate_params_with_empty_model_params(handler, base_config):
     assert handler._validate_params(base_config, request_empty) == {}
 
 
-def test_validate_params_with_valid_veo3_params(handler, base_config):
-    """Test validation with valid Veo3VideoParams."""
+def test_validate_params_with_valid_google_params(handler, base_config):
+    """Test validation with valid Veo3VideoParams (Google video)."""
     request = VideoGenerationRequest(
         prompt="test",
         extra_params={
@@ -541,7 +542,7 @@ def test_convert_response_with_no_videos_raises_error(
 
 def test_handle_error_with_video_generation_error(handler, base_config, base_request):
     """Test TarashException is returned as-is."""
-    error = TarashException("Test error", provider="veo3", model="test-model")
+    error = TarashException("Test error", provider="google", model="test-model")
     result = handler._handle_error(base_config, base_request, "req-1", error)
 
     assert result is error
@@ -555,7 +556,7 @@ def test_handle_error_with_unknown_exception(handler, base_config, base_request)
 
     assert isinstance(result, GenerationFailedError)
     assert "Error while generating video" in result.message
-    assert result.provider == "veo3"
+    assert result.provider == "google"
     assert result.raw_response["error_type"] == "ValueError"
 
 
@@ -641,7 +642,7 @@ async def test_generate_video_async_success_with_progress_callbacks(
 
     # Clear cache and patch
     handler._async_client_cache.clear()
-    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
@@ -670,7 +671,9 @@ async def test_generate_video_async_success_with_progress_callbacks(
         handler._async_client_cache.clear()
         mock_operation.done = False
 
-        with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
+        with patch(
+            "tarash.tarash_gateway.providers.google.Client"
+        ) as mock_client_class:
             mock_instance = MagicMock()
             mock_instance.aio = mock_async_client
             mock_client_class.return_value = mock_instance
@@ -711,14 +714,14 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
     # Set low max_poll_attempts for faster test
     timeout_config = VideoGenerationConfig(
         model="veo-3.0-flash-001",
-        provider="veo3",
+        provider="google",
         api_key="test-api-key",
         max_poll_attempts=2,
         poll_interval=1,
     )
 
     handler._async_client_cache.clear()
-    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
@@ -738,7 +741,7 @@ async def test_generate_video_async_wraps_unknown_exceptions(
     )
 
     handler._async_client_cache.clear()
-    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
@@ -772,19 +775,21 @@ async def test_generate_video_async_handles_400_client_error(
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
     handler._async_client_cache.clear()
-    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
+        with patch(
+            "tarash.tarash_gateway.providers.google.ClientError", MockClientError
+        ):
             with pytest.raises(ValidationError) as exc_info:
                 await handler.generate_video_async(base_config, base_request)
 
             assert "dont_allow for personGeneration is currently not supported" in str(
                 exc_info.value
             )
-            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.provider == "google"
             assert exc_info.value.raw_response["status_code"] == 400
             assert exc_info.value.raw_response["error_type"] == "INVALID_ARGUMENT"
 
@@ -810,17 +815,19 @@ async def test_generate_video_async_handles_500_client_error(
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
     handler._async_client_cache.clear()
-    with patch("tarash.tarash_gateway.providers.veo3.Client") as mock_client_class:
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
         mock_client_class.return_value = mock_instance
 
-        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
+        with patch(
+            "tarash.tarash_gateway.providers.google.ClientError", MockClientError
+        ):
             with pytest.raises(HTTPError) as exc_info:
                 await handler.generate_video_async(base_config, base_request)
 
             assert "Internal server error" in str(exc_info.value)
-            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.provider == "google"
             assert exc_info.value.raw_response["status_code"] == 500
             assert exc_info.value.raw_response["error_type"] == "INTERNAL_ERROR"
 
@@ -869,7 +876,7 @@ def test_generate_video_success_with_progress_callback(
     # Clear cache and patch
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
     ):
         result = handler.generate_video(
@@ -888,7 +895,7 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
     ):
         with pytest.raises(GenerationFailedError, match="Error while generating video"):
@@ -907,7 +914,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
     timeout_config = VideoGenerationConfig(
         model="veo-3.0-flash-001",
-        provider="veo3",
+        provider="google",
         api_key="test-api-key",
         max_poll_attempts=2,
         poll_interval=1,
@@ -915,7 +922,7 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
     ):
         with pytest.raises(TarashException, match="timed out"):
@@ -945,17 +952,19 @@ def test_generate_video_handles_400_client_error(handler, base_config, base_requ
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
     ):
-        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
+        with patch(
+            "tarash.tarash_gateway.providers.google.ClientError", MockClientError
+        ):
             with pytest.raises(ValidationError) as exc_info:
                 handler.generate_video(base_config, base_request)
 
             assert "dont_allow for personGeneration is currently not supported" in str(
                 exc_info.value
             )
-            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.provider == "google"
             assert exc_info.value.raw_response["status_code"] == 400
             assert exc_info.value.raw_response["error_type"] == "INVALID_ARGUMENT"
 
@@ -979,15 +988,17 @@ def test_generate_video_handles_500_client_error(handler, base_config, base_requ
 
     handler._sync_client_cache.clear()
     with patch(
-        "tarash.tarash_gateway.providers.veo3.Client",
+        "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
     ):
-        with patch("tarash.tarash_gateway.providers.veo3.ClientError", MockClientError):
+        with patch(
+            "tarash.tarash_gateway.providers.google.ClientError", MockClientError
+        ):
             with pytest.raises(HTTPError) as exc_info:
                 handler.generate_video(base_config, base_request)
 
             assert "Internal server error" in str(exc_info.value)
-            assert exc_info.value.provider == "veo3"
+            assert exc_info.value.provider == "google"
             assert exc_info.value.raw_response["status_code"] == 500
             assert exc_info.value.raw_response["error_type"] == "INTERNAL_ERROR"
 
@@ -1002,15 +1013,15 @@ async def test_handle_video_generation_errors_async_propagates_known_errors():
     @handle_video_generation_errors
     async def async_func(self, config, request, on_progress=None):
         if request.prompt == "validation":
-            raise ValidationError("Invalid", provider="veo3")
+            raise ValidationError("Invalid", provider="google")
         elif request.prompt == "provider":
-            raise GenerationFailedError("API error", provider="veo3")
+            raise GenerationFailedError("API error", provider="google")
         elif request.prompt == "video":
-            raise TarashException("Gen error", provider="veo3")
+            raise TarashException("Gen error", provider="google")
         else:
             raise RuntimeError("Unknown")
 
-    config = VideoGenerationConfig(model="test-model", provider="veo3", api_key="key")
+    config = VideoGenerationConfig(model="test-model", provider="google", api_key="key")
 
     # Test ValidationError propagates
     with pytest.raises(ValidationError):
@@ -1028,7 +1039,7 @@ async def test_handle_video_generation_errors_async_propagates_known_errors():
     with pytest.raises(TarashException, match="Unknown error") as exc_info:
         await async_func(None, config, VideoGenerationRequest(prompt="unknown"))
 
-    assert exc_info.value.provider == "veo3"
+    assert exc_info.value.provider == "google"
     assert exc_info.value.model == "test-model"
     assert "error" in exc_info.value.raw_response
 
@@ -1039,11 +1050,11 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
     @handle_video_generation_errors
     def sync_func(self, config, request, on_progress=None):
         if request.prompt == "validation":
-            raise ValidationError("Invalid", provider="veo3")
+            raise ValidationError("Invalid", provider="google")
         elif request.prompt == "unknown":
             raise RuntimeError("Unknown")
 
-    config = VideoGenerationConfig(model="test-model", provider="veo3", api_key="key")
+    config = VideoGenerationConfig(model="test-model", provider="google", api_key="key")
 
     # Test ValidationError propagates
     with pytest.raises(ValidationError):
@@ -1052,239 +1063,3 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
     # Test unknown exception is wrapped
     with pytest.raises(TarashException, match="Unknown error"):
         sync_func(None, config, VideoGenerationRequest(prompt="unknown"))
-
-
-# ==================== Image Generation Field Mapper Tests ====================
-
-
-def test_get_veo3_image_field_mappers_gemini_flash():
-    """Test field mapper lookup for gemini-2.5-flash-image-preview."""
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("gemini-2.5-flash-image-preview")
-
-    assert "prompt" in mappers
-    assert "aspect_ratio" in mappers
-    assert "number_of_images" in mappers
-    assert "safety_filter_level" in mappers
-    assert "person_generation" in mappers
-
-
-def test_get_veo3_image_field_mappers_gemini_pro():
-    """Test field mapper lookup for gemini-3-pro-image-preview (uses same mappers as flash)."""
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("gemini-3-pro-image-preview")
-
-    assert "prompt" in mappers
-    assert "aspect_ratio" in mappers
-
-
-def test_get_veo3_image_field_mappers_imagen3():
-    """Test field mapper lookup for imagen-3.0-generate-002."""
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("imagen-3.0-generate-002")
-
-    assert "prompt" in mappers
-    assert "negative_prompt" in mappers
-    assert "aspect_ratio" in mappers
-    assert "number_of_images" in mappers
-    assert "language" in mappers
-    assert "output_mime_type" in mappers
-
-
-def test_get_veo3_image_field_mappers_imagen3_fast():
-    """Test field mapper lookup for imagen-3.0-fast-generate-001 (uses same mappers)."""
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("imagen-3.0-fast-generate-001")
-
-    assert "prompt" in mappers
-    assert "negative_prompt" in mappers
-
-
-# ==================== Image Field Mapper Conversion Tests ====================
-
-
-def test_nano_banana_field_mapper_conversion():
-    """Test Nano Banana field mapper conversions."""
-    from tarash.tarash_gateway.models import ImageGenerationRequest
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("gemini-2.5-flash-image-preview")
-    request = ImageGenerationRequest(
-        prompt="A cute cat",
-        aspect_ratio="16:9",
-        n=2,
-        extra_params={
-            "safety_filter_level": "block_medium_and_above",
-            "person_generation": "allow_adult",
-        },
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["prompt"] == "A cute cat"
-    assert result["aspect_ratio"] == "16:9"
-    assert result["number_of_images"] == 2
-    assert result["safety_filter_level"] == "block_medium_and_above"
-    assert result["person_generation"] == "allow_adult"
-
-
-def test_imagen3_field_mapper_conversion():
-    """Test Imagen 3 field mapper conversions."""
-    from tarash.tarash_gateway.models import ImageGenerationRequest
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("imagen-3.0-generate-002")
-    request = ImageGenerationRequest(
-        prompt="A mountain landscape",
-        negative_prompt="blur, low quality",
-        aspect_ratio="1:1",
-        n=1,
-        extra_params={
-            "language": "en",
-            "output_mime_type": "image/png",
-            "output_compression_quality": 80,
-        },
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["prompt"] == "A mountain landscape"
-    assert result["negative_prompt"] == "blur, low quality"
-    assert result["aspect_ratio"] == "1:1"
-    assert result["number_of_images"] == 1
-    assert result["language"] == "en"
-    assert result["output_mime_type"] == "image/png"
-    assert result["output_compression_quality"] == 80
-
-
-def test_image_field_mapper_with_minimal_request():
-    """Test field mapper with minimal request (only prompt)."""
-    from tarash.tarash_gateway.models import ImageGenerationRequest
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
-
-    mappers = get_veo3_image_field_mappers("imagen-3.0-generate-002")
-    request = ImageGenerationRequest(prompt="A simple test")
-
-    result = apply_field_mappers(mappers, request)
-
-    # Only prompt should be present (required field)
-    assert result["prompt"] == "A simple test"
-    # Optional fields should not be in result if None
-    assert "negative_prompt" not in result
-    assert "aspect_ratio" not in result
-
-
-# ==================== Image Request/Response Conversion Tests ====================
-
-
-def test_convert_image_request_with_imagen3(handler):
-    """Test convert_image_request with Imagen 3 model."""
-    from tarash.tarash_gateway.models import (
-        ImageGenerationConfig,
-        ImageGenerationRequest,
-    )
-
-    config = ImageGenerationConfig(
-        model="imagen-3.0-generate-002",
-        provider="veo3",
-        api_key="test-key",
-        timeout=120,
-    )
-    request = ImageGenerationRequest(
-        prompt="A mountain landscape",
-        negative_prompt="blur",
-        aspect_ratio="16:9",
-        n=2,
-        extra_params={
-            "language": "en",
-            "output_mime_type": "image/png",
-        },
-    )
-
-    result = handler._convert_image_request(config, request)
-
-    assert result["prompt"] == "A mountain landscape"
-    assert result["negative_prompt"] == "blur"
-    assert result["aspect_ratio"] == "16:9"
-    assert result["number_of_images"] == 2
-    assert result["language"] == "en"
-    assert result["output_mime_type"] == "image/png"
-
-
-def test_convert_image_response_with_imagen3(handler):
-    """Test convert_image_response with Imagen 3 response."""
-    from tarash.tarash_gateway.models import (
-        ImageGenerationConfig,
-        ImageGenerationRequest,
-    )
-
-    config = ImageGenerationConfig(
-        model="imagen-3.0-generate-002",
-        provider="veo3",
-        api_key="test-key",
-        timeout=120,
-    )
-    request = ImageGenerationRequest(prompt="test")
-
-    # Mock google-genai response with generated_images
-    mock_generated_image = MagicMock()
-    mock_generated_image.image = MagicMock()
-    mock_generated_image.image.gcs_uri = "https://example.com/image1.png"
-
-    mock_response = {
-        "generated_images": [mock_generated_image],
-    }
-
-    response = handler._convert_image_response(
-        config, request, "req-123", mock_response
-    )
-
-    assert response.request_id == "req-123"
-    assert len(response.images) == 1
-    assert response.images[0] == "https://example.com/image1.png"
-    assert response.status == "completed"
-    assert response.content_type == "image/png"
-
-
-def test_convert_image_response_with_multiple_images(handler):
-    """Test convert_image_response with multiple images."""
-    from tarash.tarash_gateway.models import (
-        ImageGenerationConfig,
-        ImageGenerationRequest,
-    )
-
-    config = ImageGenerationConfig(
-        model="gemini-2.5-flash-image-preview",
-        provider="veo3",
-        api_key="test-key",
-        timeout=120,
-    )
-    request = ImageGenerationRequest(prompt="test", n=3)
-
-    # Mock response with multiple images
-    mock_images = []
-    for i in range(3):
-        mock_img = MagicMock()
-        mock_img.image = MagicMock()
-        mock_img.image.gcs_uri = f"https://example.com/image{i}.png"
-        mock_images.append(mock_img)
-
-    mock_response = {
-        "generated_images": mock_images,
-    }
-
-    response = handler._convert_image_response(
-        config, request, "req-456", mock_response
-    )
-
-    assert response.request_id == "req-456"
-    assert len(response.images) == 3
-    assert response.images[0] == "https://example.com/image0.png"
-    assert response.images[2] == "https://example.com/image2.png"

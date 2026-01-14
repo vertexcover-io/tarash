@@ -1,11 +1,11 @@
-"""End-to-end tests for Veo3 provider using google-genai.
+"""End-to-end tests for Google provider video generation using google-genai.
 
-These tests make actual API calls to Google's Veo3 service.
+These tests make actual API calls to Google's Veo 3 video generation service.
 Requires GOOGLE_API_KEY environment variable to be set.
 For Vertex AI, set GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION.
 
-Run with: pytest tests/e2e/test_veo3.py -v -m e2e
-Skip with: pytest tests/e2e/test_veo3.py -v -m "not e2e"
+Run with: pytest tests/e2e/test_google_video.py -v -m e2e
+Skip with: pytest tests/e2e/test_google_video.py -v -m "not e2e"
 """
 
 import os
@@ -35,11 +35,11 @@ def google_api_key():
 
 
 @pytest.fixture(scope="module")
-def veo3_config(google_api_key):
-    """Create Veo3 configuration."""
+def google_video_config(google_api_key):
+    """Create Google video generation configuration."""
     return VideoGenerationConfig(
         model="veo-3.1-generate-preview",
-        provider="veo3",
+        provider="google",
         api_key=google_api_key,
         timeout=600,
         max_poll_attempts=120,
@@ -65,7 +65,7 @@ def shoe_image_path():
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_comprehensive_async_video_generation(veo3_config):
+async def test_comprehensive_async_video_generation(google_video_config):
     """
     Comprehensive async test combining:
     - Basic video generation
@@ -90,7 +90,7 @@ async def test_comprehensive_async_video_generation(veo3_config):
 
     # Generate video using API
     response = await api.generate_video_async(
-        veo3_config, request, on_progress=progress_callback
+        google_video_config, request, on_progress=progress_callback
     )
 
     # Validate response
@@ -141,9 +141,9 @@ async def test_comprehensive_async_video_generation(veo3_config):
 
 
 @pytest.mark.e2e
-def test_sync_video_generation_with_all_image_types(veo3_config):
+def test_sync_video_generation_with_all_image_types(google_video_config):
     """
-    Sync test for Veo3 interpolation mode:
+    Sync test for Google Veo 3 interpolation mode:
     - Basic sync generation
     - Interpolation mode: first_frame + last_frame
     - 16:9 aspect ratio (supports both 16:9 and 9:16 for interpolation)
@@ -192,7 +192,7 @@ def test_sync_video_generation_with_all_image_types(veo3_config):
     )
 
     # Generate video using API (sync)
-    response = api.generate_video(veo3_config, request)
+    response = api.generate_video(google_video_config, request)
 
     # Validate response
     assert isinstance(response, VideoGenerationResponse)
@@ -237,9 +237,9 @@ def test_sync_video_generation_with_all_image_types(veo3_config):
 
 
 @pytest.mark.e2e
-def test_sync_video_generation_with_local_image(veo3_config, shoe_image_path):
+def test_sync_video_generation_with_local_image(google_video_config, shoe_image_path):
     """
-    Sync test for Veo3 reference images mode:
+    Sync test for Google Veo 3 reference images mode:
     - Basic sync generation
     - Reference images mode: 3 asset images from local file (shoe-image.jpg used 3 times)
     - 16:9 aspect ratio (required for reference images)
@@ -283,7 +283,7 @@ def test_sync_video_generation_with_local_image(veo3_config, shoe_image_path):
     )
 
     # Generate video using API (sync)
-    response = api.generate_video(veo3_config, request)
+    response = api.generate_video(google_video_config, request)
 
     # Validate response
     assert isinstance(response, VideoGenerationResponse)
@@ -317,7 +317,7 @@ def test_sync_video_generation_with_local_image(veo3_config, shoe_image_path):
     print(f"  Request ID: {response.request_id}")
     print(f"  Video type: {video_type}")
     print(f"  Video info: {video_info}")
-    print(f"  Model: {veo3_config.model}")
+    print(f"  Model: {google_video_config.model}")
     print(
         f"  Duration: {response.duration}s" if response.duration else "  Duration: N/A"
     )
