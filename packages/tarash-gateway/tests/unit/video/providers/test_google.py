@@ -6,8 +6,10 @@ import pytest
 
 from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
     HTTPError,
     TarashException,
+    TimeoutError,
     ValidationError,
     handle_video_generation_errors,
 )
@@ -1063,3 +1065,380 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
     # Test unknown exception is wrapped
     with pytest.raises(TarashException, match="Unknown error"):
         sync_func(None, config, VideoGenerationRequest(prompt="unknown"))
+
+
+# ==================== Additional Coverage Tests ====================
+
+
+def test_convert_to_image_with_unknown_format():
+    """Test _convert_to_image with unknown format returns empty dict."""
+    from tarash.tarash_gateway.providers.google import _convert_to_image
+
+    result = _convert_to_image({"invalid": "format"})
+    assert result == {}
+
+
+def test_convert_to_video_with_unknown_format():
+    """Test _convert_to_video with unknown format returns empty dict."""
+    from tarash.tarash_gateway.providers.google import _convert_to_video
+
+    result = _convert_to_video({"invalid": "format"})
+    assert result == {}
+
+
+def test_convert_request_with_style_only(handler, base_config):
+    """Test _convert_request with only style image (lines 358-370)."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {"image": "https://example.com/style.jpg", "type": "style"},
+        ],
+    )
+
+    result = handler._convert_request(base_config, request)
+
+    # Should have reference_images with STYLE type
+    config = result["config"]
+    assert config.reference_images is not None
+    assert len(config.reference_images) == 1
+    # reference_type is an enum attribute, access it directly
+    assert config.reference_images[0].reference_type.value == "STYLE"
+
+
+def test_convert_image_response_with_gcs_uri(handler):
+    """Test convert_image_response with gcs_uri field."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="imagen-3.0-generate-001",
+        provider="google",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    # Mock generated image with gcs_uri
+    mock_gen_img = MagicMock()
+    mock_gen_img.image = MagicMock()
+    mock_gen_img.image.gcs_uri = "https://storage.googleapis.com/bucket/image.png"
+
+    genai_response = {"generated_images": [mock_gen_img]}
+
+    response = handler._convert_image_response(
+        config, request, "req-123", genai_response
+    )
+
+    assert response.request_id == "req-123"
+    assert len(response.images) == 1
+    assert response.images[0] == "https://storage.googleapis.com/bucket/image.png"
+
+
+def test_get_client_with_vertex_url_parsing():
+    """Test _get_client parses location from Vertex AI base_url."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+
+    # Need a base_url that contains "vertex" to trigger the Vertex AI path
+    # and "-aiplatform" to parse the location
+    # Using "https://{location}-aiplatform.googleapis.com" format with vertex in a different part
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        api_key="test-key",
+        base_url="https://us-central1-aiplatform.googleapis.com/vertex",
+    )
+
+    mock_client = MagicMock()
+    mock_client.aio = AsyncMock()
+
+    # Patch has_genai BEFORE importing Client, and patch Client at the right location
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        handler._async_client_cache.clear()
+
+        with patch(
+            "tarash.tarash_gateway.providers.google.Client", return_value=mock_client
+        ) as mock_client_cls:
+            handler._get_client(config, "async")
+            # Verify Client was called with vertexai=True and location="us-central1"
+            assert mock_client_cls.call_count == 1
+            # Check that Client was called with the right arguments
+            mock_client_cls.assert_called_once()
+            call_kwargs = mock_client_cls.call_args.kwargs
+            assert call_kwargs.get("vertexai") is True
+            assert call_kwargs.get("location") == "us-central1"
+
+
+def test_handle_error_with_aiohttp_timeout():
+    """Test _handle_error with aiohttp timeout error."""
+    from tarash.tarash_gateway.providers.google import has_aiohttp
+
+    # Only test if aiohttp is available
+    if not has_aiohttp:
+        pytest.skip("aiohttp not available")
+
+    # Import actual aiohttp to get real exception class
+    try:
+        from aiohttp import ClientTimeout
+    except ImportError:
+        pytest.skip("aiohttp ClientTimeout not available")
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001", provider="google", api_key="test-key"
+    )
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        result = handler._handle_error(
+            config,
+            VideoGenerationRequest(),
+            "req-1",
+            ClientTimeout("Request timed out"),
+        )
+
+    assert isinstance(result, TimeoutError)
+
+
+def test_handle_error_with_aiohttp_connection_error():
+    """Test _handle_error with aiohttp connection error."""
+    from tarash.tarash_gateway.providers.google import has_aiohttp
+
+    # Only test if aiohttp is available
+    if not has_aiohttp:
+        pytest.skip("aiohttp not available")
+
+    # Import actual aiohttp to get real exception class
+    try:
+        from aiohttp import ClientConnectorError
+    except ImportError:
+        pytest.skip("aiohttp ClientConnectorError not available")
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001", provider="google", api_key="test-key"
+    )
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        # Create a real ClientConnectorError with a real connection error
+        try:
+            raise ClientConnectorError(None, None)
+        except ClientConnectorError as ex:
+            result = handler._handle_error(
+                config, VideoGenerationRequest(), "req-1", ex
+            )
+
+    assert isinstance(result, HTTPConnectionError)
+
+
+def test_convert_response_with_no_response_raises_error(
+    handler, base_config, base_request
+):
+    """Test operation with None response raises GenerationFailedError (line 428)."""
+    mock_operation = MagicMock()
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = None  # No response
+    mock_operation.model_dump.return_value = {"done": True}
+
+    with pytest.raises(
+        GenerationFailedError, match="No response in completed operation"
+    ):
+        handler._convert_response(base_config, base_request, "req-428", mock_operation)
+
+
+def test_convert_response_with_none_video_obj_raises_error(
+    handler, base_config, base_request
+):
+    """Test operation with None video_obj raises GenerationFailedError (line 444)."""
+    mock_response = MagicMock()
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = None  # No video object
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"done": True}
+
+    with pytest.raises(GenerationFailedError, match="Video object is None"):
+        handler._convert_response(base_config, base_request, "req-444", mock_operation)
+
+
+def test_convert_response_with_no_video_bytes_or_mime_raises_error(
+    handler, base_config, base_request
+):
+    """Test operation with no URI and no video_bytes/mime_type raises error (line 459)."""
+    mock_video = MagicMock()
+    mock_video.uri = None  # No URI
+    mock_video.video_bytes = None  # No video bytes
+    mock_video.mime_type = None  # No mime type
+
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = mock_video
+
+    mock_response = MagicMock()
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"done": True}
+
+    with pytest.raises(GenerationFailedError, match="no URI and no video_bytes"):
+        handler._convert_response(base_config, base_request, "req-459", mock_operation)
+
+
+def test_convert_response_with_string_video_bytes(handler, base_config, base_request):
+    """Test operation with string video_bytes gets encoded (line 466)."""
+    mock_video = MagicMock()
+    mock_video.uri = None
+    mock_video.video_bytes = "fake-video-bytes-as-string"  # String instead of bytes
+    mock_video.mime_type = "video/mp4"
+
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = mock_video
+
+    mock_response = MagicMock()
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"done": True}
+
+    result = handler._convert_response(
+        base_config, base_request, "req-466", mock_operation
+    )
+
+    assert result.video["content"] == b"fake-video-bytes-as-string"
+
+
+def test_convert_request_with_multiple_last_frames_raises_error(handler, base_config):
+    """Test more than 1 last_frame image raises ValidationError (line 313)."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {"image": "https://example.com/first.jpg", "type": "first_frame"},
+            {"image": "https://example.com/last1.jpg", "type": "last_frame"},
+            {"image": "https://example.com/last2.jpg", "type": "last_frame"},
+        ],
+    )
+
+    with pytest.raises(ValidationError, match="only supports 1 last_frame"):
+        handler._convert_request(base_config, request)
+
+
+def test_convert_request_with_multiple_first_frames_raises_error(handler, base_config):
+    """Test more than 1 first_frame image raises ValidationError (line 306)."""
+    request = VideoGenerationRequest(
+        prompt="test",
+        image_list=[
+            {"image": "https://example.com/first1.jpg", "type": "first_frame"},
+            {"image": "https://example.com/first2.jpg", "type": "first_frame"},
+        ],
+    )
+
+    with pytest.raises(ValidationError, match="only supports 1 reference/first_frame"):
+        handler._convert_request(base_config, request)
+
+
+def test_handle_error_with_httpx_timeout(handler, base_config):
+    """Test _handle_error with httpx timeout error (line 495)."""
+    import httpx
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001", provider="google", api_key="test-key"
+    )
+
+    error = httpx.TimeoutException("Request timed out")
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        result = handler._handle_error(
+            config, VideoGenerationRequest(prompt="test"), "req-1", error
+        )
+
+    assert isinstance(result, TimeoutError)
+
+
+def test_handle_error_with_httpx_connect_error(handler, base_config):
+    """Test _handle_error with httpx connection error (line 506)."""
+    import httpx
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001", provider="google", api_key="test-key"
+    )
+
+    error = httpx.ConnectError("Connection failed")
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        result = handler._handle_error(
+            config, VideoGenerationRequest(prompt="test"), "req-1", error
+        )
+
+    assert isinstance(result, HTTPConnectionError)
+
+
+def test_convert_image_response_with_image_but_no_gcs_uri(handler):
+    """Test convert_image_response when image has no gcs_uri (lines 658-660)."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="imagen-3.0-generate-001",
+        provider="google",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    # Mock generated image with image attribute but no gcs_uri
+    mock_gen_img = MagicMock()
+    mock_gen_img.image = MagicMock()
+    mock_gen_img.image.gcs_uri = None  # No gcs_uri
+
+    genai_response = {"generated_images": [mock_gen_img]}
+
+    response = handler._convert_image_response(
+        config, request, "req-123", genai_response
+    )
+
+    assert response.request_id == "req-123"
+    # Should have empty images list since gcs_uri is None
+    assert len(response.images) == 0
+
+
+def test_convert_image_response_with_no_image_attribute(handler):
+    """Test convert_image_response when generated_image has no image attribute."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="imagen-3.0-generate-001",
+        provider="google",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    # Mock generated image without image attribute
+    mock_gen_img = MagicMock()
+    # Remove the image attribute entirely
+    del mock_gen_img.image
+
+    genai_response = {"generated_images": [mock_gen_img]}
+
+    response = handler._convert_image_response(
+        config, request, "req-123", genai_response
+    )
+
+    assert response.request_id == "req-123"
+    # Should have empty images list
+    assert len(response.images) == 0
