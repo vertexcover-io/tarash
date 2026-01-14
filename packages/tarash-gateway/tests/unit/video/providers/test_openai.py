@@ -708,3 +708,291 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
     ):
         with pytest.raises(TimeoutError, match="timed out"):
             handler.generate_video(timeout_config, base_request)
+
+
+# ==================== Image Field Mapper Tests ====================
+
+
+def test_get_openai_image_field_mappers_gpt_image_15():
+    """Test field mapper lookup for GPT-Image-1.5 model."""
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+
+    mappers = get_openai_image_field_mappers("gpt-image-1.5")
+
+    assert "prompt" in mappers
+    assert "size" in mappers
+    assert "quality" in mappers
+    assert "n" in mappers
+    assert mappers["prompt"].required is True
+
+
+def test_get_openai_image_field_mappers_dalle3():
+    """Test field mapper lookup for DALL-E 3."""
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-3")
+
+    assert "prompt" in mappers
+    assert "size" in mappers
+    assert "quality" in mappers
+    assert "style" in mappers
+    assert "n" in mappers
+
+
+def test_get_openai_image_field_mappers_dalle2():
+    """Test field mapper lookup for DALL-E 2."""
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-2")
+
+    assert "prompt" in mappers
+    assert "size" in mappers
+    assert "n" in mappers
+
+
+def test_get_openai_image_field_mappers_unknown_model_uses_fallback():
+    """Test that unknown models fall back to generic mappers."""
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+
+    mappers = get_openai_image_field_mappers("unknown-model")
+
+    assert "prompt" in mappers
+    assert mappers["prompt"].required is True
+
+
+def test_gpt_image_15_field_mappers_with_valid_request():
+    """Test GPT-Image-1.5 field mappers with valid request."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("gpt-image-1.5")
+    request = ImageGenerationRequest(
+        prompt="A serene landscape",
+        size="1024x1024",
+        quality="high",
+        n=2,
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A serene landscape"
+    assert result["size"] == "1024x1024"
+    assert result["quality"] == "high"
+    assert result["n"] == 2
+
+
+def test_gpt_image_15_field_mappers_validates_size():
+    """Test GPT-Image-1.5 validates size parameter."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("gpt-image-1.5")
+    request = ImageGenerationRequest(
+        prompt="Test",
+        size="invalid_size",
+    )
+
+    with pytest.raises(ValueError, match="Invalid size"):
+        apply_field_mappers(mappers, request)
+
+
+def test_dalle3_field_mappers_with_valid_request():
+    """Test DALL-E 3 field mappers with valid request."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-3")
+    request = ImageGenerationRequest(
+        prompt="A surreal painting",
+        size="1024x1792",
+        quality="hd",
+        style="vivid",
+        n=1,
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A surreal painting"
+    assert result["size"] == "1024x1792"
+    assert result["quality"] == "hd"
+    assert result["style"] == "vivid"
+    assert result["n"] == 1
+
+
+def test_dalle3_field_mappers_validates_n_only_one():
+    """Test DALL-E 3 only allows n=1."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-3")
+    request = ImageGenerationRequest(
+        prompt="Test",
+        n=2,
+    )
+
+    with pytest.raises(ValueError, match="n must be between 1 and 1"):
+        apply_field_mappers(mappers, request)
+
+
+def test_dalle2_field_mappers_with_valid_request():
+    """Test DALL-E 2 field mappers with valid request."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-2")
+    request = ImageGenerationRequest(
+        prompt="A digital art piece",
+        size="512x512",
+        n=4,
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A digital art piece"
+    assert result["size"] == "512x512"
+    assert result["n"] == 4
+
+
+def test_dalle2_field_mappers_allows_up_to_10_images():
+    """Test DALL-E 2 allows up to 10 images."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-2")
+    request = ImageGenerationRequest(
+        prompt="Test",
+        n=10,
+    )
+
+    result = apply_field_mappers(mappers, request)
+    assert result["n"] == 10
+
+
+def test_dalle2_field_mappers_rejects_more_than_10_images():
+    """Test DALL-E 2 rejects more than 10 images."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.openai import get_openai_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_openai_image_field_mappers("dall-e-2")
+    request = ImageGenerationRequest(
+        prompt="Test",
+        n=11,
+    )
+
+    with pytest.raises(ValueError, match="n must be between 1 and 10"):
+        apply_field_mappers(mappers, request)
+
+
+# ==================== Image Generation Tests ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_dalle3_success(handler):
+    """Test async image generation with DALL-E 3."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="dall-e-3",
+        provider="openai",
+        api_key="test-api-key",
+        timeout=120,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A serene landscape",
+        size="1024x1024",
+        quality="hd",
+        style="vivid",
+        n=1,
+    )
+
+    mock_image = MagicMock()
+    mock_image.url = "https://example.com/image.png"
+    mock_image.revised_prompt = "A beautiful serene landscape at sunset"
+
+    mock_response = MagicMock()
+    mock_response.data = [mock_image]
+    mock_response.model_dump.return_value = {
+        "data": [{"url": "https://example.com/image.png"}]
+    }
+
+    mock_async_client = AsyncMock()
+    mock_async_client.images.generate = AsyncMock(return_value=mock_response)
+
+    handler._async_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
+        return_value=mock_async_client,
+    ):
+        response = await handler.generate_image_async(config, request)
+
+    assert response.request_id is not None
+    assert len(response.images) == 1
+    assert response.images[0] == "https://example.com/image.png"
+    assert response.revised_prompt == "A beautiful serene landscape at sunset"
+    assert response.status == "completed"
+
+
+def test_generate_image_sync_gpt_image_15_success(handler):
+    """Test sync image generation with GPT-Image-1.5."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="gpt-image-1.5",
+        provider="openai",
+        api_key="test-api-key",
+        timeout=120,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A futuristic city",
+        size="1024x1792",
+        quality="high",
+        n=2,
+    )
+
+    mock_image1 = MagicMock()
+    mock_image1.url = "https://example.com/image1.png"
+    mock_image1.revised_prompt = None
+
+    mock_image2 = MagicMock()
+    mock_image2.url = "https://example.com/image2.png"
+    mock_image2.revised_prompt = None
+
+    mock_response = MagicMock()
+    mock_response.data = [mock_image1, mock_image2]
+    mock_response.model_dump.return_value = {
+        "data": [
+            {"url": "https://example.com/image1.png"},
+            {"url": "https://example.com/image2.png"},
+        ]
+    }
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.images.generate.return_value = mock_response
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.providers.openai.OpenAI",
+        return_value=mock_sync_client,
+    ):
+        response = handler.generate_image(config, request)
+
+    assert response.request_id is not None
+    assert len(response.images) == 2
+    assert response.images[0] == "https://example.com/image1.png"
+    assert response.images[1] == "https://example.com/image2.png"
+    assert response.status == "completed"

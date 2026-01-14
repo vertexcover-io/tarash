@@ -14,17 +14,20 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    ImageGenerationRequest,
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
 from tarash.tarash_gateway.providers.fal import (
     FalProviderHandler,
     get_field_mappers,
+    get_image_field_mappers,
     WAN_VIDEO_GENERATION_MAPPERS,
     WAN_ANIMATE_MAPPERS,
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     PIXVERSE_FIELD_MAPPERS,
     parse_fal_status,
+    parse_fal_image_status,
 )
 
 
@@ -518,6 +521,146 @@ def test_convert_response_with_complete_dict_response(
     assert result.provider_metadata == {}
 
 
+def test_convert_response_with_video_url_format(handler, base_config, base_request):
+    """Test conversion with video_url format (flat structure)."""
+    provider_response = {
+        "video_url": "https://example.com/video.mp4",
+        "duration": 5.5,
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-123", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.request_id == "req-123"
+    assert result.duration == 5.5
+    assert result.status == "completed"
+    assert result.raw_response == provider_response
+
+
+def test_convert_response_with_audio_url_format(handler, base_config, base_request):
+    """Test conversion with audio_url format (flat structure)."""
+    provider_response = {
+        "video": {"url": "https://example.com/video.mp4"},
+        "audio_url": "https://example.com/audio.mp3",
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-123", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.audio_url == "https://example.com/audio.mp3"
+    assert result.status == "completed"
+
+
+def test_convert_response_with_both_video_and_audio_nested_format(
+    handler, base_config, base_request
+):
+    """Test conversion with both video.url and audio.url (nested structure)."""
+    provider_response = {
+        "video": {"url": "https://example.com/video.mp4"},
+        "audio": {"url": "https://example.com/audio.mp3"},
+        "duration": 8.0,
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-456", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.audio_url == "https://example.com/audio.mp3"
+    assert result.duration == 8.0
+
+
+def test_convert_response_with_both_video_and_audio_flat_format(
+    handler, base_config, base_request
+):
+    """Test conversion with both video_url and audio_url (flat structure)."""
+    provider_response = {
+        "video_url": "https://example.com/video.mp4",
+        "audio_url": "https://example.com/audio.mp3",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-789", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.audio_url == "https://example.com/audio.mp3"
+    assert result.resolution == "1080p"
+    assert result.aspect_ratio == "16:9"
+
+
+def test_convert_response_with_video_as_non_dict(handler, base_config, base_request):
+    """Test conversion when 'video' key exists but is not a dict (edge case).
+
+    Should fall through to video_url check.
+    """
+    provider_response = {
+        "video": "some_string",  # Not a dict
+        "video_url": "https://example.com/video.mp4",
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-999", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.status == "completed"
+
+
+def test_convert_response_with_audio_as_non_dict(handler, base_config, base_request):
+    """Test conversion when 'audio' key exists but is not a dict (edge case).
+
+    Should fall through to audio_url check.
+    """
+    provider_response = {
+        "video": {"url": "https://example.com/video.mp4"},
+        "audio": "some_string",  # Not a dict
+        "audio_url": "https://example.com/audio.mp3",
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-888", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.audio_url == "https://example.com/audio.mp3"
+
+
+def test_convert_response_includes_all_optional_fields(
+    handler, base_config, base_request
+):
+    """Test that all optional fields are extracted correctly."""
+    provider_response = {
+        "video": {"url": "https://example.com/video.mp4"},
+        "audio": {"url": "https://example.com/audio.mp3"},
+        "duration": 10.5,
+        "resolution": "4k",
+        "aspect_ratio": "21:9",
+        "extra_field": "ignored",  # Should be preserved in raw_response
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-complete", provider_response
+    )
+
+    assert result.video == "https://example.com/video.mp4"
+    assert result.audio_url == "https://example.com/audio.mp3"
+    assert result.duration == 10.5
+    assert result.resolution == "4k"
+    assert result.aspect_ratio == "21:9"
+    assert result.request_id == "req-complete"
+    assert result.status == "completed"
+    assert result.provider_metadata == {}
+    assert result.raw_response == provider_response
+    assert result.raw_response["extra_field"] == "ignored"
+
+
 def test_convert_response_with_missing_video_url_raises_error(
     handler, base_config, base_request
 ):
@@ -535,6 +678,44 @@ def test_convert_response_with_missing_video_url_raises_error(
     # Test with non-dict response (empty dict after extraction)
     with pytest.raises(GenerationFailedError, match="No video URL found"):
         handler._convert_response(base_config, base_request, "req-789", {})
+
+
+def test_convert_response_with_video_dict_but_no_url_key(
+    handler, base_config, base_request
+):
+    """Test when video is a dict but doesn't have 'url' key."""
+    provider_response = {
+        "video": {"other_key": "value"},  # Dict but no 'url'
+        # No video_url either
+    }
+
+    with pytest.raises(GenerationFailedError, match="No video URL found") as exc_info:
+        handler._convert_response(
+            base_config, base_request, "req-no-url", provider_response
+        )
+
+    assert exc_info.value.provider == "fal"
+    assert exc_info.value.model == base_config.model
+    assert exc_info.value.raw_response == provider_response
+
+
+def test_convert_response_preserves_raw_response(handler, base_config, base_request):
+    """Test that raw_response is always preserved in the response."""
+    provider_response = {
+        "video_url": "https://example.com/video.mp4",
+        "internal_id": "fal-12345",
+        "processing_time": 45.2,
+        "nested": {"data": "value"},
+    }
+
+    result = handler._convert_response(
+        base_config, base_request, "req-preserve", provider_response
+    )
+
+    assert result.raw_response == provider_response
+    assert result.raw_response["internal_id"] == "fal-12345"
+    assert result.raw_response["processing_time"] == 45.2
+    assert result.raw_response["nested"]["data"] == "value"
 
 
 # ==================== Error Handling Tests ====================
@@ -644,6 +825,73 @@ def test_parse_fal_status_unknown_raises_error():
 
     with pytest.raises(ValueError, match="Unknown status"):
         parse_fal_status("req-4", unknown_status)
+
+
+# ==================== Image Status Parsing Tests ====================
+
+
+def test_parse_fal_image_status_completed():
+    """Test parsing Completed status for image generation."""
+
+    class MockCompleted:
+        def __init__(self):
+            self.metrics = {"duration": 3.2}
+            self.logs = ["Image generated successfully"]
+
+    mock_status = MockCompleted()
+
+    with patch("tarash.tarash_gateway.providers.fal.Completed", MockCompleted):
+        result = parse_fal_image_status("req-img-1", mock_status)
+
+    assert result.request_id == "req-img-1"
+    assert result.status == "completed"
+    assert result.progress_percent == 100
+    assert result.update["metrics"] == {"duration": 3.2}
+    assert result.update["logs"] == ["Image generated successfully"]
+
+
+def test_parse_fal_image_status_queued():
+    """Test parsing Queued status for image generation."""
+
+    class MockQueued:
+        def __init__(self):
+            self.position = 5
+
+    mock_status = MockQueued()
+
+    with patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued):
+        result = parse_fal_image_status("req-img-2", mock_status)
+
+    assert result.request_id == "req-img-2"
+    assert result.status == "queued"
+    assert result.progress_percent is None
+    assert result.update["position"] == 5
+
+
+def test_parse_fal_image_status_in_progress():
+    """Test parsing InProgress status for image generation."""
+
+    class MockInProgress:
+        def __init__(self):
+            self.logs = ["Generating image...", "Processing complete"]
+
+    mock_status = MockInProgress()
+
+    with patch("tarash.tarash_gateway.providers.fal.InProgress", MockInProgress):
+        result = parse_fal_image_status("req-img-3", mock_status)
+
+    assert result.request_id == "req-img-3"
+    assert result.status == "processing"
+    assert result.progress_percent is None
+    assert result.update["logs"] == ["Generating image...", "Processing complete"]
+
+
+def test_parse_fal_image_status_unknown_raises_error():
+    """Test parsing unknown status raises ValueError for image generation."""
+    unknown_status = MagicMock()
+
+    with pytest.raises(ValueError, match="Unknown status"):
+        parse_fal_image_status("req-img-4", unknown_status)
 
 
 # ==================== Async Video Generation Tests ====================
@@ -1991,3 +2239,379 @@ def test_kling_o1_no_elements_in_extra_params(handler):
         "https://example.com/ref1.jpg",
         "https://example.com/ref2.jpg",
     ]
+
+
+# ==================== Image Generation Field Mapper Tests ====================
+
+
+def test_get_image_field_mappers_flux2_pro():
+    """Test that FLUX.2 Pro models use correct field mappers."""
+    from tarash.tarash_gateway.providers.fal import (
+        FLUX2_PRO_IMAGE_FIELD_MAPPERS,
+    )
+
+    # Test all three FLUX.2 variants
+    assert get_image_field_mappers("fal-ai/flux-2/pro") is FLUX2_PRO_IMAGE_FIELD_MAPPERS
+    assert get_image_field_mappers("fal-ai/flux-2/dev") is FLUX2_PRO_IMAGE_FIELD_MAPPERS
+    assert (
+        get_image_field_mappers("fal-ai/flux-2/flex") is FLUX2_PRO_IMAGE_FIELD_MAPPERS
+    )
+
+
+def test_flux2_pro_field_mappers_basic():
+    """Test FLUX.2 Pro field mappers with basic parameters."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-2/pro")
+
+    request = ImageGenerationRequest(
+        prompt="A futuristic cityscape at night",
+        seed=42,
+        n=2,
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A futuristic cityscape at night"
+    assert result["seed"] == 42
+    assert result["n"] == 2
+
+
+def test_flux2_pro_multi_reference_images():
+    """Test FLUX.2 Pro with multiple reference images."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-2/pro")
+
+    request = ImageGenerationRequest(
+        prompt="A character in this style",
+        image_list=[
+            {"image": "https://example.com/ref1.jpg", "type": "reference"},
+            {"image": "https://example.com/ref2.jpg", "type": "reference"},
+            {"image": "https://example.com/ref3.jpg", "type": "reference"},
+        ],
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A character in this style"
+    assert result["reference_images"] == [
+        "https://example.com/ref1.jpg",
+        "https://example.com/ref2.jpg",
+        "https://example.com/ref3.jpg",
+    ]
+
+
+def test_flux2_pro_guidance_scale():
+    """Test FLUX.2 Pro with guidance_scale parameter (1.0-20.0)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-2/pro")
+
+    request = ImageGenerationRequest(
+        prompt="Test image",
+        extra_params={"guidance_scale": 7.5},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["guidance_scale"] == 7.5
+
+
+def test_flux2_pro_num_inference_steps():
+    """Test FLUX.2 Pro with num_inference_steps parameter (1-50)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-2/pro")
+
+    request = ImageGenerationRequest(
+        prompt="Test image",
+        extra_params={"num_inference_steps": 30},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["num_inference_steps"] == 30
+
+
+def test_flux2_pro_all_parameters():
+    """Test FLUX.2 Pro with all parameters combined."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-2/pro")
+
+    request = ImageGenerationRequest(
+        prompt="A stylized portrait",
+        seed=12345,
+        n=1,
+        size="landscape_4_3",
+        image_list=[
+            {"image": "https://example.com/style1.jpg", "type": "reference"},
+            {"image": "https://example.com/style2.jpg", "type": "reference"},
+        ],
+        extra_params={
+            "guidance_scale": 5.0,
+            "num_inference_steps": 25,
+        },
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A stylized portrait"
+    assert result["seed"] == 12345
+    assert result["n"] == 1
+    assert result["size"] == "landscape_4_3"
+    assert result["reference_images"] == [
+        "https://example.com/style1.jpg",
+        "https://example.com/style2.jpg",
+    ]
+    assert result["guidance_scale"] == 5.0
+    assert result["num_inference_steps"] == 25
+
+
+def test_get_image_field_mappers_flux_pro_ultra():
+    """Test that Flux 1.1 Pro Ultra models use correct field mappers."""
+    from tarash.tarash_gateway.providers.fal import (
+        FLUX_PRO_ULTRA_FIELD_MAPPERS,
+    )
+
+    # Test both Ultra and Raw variants
+    assert (
+        get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+        is FLUX_PRO_ULTRA_FIELD_MAPPERS
+    )
+    assert (
+        get_image_field_mappers("fal-ai/flux-pro/v1.1-raw")
+        is FLUX_PRO_ULTRA_FIELD_MAPPERS
+    )
+
+
+def test_flux_pro_ultra_aspect_ratio():
+    """Test Flux Pro Ultra with aspect_ratio field."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+
+    # Test with standard aspect ratio from ImageGenerationRequest
+    request = ImageGenerationRequest(
+        prompt="A beautiful landscape",
+        aspect_ratio="16:9",
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A beautiful landscape"
+    assert result["aspect_ratio"] == "16:9"
+
+
+def test_flux_pro_ultra_extended_aspect_ratios():
+    """Test Flux Pro Ultra supports extended aspect ratios (21:9, 9:21)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+
+    # Test with ultra-wide aspect ratio via extra_params
+    request = ImageGenerationRequest(
+        prompt="Cinematic wide shot",
+        extra_params={"aspect_ratio": "21:9"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["aspect_ratio"] == "21:9"
+
+
+def test_flux_pro_ultra_raw_mode():
+    """Test Flux Pro Ultra with raw mode (boolean for natural aesthetic)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+
+    request = ImageGenerationRequest(
+        prompt="Natural portrait",
+        extra_params={"raw": True},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["raw"] is True
+
+
+def test_flux_pro_ultra_safety_tolerance():
+    """Test Flux Pro Ultra with safety_tolerance field (1-6)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+
+    request = ImageGenerationRequest(
+        prompt="Artistic image",
+        extra_params={"safety_tolerance": 3},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["safety_tolerance"] == 3
+
+
+def test_flux_pro_ultra_output_format():
+    """Test Flux Pro Ultra with output_format field (jpeg, png)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+
+    # Test with PNG format
+    request = ImageGenerationRequest(
+        prompt="High quality image",
+        extra_params={"output_format": "png"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["output_format"] == "png"
+
+
+def test_flux_pro_ultra_all_parameters():
+    """Test Flux Pro Ultra with all parameters combined."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
+
+    request = ImageGenerationRequest(
+        prompt="Ultra high quality cinematic shot",
+        seed=99999,
+        aspect_ratio="21:9",
+        extra_params={
+            "raw": False,
+            "safety_tolerance": 4,
+            "output_format": "jpeg",
+        },
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Ultra high quality cinematic shot"
+    assert result["seed"] == 99999
+    assert result["aspect_ratio"] == "21:9"
+    assert result["raw"] is False
+    assert result["safety_tolerance"] == 4
+    assert result["output_format"] == "jpeg"
+
+
+def test_get_image_field_mappers_zimage_turbo():
+    """Test that Z-Image-Turbo model uses correct field mappers."""
+    from tarash.tarash_gateway.providers.fal import (
+        ZIMAGE_TURBO_FIELD_MAPPERS,
+    )
+
+    assert get_image_field_mappers("fal-ai/z-image-turbo") is ZIMAGE_TURBO_FIELD_MAPPERS
+
+
+def test_zimage_turbo_basic_parameters():
+    """Test Z-Image-Turbo with basic parameters."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/z-image-turbo")
+
+    request = ImageGenerationRequest(
+        prompt="A fast distilled image generation",
+        seed=777,
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A fast distilled image generation"
+    assert result["seed"] == 777
+
+
+def test_zimage_turbo_num_inference_steps():
+    """Test Z-Image-Turbo with num_inference_steps (default 8 for distilled model)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/z-image-turbo")
+
+    # Test with custom inference steps
+    request = ImageGenerationRequest(
+        prompt="Quick generation",
+        extra_params={"num_inference_steps": 8},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["num_inference_steps"] == 8
+
+
+def test_zimage_turbo_negative_prompt():
+    """Test Z-Image-Turbo with negative_prompt support."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/z-image-turbo")
+
+    request = ImageGenerationRequest(
+        prompt="Beautiful landscape",
+        negative_prompt="blurry, low quality, distorted",
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Beautiful landscape"
+    assert result["negative_prompt"] == "blurry, low quality, distorted"
+
+
+def test_zimage_turbo_enable_safety_checker():
+    """Test Z-Image-Turbo with enable_safety_checker boolean."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/z-image-turbo")
+
+    # Test with safety checker disabled
+    request = ImageGenerationRequest(
+        prompt="Artistic content",
+        extra_params={"enable_safety_checker": False},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["enable_safety_checker"] is False
+
+
+def test_zimage_turbo_all_parameters():
+    """Test Z-Image-Turbo with all parameters combined."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/z-image-turbo")
+
+    request = ImageGenerationRequest(
+        prompt="Fast distilled generation with high quality",
+        seed=12345,
+        negative_prompt="blur, artifacts, noise",
+        size="landscape_4_3",
+        extra_params={
+            "num_inference_steps": 8,
+            "enable_safety_checker": True,
+        },
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Fast distilled generation with high quality"
+    assert result["seed"] == 12345
+    assert result["negative_prompt"] == "blur, artifacts, noise"
+    assert result["size"] == "landscape_4_3"
+    assert result["num_inference_steps"] == 8
+    assert result["enable_safety_checker"] is True

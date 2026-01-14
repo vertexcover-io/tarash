@@ -422,6 +422,59 @@ IDEOGRAM_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
 }
 
+# FLUX.2 Pro/Dev/Flex field mappings
+FLUX2_PRO_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "size": passthrough_field_mapper("size"),
+    "n": passthrough_field_mapper("n"),
+    "reference_images": image_list_field_mapper(
+        image_type="reference"
+    ),  # Multi-reference support
+    "guidance_scale": extra_params_field_mapper("guidance_scale"),  # Range: 1.0-20.0
+    "num_inference_steps": extra_params_field_mapper(
+        "num_inference_steps"
+    ),  # Range: 1-50
+}
+
+
+# Custom converter for aspect_ratio with extra_params fallback
+def _aspect_ratio_with_extra_params_converter(
+    request: ImageGenerationRequest, value: object
+) -> str | None:
+    """Convert aspect_ratio field, preferring extra_params if present."""
+    # First check extra_params for override
+    if request.extra_params and "aspect_ratio" in request.extra_params:
+        return str(request.extra_params["aspect_ratio"])
+    # Fall back to request.aspect_ratio
+    return str(value) if value is not None else None
+
+
+# Flux 1.1 Pro Ultra/Raw field mappings
+FLUX_PRO_ULTRA_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "aspect_ratio": FieldMapper(
+        source_field="aspect_ratio",
+        converter=_aspect_ratio_with_extra_params_converter,
+    ),  # Supports 21:9, 16:9, 4:3, 1:1, 3:4, 9:16, 9:21
+    "raw": extra_params_field_mapper("raw"),  # Boolean for natural aesthetic
+    "safety_tolerance": extra_params_field_mapper("safety_tolerance"),  # Range: 1-6
+    "output_format": extra_params_field_mapper("output_format"),  # jpeg or png
+}
+
+# Z-Image-Turbo field mappings (distilled model optimized for speed)
+ZIMAGE_TURBO_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "seed": passthrough_field_mapper("seed"),
+    "size": passthrough_field_mapper("size"),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "num_inference_steps": extra_params_field_mapper(
+        "num_inference_steps"
+    ),  # Default: 8 (distilled)
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
 # Generic image field mappings (fallback)
 GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -435,14 +488,18 @@ GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
 FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # FLUX models
     "fal-ai/flux-pro": FLUX_IMAGE_FIELD_MAPPERS,
-    "fal-ai/flux/schnell": FLUX_IMAGE_FIELD_MAPPERS,
-    "fal-ai/flux/dev": FLUX_IMAGE_FIELD_MAPPERS,
     "fal-ai/flux": FLUX_IMAGE_FIELD_MAPPERS,  # Prefix match for all flux variants
+    # FLUX.2 models (newer generation with multi-reference support)
+    "fal-ai/flux-2": FLUX2_PRO_IMAGE_FIELD_MAPPERS,
+    # Flux 1.1 Pro Ultra/Raw (ultra high quality with extended aspect ratios)
+    "fal-ai/flux-pro/v1.1-ultra": FLUX_PRO_ULTRA_FIELD_MAPPERS,
+    "fal-ai/flux-pro/v1.1-raw": FLUX_PRO_ULTRA_FIELD_MAPPERS,
+    # Z-Image-Turbo (distilled model optimized for speed)
+    "fal-ai/z-image-turbo": ZIMAGE_TURBO_FIELD_MAPPERS,
     # Recraft
     "fal-ai/recraft-v3": RECRAFT_IMAGE_FIELD_MAPPERS,
     "fal-ai/recraft": RECRAFT_IMAGE_FIELD_MAPPERS,
     # Ideogram
-    "fal-ai/ideogram/v3": IDEOGRAM_IMAGE_FIELD_MAPPERS,
     "fal-ai/ideogram": IDEOGRAM_IMAGE_FIELD_MAPPERS,
 }
 

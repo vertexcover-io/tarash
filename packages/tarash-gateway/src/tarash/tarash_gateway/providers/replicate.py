@@ -1,5 +1,7 @@
 """Replicate provider handler."""
 
+from __future__ import annotations
+
 import asyncio
 import traceback
 from typing import TYPE_CHECKING, Literal, cast, overload
@@ -16,6 +18,10 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    ImageProgressCallback,
     MediaContent,
     ProgressCallback,
     SyncProgressCallback,
@@ -30,6 +36,7 @@ from tarash.tarash_gateway.providers.field_mappers import (
     duration_field_mapper,
     extra_params_field_mapper,
     get_field_mappers_from_registry,
+    image_list_field_mapper,
     passthrough_field_mapper,
     single_image_field_mapper,
 )
@@ -230,6 +237,96 @@ def get_replicate_field_mappers(model_name: str) -> dict[str, FieldMapper]:
 
     return get_field_mappers_from_registry(
         base_model, REPLICATE_MODEL_REGISTRY, GENERIC_REPLICATE_FIELD_MAPPERS
+    )
+
+
+# ==================== Image Model Field Mappings ====================
+
+
+# FLUX.2 Pro field mappings (black-forest-labs/flux.2-pro)
+# Input schema: prompt (required), aspect_ratio, output_format, output_quality,
+# safety_tolerance, reference_images (up to 10), num_inference_steps
+REPLICATE_FLUX2_PRO_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "output_format": extra_params_field_mapper("output_format"),
+    "output_quality": extra_params_field_mapper("output_quality"),
+    "safety_tolerance": extra_params_field_mapper("safety_tolerance"),
+    "reference_images": image_list_field_mapper(image_type="reference"),
+    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
+    "seed": passthrough_field_mapper("seed"),
+}
+
+
+# Z-Image-Turbo field mappings (tongyi-mai/z-image-turbo)
+# Input schema: prompt (required), negative_prompt, aspect_ratio,
+# num_inference_steps (8 NFEs), seed, output_format
+REPLICATE_ZIMAGE_TURBO_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
+    "seed": passthrough_field_mapper("seed"),
+    "output_format": extra_params_field_mapper("output_format"),
+}
+
+
+# Stable Diffusion 3.5 Large field mappings (stability-ai/stable-diffusion-3.5-large)
+# Input schema: prompt (required), negative_prompt, aspect_ratio,
+# cfg_scale, num_inference_steps, seed, output_format
+REPLICATE_SD35_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "cfg_scale": extra_params_field_mapper("cfg_scale"),
+    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
+    "seed": passthrough_field_mapper("seed"),
+    "output_format": extra_params_field_mapper("output_format"),
+}
+
+
+# Generic fallback field mappings for unknown Replicate image models
+GENERIC_REPLICATE_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "seed": passthrough_field_mapper("seed"),
+}
+
+
+# ==================== Image Model Registry ====================
+
+
+# Registry maps model name prefixes to their field mappers
+REPLICATE_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    "black-forest-labs/flux.2-pro": REPLICATE_FLUX2_PRO_FIELD_MAPPERS,
+    "tongyi-mai/z-image-turbo": REPLICATE_ZIMAGE_TURBO_FIELD_MAPPERS,
+    "stability-ai/stable-diffusion-3.5-large": REPLICATE_SD35_FIELD_MAPPERS,
+}
+
+
+def get_replicate_image_field_mappers(model_name: str) -> dict[str, FieldMapper]:
+    """Get the field mappers for a given Replicate image model.
+
+    Lookup Strategy:
+    1. Try exact match first
+    2. If not found, try prefix matching - find registry keys that are prefixes
+       of the model_name, and use the longest matching prefix
+    3. If no match found, return generic image field mappers as fallback
+
+    Args:
+        model_name: Full model name (e.g., "black-forest-labs/flux.2-pro")
+
+    Returns:
+        Dict mapping API field names to FieldMapper objects
+    """
+    # Normalize model name (remove version suffix if present)
+    base_model = model_name.split(":")[0]
+
+    return get_field_mappers_from_registry(
+        base_model,
+        REPLICATE_IMAGE_MODEL_REGISTRY,
+        GENERIC_REPLICATE_IMAGE_FIELD_MAPPERS,
     )
 
 
@@ -822,28 +919,302 @@ class ReplicateProviderHandler:
         except Exception as ex:
             raise self._handle_error(config, request, prediction_id, ex)
 
-    # ==================== Image Generation (Not Supported) ====================
+    # ==================== Image Generation ====================
 
+    def _convert_image_request(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+    ) -> AnyDict:
+        """Convert ImageGenerationRequest to Replicate model-specific format."""
+        field_mappers = get_replicate_image_field_mappers(config.model)
+        api_payload = apply_field_mappers(field_mappers, request)
+        api_payload.update(request.extra_params)
+
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
+            "Mapped request to provider format",
+            {"converted_request": api_payload},
+            redact=True,
+        )
+        return api_payload
+
+    def _convert_image_response(
+        self,
+        config: ImageGenerationConfig,
+        _request: ImageGenerationRequest,
+        prediction_id: str,
+        prediction_output: object,
+    ) -> ImageGenerationResponse:
+        """Convert Replicate prediction output to ImageGenerationResponse."""
+        image_urls: list[str] = []
+
+        if prediction_output is None:
+            raise GenerationFailedError(
+                "Prediction completed but no output was returned",
+                provider=config.provider,
+                raw_response={},
+            )
+
+        if isinstance(prediction_output, str):
+            image_urls = [prediction_output]
+        elif isinstance(prediction_output, list):
+            output_list = cast(list[object], prediction_output)
+            for item in output_list:
+                if isinstance(item, str):
+                    image_urls.append(item)
+                elif hasattr(item, "url"):
+                    image_urls.append(cast(str, getattr(item, "url")))
+                elif hasattr(item, "read"):
+                    image_urls.append(str(item))
+        elif hasattr(prediction_output, "url"):
+            image_urls = [cast(str, getattr(prediction_output, "url"))]
+        elif hasattr(prediction_output, "read"):
+            image_urls = [str(prediction_output)]
+
+        if not image_urls:
+            output_str = str(prediction_output)
+            raise GenerationFailedError(
+                f"Could not extract image URLs from Replicate output: {output_str}",
+                provider=config.provider,
+                raw_response={"output": output_str},
+            )
+
+        output_str = str(prediction_output)
+        return ImageGenerationResponse(
+            request_id=prediction_id,
+            images=image_urls,
+            status="completed",
+            raw_response={"output": output_str},
+            provider_metadata={"replicate_prediction_id": prediction_id},
+        )
+
+    def _handle_image_error(
+        self,
+        config: ImageGenerationConfig,
+        _request: ImageGenerationRequest,
+        prediction_id: str,
+        ex: Exception,
+    ) -> TarashException:
+        """Handle errors during image generation."""
+        return self._handle_error(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                timeout=config.timeout,
+                max_poll_attempts=config.max_poll_attempts,
+                poll_interval=config.poll_interval,
+            ),
+            VideoGenerationRequest(prompt=""),
+            prediction_id,
+            ex,
+        )
+
+    @handle_video_generation_errors
     async def generate_image_async(
         self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
-    ) -> VideoGenerationResponse:
-        """Replicate image generation - not yet implemented."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not yet support image generation. "
-            "Use Fal provider for image generation."
-        )
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Generate image asynchronously via Replicate with async progress callback."""
+        replicate_input = self._convert_image_request(config, request)
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call")
+        prediction_id = ""
 
+        try:
+            async_client = self._get_client(
+                VideoGenerationConfig(
+                    model=config.model,
+                    provider=config.provider,
+                    api_key=config.api_key,
+                    timeout=config.timeout,
+                    max_poll_attempts=config.max_poll_attempts,
+                    poll_interval=config.poll_interval,
+                ),
+                "async",
+            )
+
+            if on_progress is None:
+                output = cast(
+                    object,
+                    await async_client.run(config.model, input=replicate_input),
+                )
+                prediction_id = f"replicate-{id(output)}"
+                return self._convert_image_response(
+                    config, request, prediction_id, output
+                )
+
+            prediction = await async_client.predictions.create(
+                version=config.model,
+                input=replicate_input,
+            )
+            prediction_id = prediction.id
+            logger = logger.with_request_id(prediction_id)
+            logger.debug("Request submitted")
+
+            poll_interval = config.poll_interval
+            max_attempts = config.max_poll_attempts
+
+            for _ in range(max_attempts):
+                prediction = await async_client.predictions.get(
+                    prediction_id=prediction.id
+                )
+                update = parse_replicate_status(prediction)
+                result = on_progress(update)
+                if asyncio.iscoroutine(result):
+                    await result
+
+                logger.info("Progress status update", {"status": prediction.status})
+
+                if prediction.status == "succeeded":
+                    logger.debug(
+                        "Request complete",
+                        {"response": prediction.output},
+                        redact=True,
+                    )
+                    response = self._convert_image_response(
+                        config, request, prediction_id, prediction.output
+                    )
+                    logger.info(
+                        "Final generated response",
+                        {"response": response},
+                        redact=True,
+                    )
+                    return response
+                elif prediction.status in ("failed", "canceled"):
+                    error_msg = prediction.error or f"Prediction {prediction.status}"
+                    raise GenerationFailedError(
+                        error_msg,
+                        provider=config.provider,
+                        raw_response={
+                            "status": prediction.status,
+                            "error": prediction.error,
+                            "logs": prediction.logs,
+                        },
+                        request_id=prediction_id,
+                        model=config.model,
+                    )
+
+                await asyncio.sleep(poll_interval)
+
+            timeout_seconds = max_attempts * poll_interval
+            raise TimeoutError(
+                f"Prediction timed out after {max_attempts} attempts ({timeout_seconds}s)",
+                provider=config.provider,
+                raw_response={
+                    "prediction_id": prediction_id,
+                    "poll_attempts": max_attempts,
+                },
+                request_id=prediction_id,
+                model=config.model,
+                timeout_seconds=timeout_seconds,
+            )
+
+        except Exception as ex:
+            raise self._handle_image_error(config, request, prediction_id, ex)
+
+    @handle_video_generation_errors
     def generate_image(
         self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
-    ) -> VideoGenerationResponse:
-        """Replicate image generation - not yet implemented."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not yet support image generation. "
-            "Use Fal provider for image generation."
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Generate image synchronously (blocking)."""
+        client = self._get_client(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                timeout=config.timeout,
+                max_poll_attempts=config.max_poll_attempts,
+                poll_interval=config.poll_interval,
+            ),
+            "sync",
         )
+
+        replicate_input = self._convert_image_request(config, request)
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug("Starting API call")
+        prediction_id = ""
+
+        try:
+            if on_progress is None:
+                output = cast(
+                    object,
+                    client.run(config.model, input=replicate_input),
+                )
+                prediction_id = f"replicate-{id(output)}"
+                return self._convert_image_response(
+                    config, request, prediction_id, output
+                )
+
+            prediction = client.predictions.create(
+                version=config.model,
+                input=replicate_input,
+            )
+            prediction_id = prediction.id
+            logger = logger.with_request_id(prediction_id)
+            logger.debug("Request submitted")
+
+            poll_interval = config.poll_interval
+            max_attempts = config.max_poll_attempts
+
+            import time
+
+            for _ in range(max_attempts):
+                prediction = client.predictions.get(prediction_id=prediction.id)
+                update = parse_replicate_status(prediction)
+                on_progress(update)
+
+                logger.info("Progress status update", {"status": prediction.status})
+
+                if prediction.status == "succeeded":
+                    logger.debug(
+                        "Request complete",
+                        {"response": prediction.output},
+                        redact=True,
+                    )
+                    response = self._convert_image_response(
+                        config, request, prediction_id, prediction.output
+                    )
+                    logger.info(
+                        "Final generated response",
+                        {"response": response},
+                        redact=True,
+                    )
+                    return response
+                elif prediction.status in ("failed", "canceled"):
+                    error_msg = prediction.error or f"Prediction {prediction.status}"
+                    raise GenerationFailedError(
+                        error_msg,
+                        provider=config.provider,
+                        raw_response={
+                            "status": prediction.status,
+                            "error": prediction.error,
+                            "logs": prediction.logs,
+                        },
+                        request_id=prediction_id,
+                        model=config.model,
+                    )
+
+                time.sleep(poll_interval)
+
+            timeout_seconds = max_attempts * poll_interval
+            raise TimeoutError(
+                f"Prediction timed out after {max_attempts} attempts ({timeout_seconds}s)",
+                provider=config.provider,
+                raw_response={
+                    "prediction_id": prediction_id,
+                    "poll_attempts": max_attempts,
+                },
+                request_id=prediction_id,
+                model=config.model,
+                timeout_seconds=timeout_seconds,
+            )
+
+        except Exception as ex:
+            raise self._handle_image_error(config, request, prediction_id, ex)

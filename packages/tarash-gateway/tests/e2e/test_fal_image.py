@@ -165,7 +165,7 @@ async def test_flux_dev_with_multiple_images(fal_api_key):
     assert response.request_id is not None
     assert response.status == "completed"
     assert response.images is not None
-    assert len(response.images) >= 1  # Should have at least 1 image
+    assert len(response.images) == 2, f"Expected 2 images, got {len(response.images)}"
 
     print(f"✓ Generated FLUX Dev images: {response.request_id}")
     print(f"  Number of images: {len(response.images)}")
@@ -218,3 +218,131 @@ async def test_execution_metadata_included(fal_api_key):
     print(f"  Total attempts: {response.execution_metadata.total_attempts}")
     print(f"  Successful attempt: {response.execution_metadata.successful_attempt}")
     print(f"  Total elapsed: {response.execution_metadata.total_elapsed_seconds:.2f}s")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_flux2_pro_text_to_image(fal_api_key):
+    """
+    Test FLUX.2 Pro text-to-image model.
+
+    This tests:
+    - FLUX.2 Pro model with guidance_scale
+    - num_inference_steps parameter
+    - Higher quality generation
+    """
+    config = ImageGenerationConfig(
+        model="fal-ai/flux-2/pro",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,  # Longer timeout for Pro model
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A photorealistic portrait of a woman in cyberpunk style, neon lighting",
+        seed=42,
+        extra_params={
+            "guidance_scale": 7.5,
+            "num_inference_steps": 30,
+        },
+    )
+
+    response = await api.generate_image_async(config, request)
+
+    # Validate response
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    print(f"✓ Generated FLUX.2 Pro image: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_flux_pro_ultra_with_aspect_ratio(fal_api_key):
+    """
+    Test Flux 1.1 Pro Ultra with extended aspect ratio support.
+
+    This tests:
+    - Flux 1.1 Pro Ultra model
+    - Extended aspect ratios (21:9)
+    - Ultra high quality generation
+    """
+    config = ImageGenerationConfig(
+        model="fal-ai/flux-pro/v1.1-ultra",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=240,  # Longer timeout for Ultra model
+        max_poll_attempts=120,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="Epic cinematic landscape with mountains and valleys, ultra wide view",
+        seed=99,
+        aspect_ratio="21:9",  # Ultra-wide aspect ratio
+        extra_params={
+            "safety_tolerance": 3,
+            "output_format": "png",
+        },
+    )
+
+    response = await api.generate_image_async(config, request)
+
+    # Validate response
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    print(f"✓ Generated Flux Pro Ultra image (21:9): {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_zimage_turbo_fast_generation(fal_api_key):
+    """
+    Test Z-Image-Turbo for fast distilled generation.
+
+    This tests:
+    - Z-Image-Turbo model (optimized for speed)
+    - Fast generation with 8 inference steps
+    - negative_prompt support
+    """
+    config = ImageGenerationConfig(
+        model="fal-ai/z-image-turbo",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=90,  # Shorter timeout for turbo model
+        max_poll_attempts=45,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A colorful abstract art piece with geometric patterns",
+        seed=777,
+        negative_prompt="blur, low quality, noise",
+        extra_params={
+            "num_inference_steps": 8,  # Fast distilled generation
+            "enable_safety_checker": True,
+        },
+    )
+
+    response = await api.generate_image_async(config, request)
+
+    # Validate response
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    print(f"✓ Generated Z-Image-Turbo image (fast): {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")

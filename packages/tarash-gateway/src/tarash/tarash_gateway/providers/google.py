@@ -1,4 +1,9 @@
-"""Veo3 provider handler using google-genai."""
+"""Google AI provider handler using google-genai.
+
+Supports:
+- Video generation: Veo 3 models (veo-3.0-generate-preview, etc.)
+- Image generation: Imagen 3, Gemini 2.5 Flash Image (Nano Banana)
+"""
 
 import asyncio
 import time
@@ -21,6 +26,9 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
     MediaContent,
     MediaType,
     ProgressCallback,
@@ -29,6 +37,13 @@ from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
+)
+from tarash.tarash_gateway.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    extra_params_field_mapper,
+    get_field_mappers_from_registry,
+    passthrough_field_mapper,
 )
 from tarash.tarash_gateway.utils import validate_model_params
 
@@ -55,7 +70,7 @@ if TYPE_CHECKING:
     from google.genai.types import GenerateVideosConfig
 
 # Logger name constant
-_LOGGER_NAME = "tarash.tarash_gateway.providers.veo3"
+_LOGGER_NAME = "tarash.tarash_gateway.providers.google"
 
 
 class Veo3VideoParams(TypedDict, total=False):
@@ -101,15 +116,18 @@ def parse_veo3_operation(operation: GenerateVideosOperation) -> VideoGenerationU
     )
 
 
-class Veo3ProviderHandler:
-    """Handler for Veo3 provider using google-genai."""
+class GoogleProviderHandler:
+    """Handler for Google AI provider using google-genai.
+
+    Supports both video generation (Veo 3) and image generation (Imagen 3, Nano Banana).
+    """
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
         if not has_genai:
             raise ImportError(
-                "google-genai is required for Veo3 provider. "
-                + "Install with: pip install tarash-gateway[veo3]"
+                "google-genai is required for Google provider. "
+                + "Install with: pip install tarash-gateway[google]"
             )
 
         self._sync_client_cache: dict[str, Client] = {}
@@ -140,8 +158,8 @@ class Veo3ProviderHandler:
         """
         if not has_genai:
             raise ImportError(
-                "google-genai is required for Veo3 provider. "
-                + "Install with: pip install tarash-gateway[veo3]"
+                "google-genai is required for Google provider. "
+                + "Install with: pip install tarash-gateway[google]"
             )
 
         # Use API key + base_url as cache key
@@ -584,6 +602,78 @@ class Veo3ProviderHandler:
             },
         )
 
+    # ==================== Image Generation Methods ====================
+
+    def _convert_image_request(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+    ) -> AnyDict:
+        """Convert ImageGenerationRequest to Google GenAI format.
+
+        Args:
+            config: Image generation configuration
+            request: Image generation request
+
+        Returns:
+            Dict with parameters ready for google-genai generate_images API
+        """
+        field_mappers = get_google_image_field_mappers(config.model)
+        api_params = apply_field_mappers(field_mappers, request)
+
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
+            "Mapped request to provider format",
+            {"converted_request": api_params},
+            redact=True,
+        )
+
+        return api_params
+
+    def _convert_image_response(
+        self,
+        config: ImageGenerationConfig,
+        _request: ImageGenerationRequest,
+        request_id: str,
+        genai_response: AnyDict,
+    ) -> ImageGenerationResponse:
+        """Convert Google GenAI response to ImageGenerationResponse.
+
+        Args:
+            config: Image generation configuration
+            _request: Original image generation request (unused)
+            request_id: Our request ID
+            genai_response: Response from google-genai with generated_images
+
+        Returns:
+            Normalized ImageGenerationResponse
+        """
+        # Extract image URLs from response
+        # Google GenAI returns {"generated_images": [GeneratedImage, ...]}
+        generated_images = genai_response.get("generated_images", [])
+        image_urls: list[str] = []
+
+        for gen_img in generated_images:
+            # Each GeneratedImage has .image attribute with .gcs_uri
+            if hasattr(gen_img, "image") and hasattr(gen_img.image, "gcs_uri"):
+                if gen_img.image.gcs_uri:
+                    image_urls.append(str(gen_img.image.gcs_uri))
+
+        return ImageGenerationResponse(
+            request_id=request_id,
+            images=image_urls,
+            content_type="image/png",
+            status="completed",
+            is_mock=False,
+            raw_response=genai_response,
+            provider_metadata={
+                "model": config.model,
+                "provider": config.provider,
+            },
+        )
+
+    # ==================== Video Generation Methods ====================
+
     @handle_video_generation_errors
     async def generate_video_async(
         self,
@@ -780,28 +870,64 @@ class Veo3ProviderHandler:
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex) from ex
 
-    # ==================== Image Generation (Not Supported) ====================
 
-    async def generate_image_async(
-        self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
-    ) -> VideoGenerationResponse:
-        """Veo3 image generation - not supported."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support image generation. "
-            "Use Fal provider for image generation."
-        )
+# ==================== Image Generation Field Mappings ====================
 
-    def generate_image(
-        self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
-        on_progress: ProgressCallback | None = None,
-    ) -> VideoGenerationResponse:
-        """Veo3 image generation - not supported."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support image generation. "
-            "Use Fal provider for image generation."
-        )
+# Gemini 2.5 Flash Image ("Nano Banana") field mappings
+NANO_BANANA_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "number_of_images": passthrough_field_mapper("n"),
+    "safety_filter_level": extra_params_field_mapper("safety_filter_level"),
+    "person_generation": extra_params_field_mapper("person_generation"),
+}
+
+# Imagen 3 field mappings
+IMAGEN3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "number_of_images": passthrough_field_mapper("n"),
+    "safety_filter_level": extra_params_field_mapper("safety_filter_level"),
+    "person_generation": extra_params_field_mapper("person_generation"),
+    "language": extra_params_field_mapper("language"),
+    "output_mime_type": extra_params_field_mapper("output_mime_type"),
+    "output_compression_quality": extra_params_field_mapper(
+        "output_compression_quality"
+    ),
+}
+
+# Generic image field mappings (fallback)
+GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "number_of_images": passthrough_field_mapper("n"),
+}
+
+# Image model registry for Google GenAI
+GOOGLE_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    # Gemini Flash Image (Nano Banana)
+    "gemini-2.5-flash-image": NANO_BANANA_FIELD_MAPPERS,  # Prefix match
+    "gemini-2.5-flash-image-preview": NANO_BANANA_FIELD_MAPPERS,
+    "gemini-2.5-flash-image-001": NANO_BANANA_FIELD_MAPPERS,
+    "gemini-3-pro-image-preview": NANO_BANANA_FIELD_MAPPERS,
+    # Imagen 3
+    "imagen-3": IMAGEN3_FIELD_MAPPERS,  # Prefix match
+    "imagen-3.0-generate-001": IMAGEN3_FIELD_MAPPERS,
+    "imagen-3.0-generate-002": IMAGEN3_FIELD_MAPPERS,
+    "imagen-3.0-fast-generate-001": IMAGEN3_FIELD_MAPPERS,
+}
+
+
+def get_google_image_field_mappers(model_name: str) -> dict[str, FieldMapper]:
+    """Get field mappers for Google GenAI image model.
+
+    Args:
+        model_name: Model name (e.g., "imagen-3.0-generate-002")
+
+    Returns:
+        Dict mapping API field names to FieldMapper objects
+    """
+    return get_field_mappers_from_registry(
+        model_name, GOOGLE_IMAGE_MODEL_REGISTRY, GENERIC_IMAGE_FIELD_MAPPERS
+    )

@@ -1,9 +1,12 @@
 """OpenAI provider handler for Sora video generation."""
 
+from __future__ import annotations
+
 import asyncio
 import io
 import time
 import traceback
+import uuid
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from typing_extensions import NotRequired, Required, TypedDict
@@ -19,6 +22,10 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    ImageProgressCallback,
     MediaContent,
     ProgressCallback,
     StatusType,
@@ -32,6 +39,16 @@ from tarash.tarash_gateway.utils import (
     get_filename_from_url,
     validate_duration,
     validate_model_params,
+)
+from tarash.tarash_gateway.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    get_field_mappers_from_registry,
+    passthrough_field_mapper,
+    size_field_mapper,
+    quality_field_mapper,
+    style_field_mapper,
+    n_images_field_mapper,
 )
 
 # Import OpenAI types for type checking
@@ -69,6 +86,82 @@ except ImportError:
 _LOGGER_NAME = "tarash.tarash_gateway.providers.openai"
 
 
+# ==================== Image Field Mappers ====================
+
+
+# Generic image field mappers (fallback)
+GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "size": size_field_mapper(),
+    "quality": quality_field_mapper(),
+    "n": n_images_field_mapper(),
+}
+
+# GPT-Image-1.5 field mappers
+GPT_IMAGE_15_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "size": size_field_mapper(
+        allowed_values=["1024x1024", "1024x1792", "1792x1024", "auto"],
+        provider="openai",
+        model="gpt-image-1.5",
+    ),
+    "quality": quality_field_mapper(allowed_values=["low", "medium", "high", "auto"]),
+    "n": n_images_field_mapper(min_value=1, max_value=4),
+    "output_format": passthrough_field_mapper("output_format"),
+    "background": passthrough_field_mapper("background"),
+}
+
+# DALL-E 3 field mappers
+DALLE3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "size": size_field_mapper(
+        allowed_values=["1024x1024", "1024x1792", "1792x1024"],
+        provider="openai",
+        model="dall-e-3",
+    ),
+    "quality": quality_field_mapper(allowed_values=["standard", "hd"]),
+    "style": style_field_mapper(allowed_values=["natural", "vivid"]),
+    "n": n_images_field_mapper(min_value=1, max_value=1),
+}
+
+# DALL-E 2 field mappers
+DALLE2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "size": size_field_mapper(
+        allowed_values=["256x256", "512x512", "1024x1024"],
+        provider="openai",
+        model="dall-e-2",
+    ),
+    "n": n_images_field_mapper(min_value=1, max_value=10),
+}
+
+# Image model registry
+OPENAI_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    "gpt-image-1.5": GPT_IMAGE_15_FIELD_MAPPERS,
+    "dall-e-3": DALLE3_FIELD_MAPPERS,
+    "dall-e-2": DALLE2_FIELD_MAPPERS,
+}
+
+
+def get_openai_image_field_mappers(model_name: str) -> dict[str, FieldMapper]:
+    """Get field mappers for OpenAI image model.
+
+    Args:
+        model_name: Model name (e.g., "gpt-image-1.5", "dall-e-3", "dall-e-2")
+
+    Returns:
+        Dict mapping API field names to FieldMapper objects
+    """
+    return get_field_mappers_from_registry(
+        model_name,
+        OPENAI_IMAGE_MODEL_REGISTRY,
+        GENERIC_IMAGE_FIELD_MAPPERS,
+    )
+
+
+# ==================== Video Models ====================
+
+
 # Supported video sizes for OpenAI Sora
 # Maps aspect ratios to size strings in "WIDTHxHEIGHT" format
 ASPECT_RATIO_TO_SIZE: dict[str, str] = {
@@ -93,7 +186,7 @@ class OpenAIVideoResponse(TypedDict):
     Contains the Video object and the HttpxBinaryResponseContent response object.
     """
 
-    video: Required[Video]  # OpenAI Video object (required)
+    video: Required["Video"]  # OpenAI Video object (required)
     content: NotRequired[bytes | None]  # Optional - may be None if download failed
     content_type: NotRequired[str | None]  # Optional - may be None if download failed
 
@@ -968,28 +1061,145 @@ class OpenAIProviderHandler:
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex)
 
-    # ==================== Image Generation (Not Supported) ====================
+    # ==================== Image Generation ====================
+
+    def _convert_image_request(
+        self, config: ImageGenerationConfig, request: ImageGenerationRequest
+    ) -> dict[str, Any]:
+        """Convert ImageGenerationRequest to OpenAI API format.
+
+        Args:
+            config: Provider configuration
+            request: Image generation request
+
+        Returns:
+            Dict with parameters for openai.images.generate()
+        """
+        field_mappers = get_openai_image_field_mappers(config.model)
+        openai_params = apply_field_mappers(field_mappers, request)
+
+        openai_params["model"] = config.model
+
+        if request.extra_params:
+            for key, value in request.extra_params.items():
+                if key not in openai_params and value is not None:
+                    openai_params[key] = value
+
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
+            "Mapped image request to provider format",
+            {"converted_request": openai_params},
+            redact=True,
+        )
+
+        return openai_params
+
+    def _convert_image_response(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        request_id: str,
+        provider_response: Any,
+    ) -> ImageGenerationResponse:
+        """Convert OpenAI image response to ImageGenerationResponse.
+
+        Args:
+            config: Provider configuration
+            request: Original image generation request
+            request_id: Our request ID
+            provider_response: OpenAI API response
+
+        Returns:
+            Normalized ImageGenerationResponse
+        """
+        images = [img.url for img in provider_response.data]
+
+        revised_prompt = None
+        if provider_response.data and hasattr(
+            provider_response.data[0], "revised_prompt"
+        ):
+            revised_prompt = provider_response.data[0].revised_prompt
+
+        return ImageGenerationResponse(
+            request_id=request_id,
+            images=images,
+            content_type="image/png",
+            status="completed",
+            revised_prompt=revised_prompt,
+            raw_response=provider_response.model_dump()
+            if hasattr(provider_response, "model_dump")
+            else {},
+            provider_metadata={},
+        )
 
     async def generate_image_async(
         self,
-        config: "VideoGenerationConfig",
-        request: "VideoGenerationRequest",
-        on_progress: ProgressCallback | None = None,
-    ) -> "VideoGenerationResponse":
-        """OpenAI image generation - not yet implemented."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not yet support image generation. "
-            "Use Fal provider for image generation."
-        )
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Generate image asynchronously via OpenAI.
+
+        Args:
+            config: Provider configuration
+            request: Image generation request
+            on_progress: Optional async callback for progress updates
+
+        Returns:
+            ImageGenerationResponse when complete
+        """
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        request_id = f"openai-image-{uuid.uuid4()}"
+        logger = logger.with_request_id(request_id)
+
+        client: AsyncOpenAI = self._get_client(config, "async")
+        openai_params = self._convert_image_request(config, request)
+
+        logger.debug("Starting image generation API call")
+
+        try:
+            response = await client.images.generate(**openai_params)
+
+            logger.info(
+                "Image generation completed", {"num_images": len(response.data)}
+            )
+
+            return self._convert_image_response(config, request, request_id, response)
+        except Exception as ex:
+            raise self._handle_error(config, request, request_id, ex)
 
     def generate_image(
         self,
-        config: "VideoGenerationConfig",
-        request: "VideoGenerationRequest",
-        on_progress: ProgressCallback | None = None,
-    ) -> "VideoGenerationResponse":
-        """OpenAI image generation - not yet implemented."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not yet support image generation. "
-            "Use Fal provider for image generation."
-        )
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        on_progress: ImageProgressCallback | None = None,
+    ) -> ImageGenerationResponse:
+        """Generate image synchronously (blocking).
+
+        Args:
+            config: Provider configuration
+            request: Image generation request
+            on_progress: Optional callback for progress updates
+
+        Returns:
+            ImageGenerationResponse
+        """
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        request_id = f"openai-image-{uuid.uuid4()}"
+        logger = logger.with_request_id(request_id)
+
+        client: OpenAI = self._get_client(config, "sync")
+        openai_params = self._convert_image_request(config, request)
+
+        logger.debug("Starting image generation API call")
+
+        try:
+            response = client.images.generate(**openai_params)
+
+            logger.info(
+                "Image generation completed", {"num_images": len(response.data)}
+            )
+
+            return self._convert_image_response(config, request, request_id, response)
+        except Exception as ex:
+            raise self._handle_error(config, request, request_id, ex)

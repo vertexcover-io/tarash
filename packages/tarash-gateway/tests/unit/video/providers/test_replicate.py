@@ -887,3 +887,370 @@ def test_full_luma_request_conversion(handler):
     assert result["start_image_url"] == "https://example.com/start.jpg"
     assert result["end_image_url"] == "https://example.com/end.jpg"
     assert result["loop"] is True
+
+
+# ==================== Image Field Mapper Registry Tests ====================
+
+
+def test_get_replicate_image_field_mappers_function_exists():
+    """Test that get_replicate_image_field_mappers function exists."""
+    from tarash.tarash_gateway.providers.replicate import (
+        get_replicate_image_field_mappers,
+    )
+
+    assert callable(get_replicate_image_field_mappers)
+
+
+def test_get_replicate_image_field_mappers_flux2_pro():
+    """Test that FLUX.2 Pro model returns correct field mappers."""
+    from tarash.tarash_gateway.providers.replicate import (
+        get_replicate_image_field_mappers,
+    )
+
+    mappers = get_replicate_image_field_mappers("black-forest-labs/flux.2-pro")
+    assert mappers is not None
+    assert "prompt" in mappers
+    assert mappers["prompt"].required is True
+
+
+def test_get_replicate_image_field_mappers_zimage_turbo():
+    """Test that Z-Image-Turbo model returns correct field mappers."""
+    from tarash.tarash_gateway.providers.replicate import (
+        get_replicate_image_field_mappers,
+    )
+
+    mappers = get_replicate_image_field_mappers("tongyi-mai/z-image-turbo")
+    assert mappers is not None
+    assert "prompt" in mappers
+
+
+def test_get_replicate_image_field_mappers_sd35_large():
+    """Test that SD 3.5 Large model returns correct field mappers."""
+    from tarash.tarash_gateway.providers.replicate import (
+        get_replicate_image_field_mappers,
+    )
+
+    mappers = get_replicate_image_field_mappers(
+        "stability-ai/stable-diffusion-3.5-large"
+    )
+    assert mappers is not None
+    assert "prompt" in mappers
+
+
+def test_get_replicate_image_field_mappers_unknown_fallback():
+    """Test that unknown image models fall back to generic mappers."""
+    from tarash.tarash_gateway.providers.replicate import (
+        GENERIC_REPLICATE_IMAGE_FIELD_MAPPERS,
+        get_replicate_image_field_mappers,
+    )
+
+    mappers = get_replicate_image_field_mappers("unknown/image-model")
+    assert mappers is GENERIC_REPLICATE_IMAGE_FIELD_MAPPERS
+
+
+def test_get_replicate_image_field_mappers_strips_version():
+    """Test that version suffix is stripped before matching."""
+    from tarash.tarash_gateway.providers.replicate import (
+        get_replicate_image_field_mappers,
+    )
+
+    mappers = get_replicate_image_field_mappers("black-forest-labs/flux.2-pro:abc123")
+    assert mappers is not None
+    assert "prompt" in mappers
+
+
+# ==================== FLUX.2 Pro Field Mapper Tests ====================
+
+
+def test_flux2_pro_field_mappers_minimal_request(handler):
+    """Test FLUX.2 Pro with minimal fields (prompt only)."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_FLUX2_PRO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(prompt="A beautiful landscape")
+    result = apply_field_mappers(REPLICATE_FLUX2_PRO_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A beautiful landscape"
+    assert len(result) == 1  # Only prompt
+
+
+def test_flux2_pro_field_mappers_with_aspect_ratio(handler):
+    """Test FLUX.2 Pro with aspect ratio."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_FLUX2_PRO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(prompt="A cat", aspect_ratio="16:9")
+    result = apply_field_mappers(REPLICATE_FLUX2_PRO_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A cat"
+    assert result["aspect_ratio"] == "16:9"
+
+
+def test_flux2_pro_field_mappers_with_output_format(handler):
+    """Test FLUX.2 Pro with output format."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_FLUX2_PRO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A dog", extra_params={"output_format": "png"}
+    )
+    result = apply_field_mappers(REPLICATE_FLUX2_PRO_FIELD_MAPPERS, request)
+
+    assert result["output_format"] == "png"
+
+
+def test_flux2_pro_field_mappers_with_reference_images(handler):
+    """Test FLUX.2 Pro with reference images."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_FLUX2_PRO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A stylized portrait",
+        image_list=[
+            {"image": "https://example.com/ref1.jpg", "type": "reference"},
+            {"image": "https://example.com/ref2.jpg", "type": "reference"},
+        ],
+    )
+    result = apply_field_mappers(REPLICATE_FLUX2_PRO_FIELD_MAPPERS, request)
+
+    assert result["reference_images"] == [
+        "https://example.com/ref1.jpg",
+        "https://example.com/ref2.jpg",
+    ]
+
+
+def test_flux2_pro_field_mappers_with_all_params(handler):
+    """Test FLUX.2 Pro with all parameters."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_FLUX2_PRO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A beautiful sunset",
+        aspect_ratio="21:9",
+        seed=42,
+        image_list=[
+            {"image": "https://example.com/ref.jpg", "type": "reference"},
+        ],
+        extra_params={
+            "output_format": "webp",
+            "output_quality": 95,
+            "safety_tolerance": 3,
+            "num_inference_steps": 25,
+        },
+    )
+    result = apply_field_mappers(REPLICATE_FLUX2_PRO_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A beautiful sunset"
+    assert result["aspect_ratio"] == "21:9"
+    assert result["seed"] == 42
+    assert result["output_format"] == "webp"
+    assert result["output_quality"] == 95
+    assert result["safety_tolerance"] == 3
+    assert result["num_inference_steps"] == 25
+    assert result["reference_images"] == ["https://example.com/ref.jpg"]
+
+
+# ==================== Z-Image-Turbo Field Mapper Tests ====================
+
+
+def test_zimage_turbo_field_mappers_minimal_request(handler):
+    """Test Z-Image-Turbo with minimal fields (prompt only)."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_ZIMAGE_TURBO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(prompt="A futuristic city")
+    result = apply_field_mappers(REPLICATE_ZIMAGE_TURBO_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A futuristic city"
+    assert len(result) == 1  # Only prompt
+
+
+def test_zimage_turbo_field_mappers_with_all_params(handler):
+    """Test Z-Image-Turbo with all parameters."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_ZIMAGE_TURBO_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A beautiful garden",
+        negative_prompt="ugly, distorted",
+        aspect_ratio="16:9",
+        seed=123,
+        extra_params={
+            "num_inference_steps": 8,
+            "output_format": "png",
+        },
+    )
+    result = apply_field_mappers(REPLICATE_ZIMAGE_TURBO_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A beautiful garden"
+    assert result["negative_prompt"] == "ugly, distorted"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["seed"] == 123
+    assert result["num_inference_steps"] == 8
+    assert result["output_format"] == "png"
+
+
+# ==================== SD 3.5 Large Field Mapper Tests ====================
+
+
+def test_sd35_large_field_mappers_minimal_request(handler):
+    """Test SD 3.5 Large with minimal fields (prompt only)."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_SD35_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(prompt="A serene lake")
+    result = apply_field_mappers(REPLICATE_SD35_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A serene lake"
+    assert len(result) == 1  # Only prompt
+
+
+def test_sd35_large_field_mappers_with_all_params(handler):
+    """Test SD 3.5 Large with all parameters."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.replicate import (
+        REPLICATE_SD35_FIELD_MAPPERS,
+        apply_field_mappers,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A mountain landscape",
+        negative_prompt="blurry, low quality",
+        aspect_ratio="21:9",
+        seed=456,
+        extra_params={
+            "cfg_scale": 7.5,
+            "num_inference_steps": 40,
+            "output_format": "webp",
+        },
+    )
+    result = apply_field_mappers(REPLICATE_SD35_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "A mountain landscape"
+    assert result["negative_prompt"] == "blurry, low quality"
+    assert result["aspect_ratio"] == "21:9"
+    assert result["seed"] == 456
+    assert result["cfg_scale"] == 7.5
+    assert result["num_inference_steps"] == 40
+    assert result["output_format"] == "webp"
+
+
+# ==================== Image Generation Tests ====================
+
+
+def test_convert_image_request_flux2_pro(handler):
+    """Test image request conversion for FLUX.2 Pro."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(
+        prompt="A beautiful sunset",
+        aspect_ratio="16:9",
+        seed=42,
+    )
+
+    result = handler._convert_image_request(config, request)
+
+    assert result["prompt"] == "A beautiful sunset"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["seed"] == 42
+
+
+def test_convert_image_response_with_string_url(handler):
+    """Test image response conversion when output is a single URL string."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    result = handler._convert_image_response(
+        config, request, "pred-123", "https://example.com/image.png"
+    )
+
+    assert result.request_id == "pred-123"
+    assert result.images == ["https://example.com/image.png"]
+    assert result.status == "completed"
+
+
+def test_convert_image_response_with_list_of_urls(handler):
+    """Test image response conversion when output is a list of URLs."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    result = handler._convert_image_response(
+        config,
+        request,
+        "pred-456",
+        ["https://example.com/img1.png", "https://example.com/img2.png"],
+    )
+
+    assert result.request_id == "pred-456"
+    assert result.images == [
+        "https://example.com/img1.png",
+        "https://example.com/img2.png",
+    ]
+
+
+def test_convert_image_response_with_none_output_raises_error(handler):
+    """Test that None output raises GenerationFailedError."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    with pytest.raises(GenerationFailedError, match="no output was returned"):
+        handler._convert_image_response(config, request, "pred-null", None)

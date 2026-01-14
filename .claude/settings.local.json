@@ -18,7 +18,15 @@
       "Bash(git -c color.status=always status)",
       "Bash(git -c color.diff=always diff --stat)",
       "Bash(uv run:*)",
-      "WebSearch"
+      "WebSearch",
+      "Skill(testing)",
+      "Skill(testing:*)",
+      "Skill(planning)",
+      "Skill(planning:*)",
+      "Skill(tdd)",
+      "Skill(tdd:*)",
+      "Skill(functional)",
+      "Skill(functional:*)"
     ],
     "deny": [],
     "ask": []

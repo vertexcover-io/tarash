@@ -1052,3 +1052,239 @@ def test_handle_video_generation_errors_sync_propagates_known_errors():
     # Test unknown exception is wrapped
     with pytest.raises(TarashException, match="Unknown error"):
         sync_func(None, config, VideoGenerationRequest(prompt="unknown"))
+
+
+# ==================== Image Generation Field Mapper Tests ====================
+
+
+def test_get_veo3_image_field_mappers_gemini_flash():
+    """Test field mapper lookup for gemini-2.5-flash-image-preview."""
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("gemini-2.5-flash-image-preview")
+
+    assert "prompt" in mappers
+    assert "aspect_ratio" in mappers
+    assert "number_of_images" in mappers
+    assert "safety_filter_level" in mappers
+    assert "person_generation" in mappers
+
+
+def test_get_veo3_image_field_mappers_gemini_pro():
+    """Test field mapper lookup for gemini-3-pro-image-preview (uses same mappers as flash)."""
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("gemini-3-pro-image-preview")
+
+    assert "prompt" in mappers
+    assert "aspect_ratio" in mappers
+
+
+def test_get_veo3_image_field_mappers_imagen3():
+    """Test field mapper lookup for imagen-3.0-generate-002."""
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("imagen-3.0-generate-002")
+
+    assert "prompt" in mappers
+    assert "negative_prompt" in mappers
+    assert "aspect_ratio" in mappers
+    assert "number_of_images" in mappers
+    assert "language" in mappers
+    assert "output_mime_type" in mappers
+
+
+def test_get_veo3_image_field_mappers_imagen3_fast():
+    """Test field mapper lookup for imagen-3.0-fast-generate-001 (uses same mappers)."""
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("imagen-3.0-fast-generate-001")
+
+    assert "prompt" in mappers
+    assert "negative_prompt" in mappers
+
+
+# ==================== Image Field Mapper Conversion Tests ====================
+
+
+def test_nano_banana_field_mapper_conversion():
+    """Test Nano Banana field mapper conversions."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("gemini-2.5-flash-image-preview")
+    request = ImageGenerationRequest(
+        prompt="A cute cat",
+        aspect_ratio="16:9",
+        n=2,
+        extra_params={
+            "safety_filter_level": "block_medium_and_above",
+            "person_generation": "allow_adult",
+        },
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A cute cat"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["number_of_images"] == 2
+    assert result["safety_filter_level"] == "block_medium_and_above"
+    assert result["person_generation"] == "allow_adult"
+
+
+def test_imagen3_field_mapper_conversion():
+    """Test Imagen 3 field mapper conversions."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("imagen-3.0-generate-002")
+    request = ImageGenerationRequest(
+        prompt="A mountain landscape",
+        negative_prompt="blur, low quality",
+        aspect_ratio="1:1",
+        n=1,
+        extra_params={
+            "language": "en",
+            "output_mime_type": "image/png",
+            "output_compression_quality": 80,
+        },
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A mountain landscape"
+    assert result["negative_prompt"] == "blur, low quality"
+    assert result["aspect_ratio"] == "1:1"
+    assert result["number_of_images"] == 1
+    assert result["language"] == "en"
+    assert result["output_mime_type"] == "image/png"
+    assert result["output_compression_quality"] == 80
+
+
+def test_image_field_mapper_with_minimal_request():
+    """Test field mapper with minimal request (only prompt)."""
+    from tarash.tarash_gateway.models import ImageGenerationRequest
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+    from tarash.tarash_gateway.providers.veo3 import get_veo3_image_field_mappers
+
+    mappers = get_veo3_image_field_mappers("imagen-3.0-generate-002")
+    request = ImageGenerationRequest(prompt="A simple test")
+
+    result = apply_field_mappers(mappers, request)
+
+    # Only prompt should be present (required field)
+    assert result["prompt"] == "A simple test"
+    # Optional fields should not be in result if None
+    assert "negative_prompt" not in result
+    assert "aspect_ratio" not in result
+
+
+# ==================== Image Request/Response Conversion Tests ====================
+
+
+def test_convert_image_request_with_imagen3(handler):
+    """Test convert_image_request with Imagen 3 model."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="imagen-3.0-generate-002",
+        provider="veo3",
+        api_key="test-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(
+        prompt="A mountain landscape",
+        negative_prompt="blur",
+        aspect_ratio="16:9",
+        n=2,
+        extra_params={
+            "language": "en",
+            "output_mime_type": "image/png",
+        },
+    )
+
+    result = handler._convert_image_request(config, request)
+
+    assert result["prompt"] == "A mountain landscape"
+    assert result["negative_prompt"] == "blur"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["number_of_images"] == 2
+    assert result["language"] == "en"
+    assert result["output_mime_type"] == "image/png"
+
+
+def test_convert_image_response_with_imagen3(handler):
+    """Test convert_image_response with Imagen 3 response."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="imagen-3.0-generate-002",
+        provider="veo3",
+        api_key="test-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    # Mock google-genai response with generated_images
+    mock_generated_image = MagicMock()
+    mock_generated_image.image = MagicMock()
+    mock_generated_image.image.gcs_uri = "https://example.com/image1.png"
+
+    mock_response = {
+        "generated_images": [mock_generated_image],
+    }
+
+    response = handler._convert_image_response(
+        config, request, "req-123", mock_response
+    )
+
+    assert response.request_id == "req-123"
+    assert len(response.images) == 1
+    assert response.images[0] == "https://example.com/image1.png"
+    assert response.status == "completed"
+    assert response.content_type == "image/png"
+
+
+def test_convert_image_response_with_multiple_images(handler):
+    """Test convert_image_response with multiple images."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="gemini-2.5-flash-image-preview",
+        provider="veo3",
+        api_key="test-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(prompt="test", n=3)
+
+    # Mock response with multiple images
+    mock_images = []
+    for i in range(3):
+        mock_img = MagicMock()
+        mock_img.image = MagicMock()
+        mock_img.image.gcs_uri = f"https://example.com/image{i}.png"
+        mock_images.append(mock_img)
+
+    mock_response = {
+        "generated_images": mock_images,
+    }
+
+    response = handler._convert_image_response(
+        config, request, "req-456", mock_response
+    )
+
+    assert response.request_id == "req-456"
+    assert len(response.images) == 3
+    assert response.images[0] == "https://example.com/image0.png"
+    assert response.images[2] == "https://example.com/image2.png"

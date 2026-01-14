@@ -10,10 +10,11 @@ from tarash.tarash_gateway.models import (
 )
 from tarash.tarash_gateway.providers import (
     FalProviderHandler,
+    GoogleProviderHandler,
     OpenAIProviderHandler,
     ReplicateProviderHandler,
     RunwayProviderHandler,
-    Veo3ProviderHandler,
+    StabilityProviderHandler,
 )
 
 # Singleton instances of handlers (stateless)
@@ -53,8 +54,6 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
         )
         if provider == "fal":
             _HANDLER_INSTANCES[provider] = cast(ProviderHandler, FalProviderHandler())
-        elif provider == "veo3":
-            _HANDLER_INSTANCES[provider] = cast(ProviderHandler, Veo3ProviderHandler())
         elif provider == "replicate":
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, ReplicateProviderHandler()
@@ -66,6 +65,14 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
         elif provider == "runway":
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, RunwayProviderHandler()
+            )
+        elif provider == "stability":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, StabilityProviderHandler()
+            )
+        elif provider == "google":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, GoogleProviderHandler()
             )
         else:
             log_error(

@@ -31,12 +31,6 @@ from tarash.tarash_gateway.providers.openai import (
     OpenAIVideoParams,
     parse_openai_video_status,
 )
-from tarash.tarash_gateway.providers.veo3 import (
-    Veo3ProviderHandler,
-    Veo3VideoParams,
-    parse_veo3_operation,
-)
-
 from tarash.tarash_gateway.providers.replicate import (
     ReplicateProviderHandler,
     REPLICATE_MODEL_REGISTRY,
@@ -52,6 +46,27 @@ from tarash.tarash_gateway.providers.runway import (
     RunwayVideoParams,
     parse_runway_task_status,
 )
+from tarash.tarash_gateway.providers.stability import (
+    StabilityProviderHandler,
+    SD35_LARGE_FIELD_MAPPERS,
+    STABLE_IMAGE_ULTRA_FIELD_MAPPERS,
+    STABILITY_IMAGE_MODEL_REGISTRY,
+    get_stability_image_field_mappers,
+)
+from tarash.tarash_gateway.providers.google import (
+    GoogleProviderHandler,
+    # Video exports (formerly Veo3)
+    Veo3VideoParams,  # Keep for backwards compatibility
+    parse_veo3_operation,  # Keep for backwards compatibility
+    # Image exports
+    NANO_BANANA_FIELD_MAPPERS,
+    IMAGEN3_FIELD_MAPPERS,
+    GOOGLE_IMAGE_MODEL_REGISTRY,
+    get_google_image_field_mappers,
+)
+
+# Backwards compatibility alias
+Veo3ProviderHandler = GoogleProviderHandler
 
 __all__ = [
     # Common Field Mappers
@@ -90,12 +105,23 @@ __all__ = [
     "LUMA_FIELD_MAPPERS",
     "WAN_FIELD_MAPPERS",
     "GENERIC_REPLICATE_FIELD_MAPPERS",
-    # Veo3
-    "Veo3ProviderHandler",
-    "Veo3VideoParams",
-    "parse_veo3_operation",
     # Runway
     "RunwayProviderHandler",
     "RunwayVideoParams",
     "parse_runway_task_status",
+    # Stability
+    "StabilityProviderHandler",
+    "SD35_LARGE_FIELD_MAPPERS",
+    "STABLE_IMAGE_ULTRA_FIELD_MAPPERS",
+    "STABILITY_IMAGE_MODEL_REGISTRY",
+    "get_stability_image_field_mappers",
+    # Google (includes Veo3 for video, Imagen/Nano Banana for image)
+    "GoogleProviderHandler",
+    "Veo3ProviderHandler",  # Backwards compat alias
+    "Veo3VideoParams",  # Backwards compat
+    "parse_veo3_operation",  # Backwards compat
+    "NANO_BANANA_FIELD_MAPPERS",
+    "IMAGEN3_FIELD_MAPPERS",
+    "GOOGLE_IMAGE_MODEL_REGISTRY",
+    "get_google_image_field_mappers",
 ]

@@ -2,7 +2,7 @@ import functools
 import inspect
 import traceback
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -12,13 +12,15 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
     from tarash.tarash_gateway.models import (
-        AnyDict,
         VideoGenerationConfig,
         VideoGenerationRequest,
         VideoGenerationResponse,
         ProviderHandler,
         ProgressCallback,
     )
+
+# Type alias needed at runtime for class attributes
+AnyDict = dict[str, Any]
 
 F = TypeVar(
     "F",
