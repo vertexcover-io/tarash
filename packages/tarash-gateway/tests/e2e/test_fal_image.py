@@ -222,17 +222,17 @@ async def test_execution_metadata_included(fal_api_key):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_flux2_pro_text_to_image(fal_api_key):
+async def test_flux2_text_to_image(fal_api_key):
     """
-    Test FLUX.2 Pro text-to-image model.
+    Test FLUX.2 text-to-image model.
 
     This tests:
-    - FLUX.2 Pro model with guidance_scale
+    - FLUX.2 model with guidance_scale
     - num_inference_steps parameter
     - Higher quality generation
     """
     config = ImageGenerationConfig(
-        model="fal-ai/flux-2/pro",
+        model="fal-ai/flux-2",
         provider="fal",
         api_key=fal_api_key,
         timeout=180,  # Longer timeout for Pro model
@@ -258,7 +258,7 @@ async def test_flux2_pro_text_to_image(fal_api_key):
     assert len(response.images) > 0
     assert response.status == "completed"
 
-    print(f"✓ Generated FLUX.2 Pro image: {response.request_id}")
+    print(f"✓ Generated FLUX.2 image: {response.request_id}")
     print(f"  Image URL: {response.images[0][:80]}...")
 
 
@@ -317,7 +317,7 @@ async def test_zimage_turbo_fast_generation(fal_api_key):
     - negative_prompt support
     """
     config = ImageGenerationConfig(
-        model="fal-ai/z-image-turbo",
+        model="fal-ai/z-image/turbo",
         provider="fal",
         api_key=fal_api_key,
         timeout=90,  # Shorter timeout for turbo model

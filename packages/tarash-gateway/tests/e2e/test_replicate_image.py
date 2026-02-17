@@ -1,7 +1,7 @@
 """End-to-end tests for Replicate image generation.
 
 These tests make actual API calls to the Replicate service.
-Requires REPLICATE_API_TOKEN environment variable to be set.
+Requires REPLICATE_API_KEY environment variable to be set.
 
 Run with: pytest tests/e2e/test_replicate_image.py -v --e2e
 """
@@ -10,13 +10,13 @@ import os
 
 import pytest
 
+from tarash.tarash_gateway import api
 from tarash.tarash_gateway.models import (
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
     ImageGenerationUpdate,
 )
-from tarash.tarash_gateway.providers.replicate import ReplicateProviderHandler
 
 # ==================== Fixtures ====================
 
@@ -24,16 +24,10 @@ from tarash.tarash_gateway.providers.replicate import ReplicateProviderHandler
 @pytest.fixture(scope="module")
 def replicate_api_key():
     """Get Replicate API key from environment."""
-    api_key = os.getenv("REPLICATE_API_TOKEN")
+    api_key = os.getenv("REPLICATE_API_KEY")
     if not api_key:
-        pytest.skip("REPLICATE_API_TOKEN environment variable not set")
+        pytest.skip("REPLICATE_API_KEY environment variable not set")
     return api_key
-
-
-@pytest.fixture
-def handler():
-    """Create ReplicateProviderHandler instance."""
-    return ReplicateProviderHandler()
 
 
 # ==================== E2E Tests ====================
@@ -41,7 +35,7 @@ def handler():
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_flux_schnell_text_to_image(replicate_api_key, handler):
+async def test_flux_schnell_text_to_image(replicate_api_key):
     """
     Test FLUX Schnell text-to-image model (fastest).
 
@@ -72,7 +66,7 @@ async def test_flux_schnell_text_to_image(replicate_api_key, handler):
     )
 
     # Generate image
-    response = await handler.generate_image_async(
+    response = await api.generate_image_async(
         config, request, on_progress=progress_callback
     )
 
@@ -101,7 +95,7 @@ async def test_flux_schnell_text_to_image(replicate_api_key, handler):
 
 
 @pytest.mark.e2e
-def test_sd35_large_turbo_generation(replicate_api_key, handler):
+def test_sd35_large_turbo_generation(replicate_api_key):
     """
     Test SD 3.5 Large Turbo synchronous image generation.
 
@@ -130,7 +124,7 @@ def test_sd35_large_turbo_generation(replicate_api_key, handler):
     )
 
     # Generate image synchronously
-    response = handler.generate_image(config, request)
+    response = api.generate_image(config, request)
 
     # Validate response
     assert isinstance(response, ImageGenerationResponse)

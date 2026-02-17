@@ -17,6 +17,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
+    VideoGenerationUpdate,
 )
 
 # ==================== Fixtures ====================
@@ -61,6 +62,59 @@ def shoe_image_path():
 
 
 @pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_text_to_video_async(openai_config):
+    """
+    Async test for OpenAI Sora text-to-video:
+    - Basic text-to-video generation (no image input)
+    - Progress tracking
+    - 16:9 aspect ratio (landscape)
+    - 4 seconds duration
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    request = VideoGenerationRequest(
+        prompt="A serene lake at sunset with mountains in the background, cinematic quality",
+        duration_seconds="4",
+        aspect_ratio="16:9",
+    )
+
+    response = await api.generate_video_async(
+        openai_config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    assert isinstance(response.raw_response, dict)
+    assert response.raw_response is not None
+
+    assert isinstance(response.video, dict)
+    assert "content" in response.video
+    assert "content_type" in response.video
+
+    assert len(progress_updates) > 0
+    statuses = [update.status for update in progress_updates]
+    assert "completed" in statuses
+
+    video_size_mb = len(response.video["content"]) / (1024 * 1024)
+
+    print("✓ Generated text-to-video successfully")
+    print(f"  Request ID: {response.request_id}")
+    print(f"  Video size: {video_size_mb:.2f} MB")
+    print(f"  Content type: {response.video['content_type']}")
+    print(f"  Model: {openai_config.model}")
+    print(f"  Progress updates: {len(progress_updates)}")
+    print(f"  Statuses: {statuses}")
+
+
+@pytest.mark.e2e
 def test_sync_video_generation_with_image(openai_config, shoe_image_path):
     """
     Sync test for OpenAI Sora image-to-video:
@@ -76,7 +130,7 @@ def test_sync_video_generation_with_image(openai_config, shoe_image_path):
 
     request = VideoGenerationRequest(
         prompt="A sleek athletic shoe rotating slowly, showcasing its design from all angles",
-        duration_seconds=4,
+        duration_seconds="4",
         aspect_ratio="9:16",
         image_list=[
             {

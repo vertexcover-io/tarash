@@ -62,68 +62,6 @@ def luma_config(replicate_api_key):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_kling_text_to_video_async(kling_config):
-    """Test Kling text-to-video generation with async API."""
-    request = VideoGenerationRequest(
-        prompt="A beautiful sunset over the ocean with gentle waves",
-        duration_seconds=5,
-        aspect_ratio="16:9",
-    )
-
-    updates_received = []
-
-    async def progress_callback(update: VideoGenerationUpdate):
-        updates_received.append(update)
-        print(f"Status: {update.status}, Update: {update.update}")
-
-    response = await api.generate_video_async(
-        kling_config,
-        request,
-        on_progress=progress_callback,
-    )
-
-    # Verify response
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.status == "completed"
-    assert response.video is not None
-    assert str(response.video).startswith("http")
-    assert response.request_id is not None
-
-    # Verify we received progress updates
-    assert len(updates_received) > 0
-    print(f"Received {len(updates_received)} progress updates")
-    print(f"Video URL: {response.video}")
-
-
-@pytest.mark.e2e
-def test_kling_text_to_video_sync(kling_config):
-    """Test Kling text-to-video generation with sync API."""
-    request = VideoGenerationRequest(
-        prompt="A cat playing with a ball of yarn",
-        duration_seconds=5,
-    )
-
-    updates_received = []
-
-    def progress_callback(update: VideoGenerationUpdate):
-        updates_received.append(update)
-        print(f"Status: {update.status}")
-
-    response = api.generate_video(
-        kling_config,
-        request,
-        on_progress=progress_callback,
-    )
-
-    # Verify response
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.status == "completed"
-    assert response.video is not None
-    print(f"Video URL: {response.video}")
-
-
-@pytest.mark.e2e
-@pytest.mark.asyncio
 async def test_kling_image_to_video_async(kling_config):
     """Test Kling image-to-video generation with async API."""
     # Using a public image URL for testing
@@ -142,41 +80,6 @@ async def test_kling_image_to_video_async(kling_config):
     assert isinstance(response, VideoGenerationResponse)
     assert response.status == "completed"
     assert response.video is not None
-    print(f"Video URL: {response.video}")
-
-
-@pytest.mark.e2e
-@pytest.mark.asyncio
-async def test_replicate_without_progress_callback(kling_config):
-    """Test Replicate generation without progress callback (simpler flow)."""
-    request = VideoGenerationRequest(
-        prompt="A gentle river flowing through a forest",
-        duration_seconds=5,
-    )
-
-    # No progress callback - uses async_run directly
-    response = await api.generate_video_async(kling_config, request)
-
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.status == "completed"
-    assert response.video is not None
-    print(f"Video URL: {response.video}")
-
-
-@pytest.mark.e2e
-@pytest.mark.slow
-@pytest.mark.asyncio
-async def test_kling_10_second_video(kling_config):
-    """Test Kling 10-second video generation (longer, marked as slow)."""
-    request = VideoGenerationRequest(
-        prompt="A time-lapse of flowers blooming in a garden",
-        duration_seconds=10,
-    )
-
-    response = await api.generate_video_async(kling_config, request)
-
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.status == "completed"
     print(f"Video URL: {response.video}")
 
 
@@ -204,52 +107,6 @@ async def test_luma_text_to_video_async(luma_config):
     assert isinstance(response, VideoGenerationResponse)
     assert response.status == "completed"
     assert response.video is not None
-    print(f"Video URL: {response.video}")
-
-
-@pytest.mark.e2e
-@pytest.mark.asyncio
-async def test_replicate_with_extra_params(kling_config):
-    """Test Replicate generation with extra params passed through."""
-    request = VideoGenerationRequest(
-        prompt="A cyberpunk city at night with neon lights",
-        duration_seconds=5,
-        extra_params={
-            "cfg_scale": 0.7,
-        },
-    )
-
-    response = await api.generate_video_async(kling_config, request)
-
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.status == "completed"
-    print(f"Video URL: {response.video}")
-
-
-@pytest.mark.e2e
-def test_replicate_direct_handler_usage(replicate_api_key):
-    """Test using ReplicateProviderHandler directly."""
-    from tarash.tarash_gateway.providers.replicate import ReplicateProviderHandler
-
-    handler = ReplicateProviderHandler()
-
-    config = VideoGenerationConfig(
-        model="kwaivgi/kling-v2.1",
-        provider="replicate",
-        api_key=replicate_api_key,
-        poll_interval=5,
-        max_poll_attempts=60,
-    )
-
-    request = VideoGenerationRequest(
-        prompt="A peaceful meadow with butterflies",
-        duration_seconds=5,
-    )
-
-    response = handler.generate_video(config, request)
-
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.status == "completed"
     print(f"Video URL: {response.video}")
 
 

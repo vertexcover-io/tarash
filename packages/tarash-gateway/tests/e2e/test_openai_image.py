@@ -10,12 +10,12 @@ import os
 
 import pytest
 
+from tarash.tarash_gateway import api
 from tarash.tarash_gateway.models import (
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
 )
-from tarash.tarash_gateway.providers.openai import OpenAIProviderHandler
 
 # ==================== Fixtures ====================
 
@@ -29,18 +29,12 @@ def openai_api_key():
     return api_key
 
 
-@pytest.fixture
-def handler():
-    """Create an OpenAIProviderHandler instance."""
-    return OpenAIProviderHandler()
-
-
 # ==================== E2E Tests ====================
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_dalle3_text_to_image_async(openai_api_key, handler):
+async def test_dalle3_text_to_image_async(openai_api_key):
     """Test DALL-E 3 text-to-image generation (async).
 
     This tests:
@@ -65,7 +59,7 @@ async def test_dalle3_text_to_image_async(openai_api_key, handler):
     )
 
     print(f"\nGenerating image with model: {config.model}")
-    response = await handler.generate_image_async(config, request)
+    response = await api.generate_image_async(config, request)
 
     # Validate response structure
     assert isinstance(response, ImageGenerationResponse)
@@ -90,7 +84,7 @@ async def test_dalle3_text_to_image_async(openai_api_key, handler):
 
 
 @pytest.mark.e2e
-def test_dalle3_text_to_image_sync(openai_api_key, handler):
+def test_dalle3_text_to_image_sync(openai_api_key):
     """Test DALL-E 3 text-to-image generation (sync).
 
     This tests:
@@ -114,7 +108,7 @@ def test_dalle3_text_to_image_sync(openai_api_key, handler):
     )
 
     print(f"\nGenerating image with model: {config.model}")
-    response = handler.generate_image(config, request)
+    response = api.generate_image(config, request)
 
     # Validate response
     assert isinstance(response, ImageGenerationResponse)
@@ -129,7 +123,7 @@ def test_dalle3_text_to_image_sync(openai_api_key, handler):
 
 
 @pytest.mark.e2e
-def test_dalle2_text_to_image_multiple(openai_api_key, handler):
+def test_dalle2_text_to_image_multiple(openai_api_key):
     """Test DALL-E 2 multiple image generation.
 
     This tests:
@@ -151,7 +145,7 @@ def test_dalle2_text_to_image_multiple(openai_api_key, handler):
     )
 
     print(f"\nGenerating images with model: {config.model}")
-    response = handler.generate_image(config, request)
+    response = api.generate_image(config, request)
 
     # Validate response
     assert isinstance(response, ImageGenerationResponse)
