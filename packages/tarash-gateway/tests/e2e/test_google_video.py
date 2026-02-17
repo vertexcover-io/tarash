@@ -15,6 +15,7 @@ from urllib.request import urlopen
 import pytest
 
 from tarash.tarash_gateway import api
+from tarash.tarash_gateway.exceptions import ValidationError
 from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
@@ -83,7 +84,7 @@ async def test_comprehensive_async_video_generation(google_video_config):
     # Test with various parameters
     request = VideoGenerationRequest(
         prompt="A serene lake at sunset with mountains in the background, cinematic quality",
-        duration_seconds=5,
+        duration_seconds=4,
         aspect_ratio="16:9",
         negative_prompt="blur, low quality, distorted",
     )
@@ -326,3 +327,116 @@ def test_sync_video_generation_with_local_image(google_video_config, shoe_image_
         if response.resolution
         else "  Resolution: N/A"
     )
+
+
+@pytest.mark.e2e
+async def test_video_generation_with_1080p_resolution(google_video_config):
+    """
+    Test video generation with 1080p resolution parameter.
+
+    Validates that:
+    - Resolution parameter is accepted by Google API
+    - Video generation completes successfully at 1080p
+
+    Note: Google Veo requires 8 seconds duration for 1080p resolution.
+    """
+    request = VideoGenerationRequest(
+        prompt="A calm ocean wave gently rolling onto a sandy beach at golden hour",
+        duration_seconds=8,  # 1080p requires 8 seconds
+        aspect_ratio="16:9",
+        resolution="1080p",
+    )
+
+    response = await api.generate_video_async(google_video_config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+
+    if isinstance(response.video, str):
+        assert response.video.startswith("http") or response.video.startswith(
+            "gs://"
+        ), f"Expected HTTP or GCS URL, got: {response.video}"
+        video_type = "URL"
+        video_info = response.video
+    else:
+        assert "content" in response.video, "Video dict should have 'content' field"
+        video_type = "bytes"
+        video_info = f"{len(response.video['content'])} bytes"
+
+    print("✓ Generated 1080p video successfully")
+    print(f"  Request ID: {response.request_id}")
+    print(f"  Video type: {video_type}")
+    print(f"  Video info: {video_info}")
+    print(f"  Requested resolution: 1080p")
+
+
+@pytest.mark.e2e
+async def test_video_extension_from_previous_generation(google_video_config):
+    """
+    Test Scene Extension: extend a previously generated video by ~7 seconds.
+
+    This test validates:
+    - Generate an initial video
+    - Extend it by passing the video back with a new prompt
+    - Extension only supports 720p resolution
+    - Extended video is returned successfully
+    """
+    # Step 1: Generate initial video
+    initial_request = VideoGenerationRequest(
+        prompt="A butterfly lands gently on a colorful flower in a garden",
+        duration_seconds=4,
+        aspect_ratio="16:9",
+        resolution="720p",
+    )
+
+    print("Step 1: Generating initial video...")
+    initial_response = await api.generate_video_async(google_video_config, initial_request)
+
+    assert initial_response.status == "completed"
+    assert initial_response.video is not None
+    print(f"  Initial video generated: {initial_response.request_id}")
+
+    # Step 2: Extend the video with a new prompt
+    extension_request = VideoGenerationRequest(
+        prompt="The butterfly takes flight and explores more flowers in the garden",
+        video=initial_response.video,
+        resolution="720p",
+    )
+
+    print("Step 2: Extending video...")
+    extended_response = await api.generate_video_async(google_video_config, extension_request)
+
+    assert isinstance(extended_response, VideoGenerationResponse)
+    assert extended_response.request_id is not None
+    assert extended_response.video is not None
+    assert extended_response.status == "completed"
+
+    if isinstance(extended_response.video, str):
+        video_type = "URL"
+        video_info = extended_response.video
+    else:
+        video_type = "bytes"
+        video_info = f"{len(extended_response.video['content'])} bytes"
+
+    print("✓ Extended video successfully")
+    print(f"  Extended video request ID: {extended_response.request_id}")
+    print(f"  Video type: {video_type}")
+    print(f"  Video info: {video_info}")
+
+
+@pytest.mark.e2e
+async def test_invalid_duration_returns_validation_error(google_video_config):
+    """Test that unsupported duration values return a ValidationError."""
+    request = VideoGenerationRequest(
+        prompt="A simple test video",
+        duration_seconds=15,
+        aspect_ratio="16:9",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        await api.generate_video_async(google_video_config, request)
+
+    assert exc_info.value.provider == "google"
+    print(f"✓ ValidationError raised as expected: {exc_info.value.message}")

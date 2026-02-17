@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -21,6 +22,18 @@ from tarash.tarash_gateway.providers.google import (
     GoogleProviderHandler,
     parse_veo3_operation,
 )
+
+
+
+class MockClientError(Exception):
+    """Mock Google API ClientError for testing error handling."""
+
+    def __init__(self, code, message, status):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.details = {"code": code, "message": message, "status": status}
+        self.status = status
 
 
 # ==================== Fixtures ====================
@@ -191,8 +204,6 @@ def test_validate_params_with_invalid_person_generation(handler, base_config):
         handler._validate_params(base_config, request)
 
 
-# ==================== Request Conversion Tests ====================
-
 
 def test_convert_request_with_minimal_fields(handler, base_config):
     """Test conversion with only prompt."""
@@ -211,6 +222,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
         prompt="A test video",
         duration_seconds=5,
         aspect_ratio="16:9",
+        resolution="1080p",
         number_of_videos=2,
         generate_audio=True,
         seed=42,
@@ -230,6 +242,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     config = result["config"]
     assert config.duration_seconds == 5
     assert config.aspect_ratio == "16:9"
+    assert config.resolution == "1080p"
     assert config.number_of_videos == 2
     assert config.generate_audio is True
     assert config.seed == 42
@@ -757,16 +770,6 @@ async def test_generate_video_async_handles_400_client_error(
     handler, base_config, base_request
 ):
     """Test async generation handles Google API 400 error and converts to ValidationError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(
         400,
         "dont_allow for personGeneration is currently not supported.",
@@ -801,16 +804,6 @@ async def test_generate_video_async_handles_500_client_error(
     handler, base_config, base_request
 ):
     """Test async generation handles Google API 500 error and converts to HTTPError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(500, "Internal server error", "INTERNAL_ERROR")
 
     mock_async_client = AsyncMock()
@@ -832,6 +825,38 @@ async def test_generate_video_async_handles_500_client_error(
             assert exc_info.value.provider == "google"
             assert exc_info.value.raw_response["status_code"] == 500
             assert exc_info.value.raw_response["error_type"] == "INTERNAL_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_handles_403_content_moderation_error(
+    handler, base_config, base_request
+):
+    """Test async generation handles Google API 403 error and converts to ContentModerationError."""
+    mock_error = MockClientError(
+        403,
+        "Content violates safety policies. Please modify your prompt.",
+        "PERMISSION_DENIED",
+    )
+
+    mock_async_client = AsyncMock()
+    mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
+
+    handler._async_client_cache.clear()
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
+        mock_instance = MagicMock()
+        mock_instance.aio = mock_async_client
+        mock_client_class.return_value = mock_instance
+
+        with patch(
+            "tarash.tarash_gateway.providers.google.ClientError", MockClientError
+        ):
+            with pytest.raises(ContentModerationError) as exc_info:
+                await handler.generate_video_async(base_config, base_request)
+
+            assert "Content violates safety policies" in str(exc_info.value)
+            assert exc_info.value.provider == "google"
+            assert exc_info.value.raw_response["status_code"] == 403
+            assert exc_info.value.raw_response["error_type"] == "PERMISSION_DENIED"
 
 
 # ==================== Sync Video Generation Tests ====================
@@ -933,16 +958,6 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
 def test_generate_video_handles_400_client_error(handler, base_config, base_request):
     """Test sync generation handles Google API 400 error and converts to ValidationError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(
         400,
         "dont_allow for personGeneration is currently not supported.",
@@ -973,16 +988,6 @@ def test_generate_video_handles_400_client_error(handler, base_config, base_requ
 
 def test_generate_video_handles_500_client_error(handler, base_config, base_request):
     """Test sync generation handles Google API 500 error and converts to HTTPError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(500, "Internal server error", "INTERNAL_ERROR")
 
     mock_sync_client = MagicMock()
@@ -1344,6 +1349,42 @@ def test_convert_request_with_multiple_first_frames_raises_error(handler, base_c
 
     with pytest.raises(ValidationError, match="only supports 1 reference/first_frame"):
         handler._convert_request(base_config, request)
+
+
+def test_convert_request_with_resolution_720p(handler, base_config):
+    """Test conversion with 720p resolution."""
+    request = VideoGenerationRequest(prompt="test", resolution="720p")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution == "720p"
+
+
+def test_convert_request_with_resolution_1080p(handler, base_config):
+    """Test conversion with 1080p resolution."""
+    request = VideoGenerationRequest(prompt="test", resolution="1080p")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution == "1080p"
+
+
+def test_convert_request_with_resolution_4k(handler, base_config):
+    """Test conversion with 4k resolution."""
+    request = VideoGenerationRequest(prompt="test", resolution="4k")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution == "4k"
+
+
+def test_convert_request_resolution_not_set(handler, base_config):
+    """Test that resolution is not included in config when not set."""
+    request = VideoGenerationRequest(prompt="test")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution is None
 
 
 def test_handle_error_with_httpx_timeout(handler, base_config):

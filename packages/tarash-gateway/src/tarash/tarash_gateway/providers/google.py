@@ -16,6 +16,7 @@ from typing_extensions import TypedDict
 
 from tarash.tarash_gateway.logging import ProviderLogger, log_error
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -264,6 +265,10 @@ class GoogleProviderHandler:
         # Aspect ratio
         if request.aspect_ratio is not None:
             config_params["aspect_ratio"] = request.aspect_ratio
+
+        # Resolution (720p, 1080p, 4k - Veo 3+ only)
+        if request.resolution is not None:
+            config_params["resolution"] = request.resolution
 
         # number_of_videos has default value of 1, always set if different from 1
         if request.number_of_videos != 1:
@@ -561,6 +566,16 @@ class GoogleProviderHandler:
             # Validation errors (400, 422)
             if error_code == 400 or error_code == 422:
                 return ValidationError(
+                    error_message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+
+            # Content moderation errors (403)
+            if error_code == 403:
+                return ContentModerationError(
                     error_message,
                     provider=config.provider,
                     model=config.model,
