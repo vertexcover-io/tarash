@@ -528,12 +528,19 @@ async def test_generate_video_async_success_with_progress_callbacks(
             base_config, base_request, on_progress=sync_callback
         )
 
+        mock_async_client.videos.create.assert_called_once()
+        call_kwargs = mock_async_client.videos.create.call_args.kwargs
+        assert call_kwargs["model"] == "sora-2"
+        assert call_kwargs["prompt"] == "Test prompt"
+
         assert result.request_id == "video-async-123"
         assert result.video == {
             "content": b"fake video content",
             "content_type": "video/mp4",
         }
         assert len(progress_calls) >= 1
+
+        mock_async_client.videos.create.reset_mock()
 
         # Test with async callback
         async_progress_calls = []
@@ -656,6 +663,11 @@ def test_generate_video_success_with_progress_callback(
         result = handler.generate_video(
             base_config, base_request, on_progress=progress_callback
         )
+
+    mock_sync_client.videos.create.assert_called_once()
+    call_kwargs = mock_sync_client.videos.create.call_args.kwargs
+    assert call_kwargs["model"] == "sora-2"
+    assert call_kwargs["prompt"] == "Test prompt"
 
     assert result.request_id == "video-sync-456"
     assert result.video == {

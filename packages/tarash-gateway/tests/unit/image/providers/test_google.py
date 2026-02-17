@@ -44,7 +44,7 @@ def base_config():
 def nano_banana_config():
     """Create Nano Banana config."""
     return ImageGenerationConfig(
-        model="gemini-2.5-flash-image-001",
+        model="gemini-2.5-flash-image",
         provider="google",
         api_key="test-api-key",
         timeout=120,

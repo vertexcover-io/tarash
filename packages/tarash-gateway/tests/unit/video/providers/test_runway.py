@@ -265,16 +265,76 @@ def test_convert_request_image_to_video_duration_range(handler):
         handler._convert_request(config, request)
 
 
-def test_convert_request_content_moderation(
+def test_convert_request_seed_not_for_text_to_video(
     handler, base_config, text_to_video_request
 ):
-    """Test content moderation parameter."""
+    """Test seed is NOT passed for text_to_video endpoint."""
+    text_to_video_request.seed = 42
+
+    endpoint, params = handler._convert_request(base_config, text_to_video_request)
+
+    # seed should NOT be passed for text_to_video
+    assert endpoint == "text_to_video"
+    assert "seed" not in params
+
+
+def test_convert_request_seed_for_image_to_video(handler):
+    """Test seed IS passed for image_to_video endpoint."""
+    config = VideoGenerationConfig(
+        model="gen4_turbo",
+        provider="runway",
+        api_key="test-api-key",
+        timeout=600,
+    )
+    request = VideoGenerationRequest(
+        prompt="A bunny hopping",
+        image_list=[{"type": "reference", "image": "https://example.com/image.jpg"}],
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        seed=42,
+    )
+
+    endpoint, params = handler._convert_request(config, request)
+
+    assert endpoint == "image_to_video"
+    assert "seed" in params
+    assert params["seed"] == 42
+
+
+def test_convert_request_content_moderation_not_for_text_to_video(
+    handler, base_config, text_to_video_request
+):
+    """Test content_moderation is NOT passed for text_to_video endpoint."""
     text_to_video_request.extra_params = {
         "content_moderation": {"public_figure_threshold": "low"}
     }
 
     endpoint, params = handler._convert_request(base_config, text_to_video_request)
 
+    # content_moderation should NOT be passed for text_to_video
+    assert endpoint == "text_to_video"
+    assert "content_moderation" not in params
+
+
+def test_convert_request_content_moderation_for_image_to_video(handler):
+    """Test content_moderation IS passed for image_to_video endpoint."""
+    config = VideoGenerationConfig(
+        model="gen4_turbo",
+        provider="runway",
+        api_key="test-api-key",
+        timeout=600,
+    )
+    request = VideoGenerationRequest(
+        prompt="A bunny hopping",
+        image_list=[{"type": "reference", "image": "https://example.com/image.jpg"}],
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        extra_params={"content_moderation": {"public_figure_threshold": "low"}},
+    )
+
+    endpoint, params = handler._convert_request(config, request)
+
+    assert endpoint == "image_to_video"
     assert "content_moderation" in params
     assert params["content_moderation"]["public_figure_threshold"] == "low"
 
@@ -383,6 +443,12 @@ async def test_generate_video_async_text_to_video(
 
     response = await handler.generate_video_async(base_config, text_to_video_request)
 
+    mock_async_client.text_to_video.create.assert_called_once()
+    call_kwargs = mock_async_client.text_to_video.create.call_args.kwargs
+    assert call_kwargs["prompt_text"] == "A bunny hopping in a meadow"
+    assert call_kwargs["ratio"] == "1280:720"
+    assert call_kwargs["duration"] == 4
+
     assert response.request_id == "test-task-id"
     assert response.video == "https://example.com/video.mp4"
     assert response.status == "completed"
@@ -421,6 +487,12 @@ def test_generate_video_sync_text_to_video(
     mock_sync_client.tasks.retrieve = MagicMock(return_value=mock_task)
 
     response = handler.generate_video(base_config, text_to_video_request)
+
+    mock_sync_client.text_to_video.create.assert_called_once()
+    call_kwargs = mock_sync_client.text_to_video.create.call_args.kwargs
+    assert call_kwargs["prompt_text"] == "A bunny hopping in a meadow"
+    assert call_kwargs["ratio"] == "1280:720"
+    assert call_kwargs["duration"] == 4
 
     assert response.request_id == "test-task-id"
     assert response.video == "https://example.com/video.mp4"
