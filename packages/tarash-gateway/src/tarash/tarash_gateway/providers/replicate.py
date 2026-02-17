@@ -70,10 +70,11 @@ _PROVIDER_NAME = "replicate"
 
 
 # Kling v2.1 field mappings (kwaivgi/kling-v2.1)
-# Input schema: prompt (required), image (optional), duration (5 or 10), aspect_ratio, negative_prompt
+# Input schema: prompt (required), start_image (required), duration (5 or 10), aspect_ratio, negative_prompt
+# Note: Replicate's Kling v2.1 only supports image-to-video (start_image is required)
 KLING_V21_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
-    "image": single_image_field_mapper(required=False, image_type="reference"),
+    "start_image": single_image_field_mapper(required=True, image_type="reference"),
     "duration": duration_field_mapper(
         field_type="int", allowed_values=[5, 10], provider="replicate", model="kling"
     ),
