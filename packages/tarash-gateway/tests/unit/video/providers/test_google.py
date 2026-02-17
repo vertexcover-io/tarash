@@ -24,7 +24,6 @@ from tarash.tarash_gateway.providers.google import (
 )
 
 
-
 class MockClientError(Exception):
     """Mock Google API ClientError for testing error handling."""
 
@@ -202,7 +201,6 @@ def test_validate_params_with_invalid_person_generation(handler, base_config):
 
     with pytest.raises(ValidationError):
         handler._validate_params(base_config, request)
-
 
 
 def test_convert_request_with_minimal_fields(handler, base_config):

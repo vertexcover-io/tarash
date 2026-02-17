@@ -369,7 +369,7 @@ async def test_video_generation_with_1080p_resolution(google_video_config):
     print(f"  Request ID: {response.request_id}")
     print(f"  Video type: {video_type}")
     print(f"  Video info: {video_info}")
-    print(f"  Requested resolution: 1080p")
+    print("  Requested resolution: 1080p")
 
 
 @pytest.mark.e2e
@@ -392,7 +392,9 @@ async def test_video_extension_from_previous_generation(google_video_config):
     )
 
     print("Step 1: Generating initial video...")
-    initial_response = await api.generate_video_async(google_video_config, initial_request)
+    initial_response = await api.generate_video_async(
+        google_video_config, initial_request
+    )
 
     assert initial_response.status == "completed"
     assert initial_response.video is not None
@@ -406,7 +408,9 @@ async def test_video_extension_from_previous_generation(google_video_config):
     )
 
     print("Step 2: Extending video...")
-    extended_response = await api.generate_video_async(google_video_config, extension_request)
+    extended_response = await api.generate_video_async(
+        google_video_config, extension_request
+    )
 
     assert isinstance(extended_response, VideoGenerationResponse)
     assert extended_response.request_id is not None
