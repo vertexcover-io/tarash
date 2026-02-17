@@ -181,7 +181,7 @@ def test_convert_request_with_duration(handler, base_config):
     request = VideoGenerationRequest(prompt="A test video", duration_seconds=8)
     result = handler._convert_request(base_config, request)
 
-    assert result["seconds"] == 8
+    assert result["seconds"] == "8"
 
 
 def test_convert_request_with_valid_sora2_durations(handler, base_config):
@@ -191,7 +191,7 @@ def test_convert_request_with_valid_sora2_durations(handler, base_config):
             prompt="A test video", duration_seconds=duration
         )
         result = handler._convert_request(base_config, request)
-        assert result["seconds"] == duration
+        assert result["seconds"] == str(duration)
 
 
 def test_convert_request_with_valid_sora2_pro_durations(handler):
@@ -207,7 +207,7 @@ def test_convert_request_with_valid_sora2_pro_durations(handler):
             prompt="A test video", duration_seconds=duration
         )
         result = handler._convert_request(config, request)
-        assert result["seconds"] == duration
+        assert result["seconds"] == str(duration)
 
 
 def test_convert_request_with_invalid_sora2_duration(handler, base_config):
@@ -270,7 +270,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
 
     assert result["model"] == "sora-2"
     assert result["prompt"] == "A test video"
-    assert result["seconds"] == 8
+    assert result["seconds"] == "8"
     assert result["size"] == "1280x720"
 
 
