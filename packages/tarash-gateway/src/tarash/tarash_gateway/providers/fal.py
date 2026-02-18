@@ -9,7 +9,7 @@ from fal_client import AsyncRequestHandle, SyncRequestHandle
 from fal_client.client import FalClientHTTPError
 
 import httpx
-from tarash.tarash_gateway.logging import ProviderLogger, log_error
+from tarash.tarash_gateway.logging import ProviderLogger, log_error, log_warning
 from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
     HTTPConnectionError,
@@ -151,6 +151,112 @@ KLING_O1_FIELD_MAPPERS: dict[str, FieldMapper] = {
     # Video-to-video/edit specific
     "video_url": video_url_field_mapper(required=False),
     "keep_audio": passthrough_field_mapper("keep_audio"),
+}
+
+# Kling Video V3 - Unified mapper for all V3 variants (Pro and Standard tiers)
+# Supports: text-to-video, image-to-video
+# Reference: https://fal.ai/models/fal-ai/kling-video/v3/*
+#
+# Key differences from O1:
+# - Duration supports "3" to "15" seconds (vs O1's "5", "10")
+# - Multi-prompt support for multi-shot videos (pass via extra_params)
+# - Shot type control: "customize" or "intelligent"
+# - Voice IDs for audio control (max 2 voices, reference as <<<voice_1>>>, <<<voice_2>>>)
+#
+# Usage for multi_prompt (multi-shot videos):
+#   extra_params={
+#       "multi_prompt": [
+#           {"prompt": "Scene 1 description", "duration": "5"},
+#           {"prompt": "Scene 2 description", "duration": "5"}
+#       ]
+#   }
+#
+# Usage for elements (character/object references):
+#   extra_params={
+#       "elements": [
+#           {
+#               "frontal_image_url": "url",
+#               "reference_image_urls": ["url1", "url2"],  # Optional
+#               "video_url": "url"  # Optional, for motion reference
+#           }
+#       ]
+#   }
+#   Reference in prompt as @Element1, @Element2, etc.
+
+
+def _kling_v3_prompt_converter(
+    request: VideoGenerationRequest, val: object
+) -> str | None:
+    """Convert prompt for Kling V3, excluding it when multi_prompt is used.
+
+    Kling V3 API requires either prompt OR multi_prompt, not both.
+    Returns None (excluded from API request) when multi_prompt is present.
+    Logs a warning if prompt is excluded.
+    """
+    has_multi_prompt = request.extra_params.get("multi_prompt") is not None
+    has_prompt = isinstance(val, str) and val
+
+    if has_multi_prompt and has_prompt:
+        log_warning(
+            "Kling V3: 'prompt' excluded because 'multi_prompt' is present. "
+            "These parameters are mutually exclusive.",
+            context={"provider": "fal", "model": "kling-v3"},
+        )
+        return None
+
+    if has_prompt:
+        return str(val)
+    return None
+
+
+KLING_V3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core field (text-to-video)
+    # Either prompt or multi_prompt is required (mutually exclusive)
+    # Uses custom converter to exclude prompt when multi_prompt is present
+    "prompt": FieldMapper(
+        source_field="prompt",
+        converter=_kling_v3_prompt_converter,
+        required=False,
+    ),
+    # Duration: V3 supports 3-15 seconds (more granular than O1)
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=[
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+        ],
+        provider="fal",
+        model="kling-v3",
+        add_suffix=False,  # V3 uses "5", "10" without "s" suffix
+    ),
+    # Video configuration
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "cfg_scale": extra_params_field_mapper("cfg_scale"),
+    # Audio generation
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    "voice_ids": extra_params_field_mapper("voice_ids"),
+    # Multi-shot and shot control
+    "multi_prompt": extra_params_field_mapper("multi_prompt"),
+    "shot_type": extra_params_field_mapper("shot_type"),
+    # Image-to-video: start/end frame support
+    "start_image_url": single_image_field_mapper(
+        required=False, image_type="first_frame"
+    ),
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    # Elements support for character/object references (passed via extra_params)
+    "elements": extra_params_field_mapper("elements"),
 }
 
 # Veo 3 and Veo 3.1 models field mappings
@@ -363,6 +469,10 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/kling-video/o1": KLING_O1_FIELD_MAPPERS,
     # Kling Video v2.6 - supports both image-to-video and motion-control
     "fal-ai/kling-video/v2.6": KLING_VIDEO_V26_FIELD_MAPPERS,
+    # Kling Video V3 - Pro and Standard tiers for text-to-video and image-to-video
+    # Supports: fal-ai/kling-video/v3/pro/text-to-video, fal-ai/kling-video/v3/pro/image-to-video
+    #           fal-ai/kling-video/v3/standard/text-to-video, fal-ai/kling-video/v3/standard/image-to-video
+    "fal-ai/kling-video/v3": KLING_V3_FIELD_MAPPERS,
     # Veo 3.1 - prefix must be registered before veo3 for longest-match precedence
     # Supports all variants: text-to-video, image-to-video, first-last-frame-to-video, extend-video
     "fal-ai/veo3.1": VEO3_FIELD_MAPPERS,
