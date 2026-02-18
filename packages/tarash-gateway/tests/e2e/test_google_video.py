@@ -31,21 +31,18 @@ from tarash.tarash_gateway.models import (
 # ==================== Fixtures ====================
 
 
-def _get_vertex_ai_provider_config() -> dict[str, str]:
+@pytest.fixture(scope="module")
+def vertex_ai_provider_config():
     """Build Vertex AI provider config from environment variables.
 
-    Returns:
-        Provider config dict with project, location, and optional credentials_path.
-
-    Raises:
-        pytest.skip: If GOOGLE_CLOUD_PROJECT is not set.
+    Requires environment variables:
+    - GOOGLE_CLOUD_PROJECT: Your GCP project ID (required)
+    - GOOGLE_CLOUD_LOCATION: Region (optional, defaults to us-central1)
+    - GOOGLE_APPLICATION_CREDENTIALS: Path to service account JSON (optional)
     """
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
     if not project:
-        pytest.skip(
-            "GOOGLE_CLOUD_PROJECT not set. "
-            "Google Veo video generation requires Vertex AI authentication."
-        )
+        pytest.skip("GOOGLE_CLOUD_PROJECT not set for Vertex AI")
 
     provider_config: dict[str, str] = {
         "project": project,
@@ -60,16 +57,11 @@ def _get_vertex_ai_provider_config() -> dict[str, str]:
 
 
 @pytest.fixture(scope="module")
-def google_video_config():
+def google_video_config(vertex_ai_provider_config):
     """Create Google Veo video generation configuration using Vertex AI.
 
     IMPORTANT: Google Veo does NOT support API key authentication.
     It requires Vertex AI with OAuth2/service account credentials.
-
-    Requires environment variables:
-    - GOOGLE_CLOUD_PROJECT: Your GCP project ID (required)
-    - GOOGLE_CLOUD_LOCATION: Region (optional, defaults to us-central1)
-    - GOOGLE_APPLICATION_CREDENTIALS: Path to service account JSON (optional)
     """
     return VideoGenerationConfig(
         model="veo-3.0-generate-preview",
@@ -78,7 +70,7 @@ def google_video_config():
         timeout=600,
         max_poll_attempts=120,
         poll_interval=5,
-        provider_config=_get_vertex_ai_provider_config(),
+        provider_config=vertex_ai_provider_config,
     )
 
 
