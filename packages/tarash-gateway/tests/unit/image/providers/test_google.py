@@ -226,7 +226,6 @@ def test_convert_image_response_with_urls(handler, base_config, base_request):
 
     result = handler._convert_image_response(
         base_config,
-        base_request,
         request_id,
         mock_response,
     )

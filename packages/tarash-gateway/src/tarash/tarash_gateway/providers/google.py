@@ -11,6 +11,7 @@ import time
 import traceback
 import uuid
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
+import os
 
 import httpx
 from google.genai.types import GenerateVideosOperation, VideoGenerationReferenceType
@@ -59,7 +60,9 @@ try:
     from google.genai.errors import ClientError
     from google.genai.types import (
         GenerateContentConfig,
+        GenerateContentResponse,
         GenerateImagesConfig,
+        GenerateImagesResponse,
         GenerateVideosConfig,
         ImageConfig,
     )
@@ -80,7 +83,9 @@ if TYPE_CHECKING:
     from google.genai.errors import ClientError
     from google.genai.types import (
         GenerateContentConfig,
+        GenerateContentResponse,
         GenerateImagesConfig,
+        GenerateImagesResponse,
         GenerateVideosConfig,
         ImageConfig,
     )
@@ -133,6 +138,15 @@ def parse_veo3_operation(operation: GenerateVideosOperation) -> VideoGenerationU
     )
 
 
+def _bytes_to_data_uri(
+    img_bytes: bytes | bytearray | str, mime_type: str = "image/png"
+) -> str:
+    """Encode image bytes as a base64 data URI."""
+    if isinstance(img_bytes, str):
+        img_bytes = img_bytes.encode()
+    return f"data:{mime_type};base64,{base64.b64encode(img_bytes).decode()}"
+
+
 def _is_gemini_image_model(model: str) -> bool:
     """Check if model uses generate_content API (Gemini) vs generate_images API (Imagen).
 
@@ -179,9 +193,9 @@ class GoogleProviderHandler:
             return f"{config.api_key}:{client_type}"
 
         # Vertex AI mode - include provider_config in cache key
-        pc = config.provider_config
+        pc = config.provider_config or {}
         project = pc.get("project", "")
-        location = pc.get("location", "us-central1")
+        location = pc.get("location")
         creds_path = pc.get("credentials_path", "")
 
         return f"vertex:{project}:{location}:{creds_path}:{client_type}"
@@ -251,9 +265,10 @@ class GoogleProviderHandler:
             return Client(api_key=config.api_key)
 
         # Vertex AI mode - get config from provider_config
-        pc = config.provider_config
+
+        pc = config.provider_config or {}
         project = pc.get("project")
-        location = pc.get("location", "us-central1")
+        location = pc.get("location")
         credentials_path = pc.get("credentials_path")
 
         if not project:
@@ -265,7 +280,23 @@ class GoogleProviderHandler:
                 model=config.model,
             )
 
+        if not location:
+            raise ValidationError(
+                "Vertex AI requires 'location' in provider_config. "
+                "Set provider_config={'project': '...', 'location': 'us-central1'}, "
+                "or provide api_key for Gemini Developer API.",
+                provider=config.provider,
+                model=config.model,
+            )
+
         credentials = None
+        if credentials_path and not os.path.isfile(credentials_path):
+            raise ValidationError(
+                f"Credentials file not found: {credentials_path}",
+                provider=config.provider,
+                model=config.model,
+            )
+
         if credentials_path:
             credentials = service_account.Credentials.from_service_account_file(
                 credentials_path,
@@ -470,7 +501,6 @@ class GoogleProviderHandler:
     def _convert_response(
         self,
         config: VideoGenerationConfig,
-        _request: VideoGenerationRequest,
         request_id: str,
         operation: GenerateVideosOperation,
     ) -> VideoGenerationResponse:
@@ -479,7 +509,6 @@ class GoogleProviderHandler:
 
         Args:
             config: Provider configuration
-            _request: Original video generation request (unused)
             request_id: Our request ID (operation name)
             operation: Completed operation from google-genai
 
@@ -561,7 +590,6 @@ class GoogleProviderHandler:
     def _handle_error(
         self,
         config: VideoGenerationConfig,
-        _request: VideoGenerationRequest,
         request_id: str,
         ex: Exception,
     ) -> TarashException:
@@ -722,7 +750,6 @@ class GoogleProviderHandler:
     def _convert_image_response(
         self,
         config: ImageGenerationConfig,
-        _request: ImageGenerationRequest,
         request_id: str,
         genai_response: AnyDict,
     ) -> ImageGenerationResponse:
@@ -730,7 +757,6 @@ class GoogleProviderHandler:
 
         Args:
             config: Image generation configuration
-            _request: Original image generation request (unused)
             request_id: Our request ID
             genai_response: Response from google-genai with generated_images
 
@@ -743,28 +769,20 @@ class GoogleProviderHandler:
         image_urls: list[str] = []
 
         for gen_img in generated_images:
-            # Each GeneratedImage has .image attribute with .gcs_uri or .image_bytes
-            if hasattr(gen_img, "image"):
-                img = gen_img.image
-                if hasattr(img, "gcs_uri") and img.gcs_uri:
-                    image_urls.append(str(img.gcs_uri))
-                elif hasattr(img, "image_bytes"):
-                    # Convert bytes to base64 data URI
-                    img_bytes = img.image_bytes
-                    # Ensure we have actual bytes, not a mock or other object
-                    if isinstance(img_bytes, (bytes, bytearray)):
-                        mime_type = (
-                            getattr(img, "mime_type", "image/png") or "image/png"
-                        )
-                        b64_data = base64.b64encode(img_bytes).decode()
-                        image_urls.append(f"data:{mime_type};base64,{b64_data}")
-                    elif isinstance(img_bytes, str):
-                        img_bytes_encoded = img_bytes.encode()
-                        mime_type = (
-                            getattr(img, "mime_type", "image/png") or "image/png"
-                        )
-                        b64_data = base64.b64encode(img_bytes_encoded).decode()
-                        image_urls.append(f"data:{mime_type};base64,{b64_data}")
+            img = getattr(gen_img, "image", None)
+            if img is None:
+                continue
+
+            if getattr(img, "gcs_uri", None):
+                image_urls.append(str(img.gcs_uri))
+                continue
+
+            img_bytes = getattr(img, "image_bytes", None)
+            if not isinstance(img_bytes, (bytes, bytearray, str)):
+                continue
+
+            mime_type = getattr(img, "mime_type", None) or "image/png"
+            image_urls.append(_bytes_to_data_uri(img_bytes, mime_type))
 
         return ImageGenerationResponse(
             request_id=request_id,
@@ -782,7 +800,6 @@ class GoogleProviderHandler:
     def _convert_gemini_image_response(
         self,
         config: ImageGenerationConfig,
-        _request: ImageGenerationRequest,
         request_id: str,
         response: Any,
     ) -> ImageGenerationResponse:
@@ -792,7 +809,6 @@ class GoogleProviderHandler:
 
         Args:
             config: Image generation configuration
-            _request: Original image generation request (unused)
             request_id: Our request ID
             response: Response from google-genai generate_content
 
@@ -801,24 +817,17 @@ class GoogleProviderHandler:
         """
         images: list[str] = []
 
-        # Gemini returns parts with inline_data containing image bytes
-        if hasattr(response, "parts"):
-            for part in response.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
-                    # Get image bytes and mime type
-                    img_data = part.inline_data
-                    img_bytes = getattr(img_data, "data", None)
-                    mime_type = (
-                        getattr(img_data, "mime_type", "image/png") or "image/png"
-                    )
+        for part in getattr(response, "parts", []) or []:
+            inline_data = getattr(part, "inline_data", None)
+            if not inline_data:
+                continue
 
-                    # Ensure we have actual bytes, not a mock or other object
-                    if isinstance(img_bytes, (bytes, bytearray)):
-                        b64_data = base64.b64encode(img_bytes).decode()
-                        images.append(f"data:{mime_type};base64,{b64_data}")
-                    elif isinstance(img_bytes, str):
-                        b64_data = base64.b64encode(img_bytes.encode()).decode()
-                        images.append(f"data:{mime_type};base64,{b64_data}")
+            img_bytes = getattr(inline_data, "data", None)
+            if not isinstance(img_bytes, (bytes, bytearray, str)):
+                continue
+
+            mime_type = getattr(inline_data, "mime_type", None) or "image/png"
+            images.append(_bytes_to_data_uri(img_bytes, mime_type))
 
         # Try model_dump for raw_response, fallback to string representation
         raw_response: AnyDict
@@ -840,6 +849,64 @@ class GoogleProviderHandler:
             },
         )
 
+    # ==================== Image Generation Helpers ====================
+
+    def _build_gemini_content_kwargs(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+    ) -> AnyDict:
+        """Build kwargs for client.models.generate_content (Gemini image models)."""
+        api_params = self._convert_image_request(config, request)
+
+        image_config_params: AnyDict = {}
+        if api_params.get("aspect_ratio"):
+            image_config_params["aspect_ratio"] = api_params["aspect_ratio"]
+
+        return {
+            "model": config.model,
+            "contents": api_params.get("prompt", request.prompt),
+            "config": GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=ImageConfig(**image_config_params)
+                if image_config_params
+                else None,
+            ),
+        }
+
+    def _build_imagen_kwargs(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+    ) -> AnyDict:
+        """Build kwargs for client.models.generate_images (Imagen models)."""
+        api_params = self._convert_image_request(config, request)
+        prompt = api_params.pop("prompt", request.prompt)
+
+        return {
+            "model": config.model,
+            "prompt": prompt,
+            "config": GenerateImagesConfig(**api_params) if api_params else None,
+        }
+
+    def _handle_image_error(
+        self,
+        config: ImageGenerationConfig,
+        request: ImageGenerationRequest,
+        request_id: str,
+        ex: Exception,
+    ) -> TarashException:
+        """Adapt image config to video error handler."""
+        video_config = VideoGenerationConfig(
+            model=config.model,
+            provider=config.provider,
+            api_key=config.api_key,
+            base_url=config.base_url,
+            timeout=config.timeout,
+            provider_config=config.provider_config,
+        )
+        return self._handle_error(video_config, request_id, ex)
+
     # ==================== Image Generation Methods ====================
 
     @handle_video_generation_errors
@@ -850,10 +917,6 @@ class GoogleProviderHandler:
         on_progress: ImageProgressCallback | None = None,
     ) -> ImageGenerationResponse:
         """Generate image asynchronously via Google GenAI.
-
-        Supports two APIs based on model type:
-        - Gemini models (gemini-*-image-*): Uses generate_content API
-        - Imagen models (imagen-*): Uses generate_images API
 
         Args:
             config: Image generation configuration
@@ -872,57 +935,22 @@ class GoogleProviderHandler:
 
         try:
             if _is_gemini_image_model(config.model):
-                # Use generate_content API for Gemini models
-                api_params = self._convert_image_request(config, request)
-
-                # Build ImageConfig
-                image_config_params: AnyDict = {}
-                if api_params.get("aspect_ratio"):
-                    image_config_params["aspect_ratio"] = api_params["aspect_ratio"]
-
-                response = await client.models.generate_content(
-                    model=config.model,
-                    contents=api_params.get("prompt", request.prompt),
-                    config=GenerateContentConfig(
-                        response_modalities=["IMAGE"],
-                        image_config=ImageConfig(**image_config_params)
-                        if image_config_params
-                        else None,
-                    ),
+                kwargs = self._build_gemini_content_kwargs(config, request)
+                gemini_response: GenerateContentResponse = (
+                    await client.models.generate_content(**kwargs)
                 )
-
-                logger.debug(
-                    "Gemini image generation complete",
-                    {"response": response},
-                    redact=True,
-                )
-
                 result = self._convert_gemini_image_response(
-                    config, request, request_id, response
+                    config, request_id, gemini_response
                 )
             else:
-                # Use generate_images API for Imagen models
-                api_params = self._convert_image_request(config, request)
-                prompt = api_params.pop("prompt", request.prompt)
-
-                # Build GenerateImagesConfig from remaining params
-                response = await client.models.generate_images(
-                    model=config.model,
-                    prompt=prompt,
-                    config=GenerateImagesConfig(**api_params) if api_params else None,
+                kwargs = self._build_imagen_kwargs(config, request)
+                imagen_response: GenerateImagesResponse = (
+                    await client.models.generate_images(**kwargs)
                 )
-
-                logger.debug(
-                    "Imagen generation complete",
-                    {"response": response},
-                    redact=True,
-                )
-
                 result = self._convert_image_response(
                     config,
-                    request,
                     request_id,
-                    {"generated_images": response.generated_images},
+                    {"generated_images": imagen_response.generated_images},
                 )
 
             logger.info(
@@ -934,19 +962,7 @@ class GoogleProviderHandler:
             return result
 
         except Exception as ex:
-            # Adapt error handling for image config
-            video_config = VideoGenerationConfig(
-                model=config.model,
-                provider=config.provider,
-                api_key=config.api_key,
-                base_url=config.base_url,
-                timeout=config.timeout,
-                provider_config=config.provider_config,
-            )
-            video_request = VideoGenerationRequest(prompt=request.prompt)
-            raise self._handle_error(
-                video_config, video_request, request_id, ex
-            ) from ex
+            raise self._handle_image_error(config, request, request_id, ex) from ex
 
     @handle_video_generation_errors
     def generate_image(
@@ -956,10 +972,6 @@ class GoogleProviderHandler:
         on_progress: SyncImageProgressCallback | None = None,
     ) -> ImageGenerationResponse:
         """Generate image synchronously via Google GenAI.
-
-        Supports two APIs based on model type:
-        - Gemini models (gemini-*-image-*): Uses generate_content API
-        - Imagen models (imagen-*): Uses generate_images API
 
         Args:
             config: Image generation configuration
@@ -978,57 +990,22 @@ class GoogleProviderHandler:
 
         try:
             if _is_gemini_image_model(config.model):
-                # Use generate_content API for Gemini models
-                api_params = self._convert_image_request(config, request)
-
-                # Build ImageConfig
-                image_config_params: AnyDict = {}
-                if api_params.get("aspect_ratio"):
-                    image_config_params["aspect_ratio"] = api_params["aspect_ratio"]
-
-                response = client.models.generate_content(
-                    model=config.model,
-                    contents=api_params.get("prompt", request.prompt),
-                    config=GenerateContentConfig(
-                        response_modalities=["IMAGE"],
-                        image_config=ImageConfig(**image_config_params)
-                        if image_config_params
-                        else None,
-                    ),
+                kwargs = self._build_gemini_content_kwargs(config, request)
+                gemini_response: GenerateContentResponse = (
+                    client.models.generate_content(**kwargs)
                 )
-
-                logger.debug(
-                    "Gemini image generation complete",
-                    {"response": response},
-                    redact=True,
-                )
-
                 result = self._convert_gemini_image_response(
-                    config, request, request_id, response
+                    config, request_id, gemini_response
                 )
             else:
-                # Use generate_images API for Imagen models
-                api_params = self._convert_image_request(config, request)
-                prompt = api_params.pop("prompt", request.prompt)
-
-                # Build GenerateImagesConfig from remaining params
-                response = client.models.generate_images(
-                    model=config.model,
-                    prompt=prompt,
-                    config=GenerateImagesConfig(**api_params) if api_params else None,
+                kwargs = self._build_imagen_kwargs(config, request)
+                imagen_response: GenerateImagesResponse = client.models.generate_images(
+                    **kwargs
                 )
-
-                logger.debug(
-                    "Imagen generation complete",
-                    {"response": response},
-                    redact=True,
-                )
-
                 result = self._convert_image_response(
                     config,
-                    request,
                     request_id,
-                    {"generated_images": response.generated_images},
+                    {"generated_images": imagen_response.generated_images},
                 )
 
             logger.info(
@@ -1040,19 +1017,7 @@ class GoogleProviderHandler:
             return result
 
         except Exception as ex:
-            # Adapt error handling for image config
-            video_config = VideoGenerationConfig(
-                model=config.model,
-                provider=config.provider,
-                api_key=config.api_key,
-                base_url=config.base_url,
-                timeout=config.timeout,
-                provider_config=config.provider_config,
-            )
-            video_request = VideoGenerationRequest(prompt=request.prompt)
-            raise self._handle_error(
-                video_config, video_request, request_id, ex
-            ) from ex
+            raise self._handle_image_error(config, request, request_id, ex) from ex
 
     # ==================== Video Generation Methods ====================
 
@@ -1142,7 +1107,7 @@ class GoogleProviderHandler:
             )
 
             # Convert final response
-            response = self._convert_response(config, request, request_id, operation)
+            response = self._convert_response(config, request_id, operation)
 
             logger.info(
                 "Final generated response",
@@ -1153,7 +1118,7 @@ class GoogleProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex) from ex
+            raise self._handle_error(config, request_id, ex) from ex
 
     @handle_video_generation_errors
     def generate_video(
@@ -1239,7 +1204,7 @@ class GoogleProviderHandler:
             )
 
             # Convert final response
-            response = self._convert_response(config, request, request_id, operation)
+            response = self._convert_response(config, request_id, operation)
 
             logger.info(
                 "Final generated response",
@@ -1250,7 +1215,7 @@ class GoogleProviderHandler:
             return response
 
         except Exception as ex:
-            raise self._handle_error(config, request, request_id, ex) from ex
+            raise self._handle_error(config, request_id, ex) from ex
 
 
 # ==================== Image Generation Field Mappings ====================

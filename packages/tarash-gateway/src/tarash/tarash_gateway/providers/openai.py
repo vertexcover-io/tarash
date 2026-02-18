@@ -830,6 +830,7 @@ class OpenAIProviderHandler:
         last_logged_progress = -1
         while poll_attempts < config.max_poll_attempts:
             # Log status updates
+            start = time.time()
             last_logged_progress = self._log_poll_status(
                 logger,
                 video,
@@ -849,7 +850,6 @@ class OpenAIProviderHandler:
             if video.status == "completed" or video.status == "failed":
                 break
 
-            start = time.time()
             end_time = time.time()
             if end_time - start < config.poll_interval:
                 await asyncio.sleep(config.poll_interval - (end_time - start))

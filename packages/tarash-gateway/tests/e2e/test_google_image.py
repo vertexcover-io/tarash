@@ -21,8 +21,8 @@ from tarash.tarash_gateway.models import (
 
 
 @pytest.fixture(scope="module")
-def vertex_ai_image_config():
-    """Create Google image generation config using Vertex AI.
+def vertex_ai_provider_config():
+    """Build Vertex AI provider_config from environment variables.
 
     Requires environment variables:
     - GOOGLE_CLOUD_PROJECT
@@ -47,12 +47,39 @@ def vertex_ai_image_config():
     return provider_config
 
 
+@pytest.fixture
+def vertex_ai_image_config_factory(vertex_ai_provider_config):
+    """Factory fixture to create ImageGenerationConfig for Vertex AI.
+
+    Usage:
+        config = vertex_ai_image_config_factory("imagen-3.0-generate-001")
+        config = vertex_ai_image_config_factory(
+            model="gemini-2.5-flash-image",
+            timeout=240
+        )
+    """
+
+    def _create_config(
+        model: str = "imagen-3.0-generate-001",
+        timeout: int = 120,
+    ) -> ImageGenerationConfig:
+        return ImageGenerationConfig(
+            model=model,
+            provider="google",
+            api_key=None,  # Use Vertex AI via provider_config
+            timeout=timeout,
+            provider_config=vertex_ai_provider_config,
+        )
+
+    return _create_config
+
+
 # ==================== E2E Tests ====================
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_imagen3_text_to_image(vertex_ai_image_config):
+async def test_imagen3_text_to_image(vertex_ai_image_config_factory):
     """
     Test Imagen 3 text-to-image generation.
 
@@ -61,13 +88,7 @@ async def test_imagen3_text_to_image(vertex_ai_image_config):
     - Async API
     - Response structure validation
     """
-    config = ImageGenerationConfig(
-        model="imagen-3.0-generate-001",
-        provider="google",
-        api_key=None,  # Vertex AI uses provider_config
-        timeout=120,
-        provider_config=vertex_ai_image_config,
-    )
+    config = vertex_ai_image_config_factory("imagen-3.0-generate-001")
 
     request = ImageGenerationRequest(
         prompt="A serene mountain landscape at sunset with snow-capped peaks",
@@ -98,7 +119,7 @@ async def test_imagen3_text_to_image(vertex_ai_image_config):
 
 
 @pytest.mark.e2e
-def test_imagen3_sync_generation(vertex_ai_image_config):
+def test_imagen3_sync_generation(vertex_ai_image_config_factory):
     """
     Test Imagen 3 synchronous image generation.
 
@@ -106,13 +127,7 @@ def test_imagen3_sync_generation(vertex_ai_image_config):
     - Sync API for image generation
     - Basic prompt
     """
-    config = ImageGenerationConfig(
-        model="imagen-3.0-generate-001",
-        provider="google",
-        api_key=None,  # Vertex AI uses provider_config
-        timeout=120,
-        provider_config=vertex_ai_image_config,
-    )
+    config = vertex_ai_image_config_factory("imagen-3.0-generate-001")
 
     request = ImageGenerationRequest(
         prompt="A futuristic city with flying cars and neon lights",
@@ -134,7 +149,7 @@ def test_imagen3_sync_generation(vertex_ai_image_config):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_imagen3_with_multiple_images(vertex_ai_image_config):
+async def test_imagen3_with_multiple_images(vertex_ai_image_config_factory):
     """
     Test Imagen 3 generating multiple images.
 
@@ -142,13 +157,7 @@ async def test_imagen3_with_multiple_images(vertex_ai_image_config):
     - number_of_images parameter (via n)
     - Multiple image generation
     """
-    config = ImageGenerationConfig(
-        model="imagen-3.0-generate-001",
-        provider="google",
-        api_key=None,  # Vertex AI uses provider_config
-        timeout=120,
-        provider_config=vertex_ai_image_config,
-    )
+    config = vertex_ai_image_config_factory("imagen-3.0-generate-001")
 
     request = ImageGenerationRequest(
         prompt="A cute robot with friendly eyes",
@@ -173,7 +182,7 @@ async def test_imagen3_with_multiple_images(vertex_ai_image_config):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_nano_banana_text_to_image(vertex_ai_image_config):
+async def test_nano_banana_text_to_image(vertex_ai_image_config_factory):
     """
     Test Gemini 2.5 Flash Image (Nano Banana) text-to-image generation.
 
@@ -181,13 +190,7 @@ async def test_nano_banana_text_to_image(vertex_ai_image_config):
     - Nano Banana model (fast, efficient)
     - Basic text-to-image generation
     """
-    config = ImageGenerationConfig(
-        model="gemini-2.5-flash-image",
-        provider="google",
-        api_key=None,  # Vertex AI uses provider_config
-        timeout=120,
-        provider_config=vertex_ai_image_config,
-    )
+    config = vertex_ai_image_config_factory("gemini-2.5-flash-image")
 
     request = ImageGenerationRequest(
         prompt="A cartoon-style illustration of a happy banana character",
