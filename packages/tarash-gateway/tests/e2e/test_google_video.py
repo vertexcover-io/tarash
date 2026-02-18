@@ -291,8 +291,6 @@ async def test_video_extension_with_demo_video(google_video_config, gcs_output_b
     with urlopen(demo_video_url) as response:
         video_bytes = response.read()
 
-    print(f"Downloaded video: {len(video_bytes)} bytes")
-
     output_gcs_uri = (
         f"gs://{gcs_output_bucket}/test-outputs/extended-{uuid.uuid4()}.mp4"
     )
