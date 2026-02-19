@@ -1226,6 +1226,9 @@ dependencies = [
 dev = [
     { name = "ipython" },
     { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "ruff" },
 ]
 
@@ -1239,6 +1242,9 @@ requires-dist = [
 dev = [
     { name = "ipython", specifier = ">=9.8.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.14.10" },
 ]
 

@@ -240,11 +240,6 @@ def test_parse_replicate_status_with_progress():
 # ==================== Initialization Tests ====================
 
 
-def test_init_creates_empty_cache(handler):
-    """Test that handler initializes with empty client cache."""
-    assert handler._sync_client_cache == {}
-
-
 def test_init_raises_import_error_without_replicate():
     """Test that ImportError is raised when replicate is not installed."""
     with patch(
@@ -253,49 +248,6 @@ def test_init_raises_import_error_without_replicate():
     ):
         with pytest.raises(ImportError, match="replicate is required"):
             ReplicateProviderHandler()
-
-
-# ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_client(handler, base_config, mock_replicate):
-    """Test client creation and caching."""
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config)
-    client2 = handler._get_client(base_config)
-
-    assert client1 is client2  # Same instance (cached)
-
-
-def test_get_client_creates_different_clients_for_different_keys(handler):
-    """Test different clients for different API keys."""
-    handler._sync_client_cache.clear()
-
-    mock_client1 = MagicMock()
-    mock_client2 = MagicMock()
-
-    config1 = VideoGenerationConfig(
-        model="kwaivgi/kling-v2.1",
-        provider="replicate",
-        api_key="key1",
-        timeout=600,
-    )
-    config2 = VideoGenerationConfig(
-        model="kwaivgi/kling-v2.1",
-        provider="replicate",
-        api_key="key2",
-        timeout=600,
-    )
-
-    with patch(
-        "tarash.tarash_gateway.providers.replicate.Replicate",
-        side_effect=[mock_client1, mock_client2],
-    ):
-        client1 = handler._get_client(config1)
-        client2 = handler._get_client(config2)
-
-        assert client1 is not client2
 
 
 # ==================== Request Conversion Tests ====================
@@ -608,7 +560,6 @@ def test_generate_video_success_without_progress(handler, base_config, base_requ
         "tarash.tarash_gateway.providers.replicate.Replicate",
         return_value=mock_client,
     ):
-        handler._sync_client_cache.clear()
         result = handler.generate_video(base_config, base_request)
 
         assert result.video == "https://example.com/video.mp4"
@@ -655,8 +606,6 @@ def test_generate_video_success_with_progress_callback(
         mock_prediction_3,  # Second poll: succeeded
     ]
 
-    handler._sync_client_cache.clear()
-
     progress_calls = []
 
     def progress_callback(update):
@@ -692,8 +641,6 @@ def test_generate_video_handles_failure(
     # v2.0.0 API: predictions.get returns the failed prediction
     mock_replicate.predictions.get.return_value = mock_prediction
 
-    handler._sync_client_cache.clear()
-
     with pytest.raises(GenerationFailedError, match="Model crashed"):
         handler.generate_video(base_config, base_request, on_progress=lambda x: None)
 
@@ -719,8 +666,6 @@ def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
     mock_replicate.predictions.create.return_value = mock_prediction
     # v2.0.0 API: predictions.get keeps returning processing status
     mock_replicate.predictions.get.return_value = mock_prediction
-
-    handler._sync_client_cache.clear()
 
     with patch("time.sleep"):
         with pytest.raises(TimeoutError, match="timed out"):

@@ -80,44 +80,7 @@ def base_request():
     return VideoGenerationRequest(prompt="Test prompt")
 
 
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches."""
-    assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
-
-
 # ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_sync_client(
-    handler, base_config, mock_sync_client
-):
-    """Test sync client creation and caching."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_sync_client
-
-
-def test_get_client_creates_and_caches_async_client(
-    handler, base_config, mock_async_client
-):
-    """Test async client creation and caching."""
-    # Clear cache first
-    handler._async_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "async")
-    client2 = handler._get_client(base_config, "async")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_async_client
 
 
 @pytest.mark.parametrize(
@@ -133,9 +96,6 @@ def test_get_client_creates_different_clients_for_different_configs(
     handler, api_key, base_url
 ):
     """Test different clients for different API keys and base_urls."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
     mock_client1 = MagicMock()
     mock_client2 = MagicMock()
 
@@ -650,7 +610,6 @@ async def test_generate_video_async_success_with_progress_callbacks(
     mock_async_client.operations.get = AsyncMock(return_value=mock_completed_operation)
 
     # Clear cache and patch
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -687,7 +646,6 @@ async def test_generate_video_async_success_with_progress_callbacks(
             async_progress_calls.append(update)
 
         # Reset operation state
-        handler._async_client_cache.clear()
         mock_operation.done = False
 
         with patch(
@@ -739,7 +697,6 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
         poll_interval=1,
     )
 
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -759,7 +716,6 @@ async def test_generate_video_async_wraps_unknown_exceptions(
         side_effect=RuntimeError("Unexpected error")
     )
 
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -783,7 +739,6 @@ async def test_generate_video_async_handles_400_client_error(
     mock_async_client = AsyncMock()
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -813,7 +768,6 @@ async def test_generate_video_async_handles_500_client_error(
     mock_async_client = AsyncMock()
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -845,7 +799,6 @@ async def test_generate_video_async_handles_403_content_moderation_error(
     mock_async_client = AsyncMock()
     mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
 
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -905,7 +858,6 @@ def test_generate_video_success_with_progress_callback(
         progress_calls.append(update)
 
     # Clear cache and patch
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -934,7 +886,6 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
     mock_sync_client = MagicMock()
     mock_sync_client.models.generate_videos.side_effect = RuntimeError("Server error")
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -961,7 +912,6 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
         poll_interval=1,
     )
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -981,7 +931,6 @@ def test_generate_video_handles_400_client_error(handler, base_config, base_requ
     mock_sync_client = MagicMock()
     mock_sync_client.models.generate_videos.side_effect = mock_error
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -1007,7 +956,6 @@ def test_generate_video_handles_500_client_error(handler, base_config, base_requ
     mock_sync_client = MagicMock()
     mock_sync_client.models.generate_videos.side_effect = mock_error
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -1168,7 +1116,6 @@ def test_get_client_with_vertex_ai_provider_config():
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        handler._async_client_cache.clear()
 
         with patch(
             "tarash.tarash_gateway.providers.google.Client", return_value=mock_client
@@ -1195,7 +1142,6 @@ def test_get_client_vertex_ai_missing_project_in_provider_config_raises_error():
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        handler._sync_client_cache.clear()
 
         with pytest.raises(ValidationError) as exc_info:
             handler._get_client(config, "sync")
@@ -1219,7 +1165,6 @@ def test_get_client_vertex_ai_requires_location():
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        handler._sync_client_cache.clear()
 
         with pytest.raises(ValidationError, match="location.*in provider_config"):
             handler._get_client(config, "sync")
@@ -1242,7 +1187,6 @@ def test_get_client_vertex_ai_with_explicit_location():
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        handler._sync_client_cache.clear()
 
         with patch(
             "tarash.tarash_gateway.providers.google.Client", return_value=mock_client
@@ -1269,7 +1213,6 @@ def test_get_client_vertex_ai_invalid_credentials_path_raises_error():
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        handler._sync_client_cache.clear()
 
         with pytest.raises(ValidationError, match="Credentials file not found"):
             handler._get_client(config, "sync")
@@ -1297,7 +1240,6 @@ def test_get_client_vertex_ai_with_credentials_path_in_provider_config(tmp_path)
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        handler._sync_client_cache.clear()
 
         with (
             patch(
@@ -1316,48 +1258,6 @@ def test_get_client_vertex_ai_with_credentials_path_in_provider_config(tmp_path)
             )
             call_kwargs = mock_client_cls.call_args.kwargs
             assert call_kwargs.get("credentials") is mock_credentials
-
-
-def test_get_cache_key_different_provider_configs_create_different_keys():
-    """Test that different provider_config values create different cache keys."""
-    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
-
-    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
-        handler = GoogleProviderHandler()
-
-        config1 = VideoGenerationConfig(
-            model="veo-3.0-generate-001",
-            provider="google",
-            provider_config={"project": "project-1", "location": "us-central1"},
-        )
-        config2 = VideoGenerationConfig(
-            model="veo-3.0-generate-001",
-            provider="google",
-            provider_config={"project": "project-2", "location": "us-central1"},
-        )
-        config3 = VideoGenerationConfig(
-            model="veo-3.0-generate-001",
-            provider="google",
-            provider_config={"project": "project-1", "location": "europe-west1"},
-        )
-        config_with_api_key = VideoGenerationConfig(
-            model="veo-3.0-generate-001",
-            provider="google",
-            api_key="test-api-key",
-        )
-
-        key1 = handler._get_cache_key(config1, "sync")
-        key2 = handler._get_cache_key(config2, "sync")
-        key3 = handler._get_cache_key(config3, "sync")
-        key4 = handler._get_cache_key(config_with_api_key, "sync")
-
-        # Different projects should have different keys
-        assert key1 != key2
-        # Different locations should have different keys
-        assert key1 != key3
-        # API key mode should have different key
-        assert key1 != key4
-        assert key4 == "test-api-key:sync"
 
 
 def test_handle_error_with_aiohttp_timeout():
@@ -1708,7 +1608,6 @@ async def test_generate_video_async_sends_all_optional_params_to_api(handler):
     mock_async_client = AsyncMock()
     mock_async_client.models.generate_videos = AsyncMock(return_value=mock_operation)
 
-    handler._async_client_cache.clear()
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
         mock_instance = MagicMock()
         mock_instance.aio = mock_async_client
@@ -1785,7 +1684,6 @@ def test_generate_video_sends_video_extension_params_to_api(handler):
     mock_sync_client = MagicMock()
     mock_sync_client.models.generate_videos.return_value = mock_operation
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -1856,7 +1754,6 @@ def test_generate_video_sends_reference_images_to_api(handler):
     mock_sync_client = MagicMock()
     mock_sync_client.models.generate_videos.return_value = mock_operation
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,
@@ -1922,7 +1819,6 @@ def test_generate_video_sends_extra_params_to_api(handler):
     mock_sync_client = MagicMock()
     mock_sync_client.models.generate_videos.return_value = mock_operation
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.google.Client",
         return_value=mock_sync_client,

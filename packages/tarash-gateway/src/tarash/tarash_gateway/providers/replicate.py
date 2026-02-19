@@ -415,9 +415,6 @@ class ReplicateProviderHandler:
                 + "Install with: pip install tarash-gateway[replicate]"
             )
 
-        self._sync_client_cache: dict[str, Replicate] = {}
-        self._async_client_cache: dict[str, AsyncReplicate] = {}
-
     @overload
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["async"]
@@ -433,7 +430,7 @@ class ReplicateProviderHandler:
         config: VideoGenerationConfig,
         client_type: Literal["sync", "async"] = "sync",
     ) -> Replicate | AsyncReplicate:
-        """Get or create Replicate client for the given config.
+        """Create Replicate client for the given config.
 
         Args:
             config: Provider configuration
@@ -448,21 +445,10 @@ class ReplicateProviderHandler:
                 + "Install with: pip install tarash-gateway[replicate]"
             )
 
-        # Use API key as cache key
-        cache_key = config.api_key
-
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                self._async_client_cache[cache_key] = AsyncReplicate(
-                    bearer_token=config.api_key
-                )
-            return self._async_client_cache[cache_key]
+            return AsyncReplicate(bearer_token=config.api_key)
         else:
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = Replicate(
-                    bearer_token=config.api_key
-                )
-            return self._sync_client_cache[cache_key]
+            return Replicate(bearer_token=config.api_key)
 
     def _convert_request(
         self,

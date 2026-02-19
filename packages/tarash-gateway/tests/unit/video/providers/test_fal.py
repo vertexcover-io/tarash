@@ -83,32 +83,7 @@ def base_request():
     return VideoGenerationRequest(prompt="Test prompt")
 
 
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches.
-
-    Note: AsyncClient is not cached, only SyncClient is cached.
-    """
-    assert handler._sync_client_cache == {}
-
-
 # ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_sync_client(
-    handler, base_config, mock_sync_client
-):
-    """Test sync client creation and caching."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_sync_client
 
 
 def test_get_client_creates_new_async_client_each_time(handler, base_config):
@@ -146,9 +121,6 @@ def test_get_client_creates_different_clients_for_different_configs(
     handler, api_key, base_url
 ):
     """Test different clients for different API keys and base_urls."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
     mock_client1 = MagicMock()
     mock_client2 = MagicMock()
 
@@ -1083,7 +1055,6 @@ def test_generate_video_success_with_progress_callback(
         progress_calls.append(update)
 
     # Clear cache and patch
-    handler._sync_client_cache.clear()
     mock_sync_client.submit.return_value = mock_handler
     with (
         patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued),
@@ -1119,7 +1090,6 @@ def test_generate_video_handles_exceptions(
 
     mock_sync_client.submit.side_effect = http_error
 
-    handler._sync_client_cache.clear()
     with pytest.raises(TarashException, match="Unknown error"):
         handler.generate_video(base_config, base_request)
 
