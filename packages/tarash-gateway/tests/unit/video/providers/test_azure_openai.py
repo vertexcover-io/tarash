@@ -52,14 +52,6 @@ def base_request():
 
 
 # ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches."""
-    assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
-
-
 # ==================== Azure Config Parsing Tests ====================
 # These are Azure-specific and need to be tested
 
@@ -175,7 +167,6 @@ async def test_generate_video_async_basic_success(handler, base_config, base_req
         return_value=mock_download_response
     )
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
@@ -214,7 +205,6 @@ async def test_generate_video_async_with_duration(handler, base_config):
         return_value=mock_download_response
     )
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
@@ -263,7 +253,6 @@ async def test_generate_video_async_with_progress_callbacks(
     def sync_callback(update):
         progress_calls.append(update)
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
@@ -288,7 +277,6 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
     mock_async_client.videos.create = AsyncMock(return_value=mock_video)
     mock_async_client.videos.retrieve = AsyncMock(return_value=mock_video)
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
@@ -307,7 +295,6 @@ async def test_generate_video_async_handles_network_error(
         side_effect=RuntimeError("Connection failed")
     )
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AsyncAzureOpenAI",
         return_value=mock_async_client,
@@ -339,7 +326,6 @@ def test_generate_video_basic_success(handler, base_config, base_request):
     mock_sync_client.videos.create.return_value = mock_video_completed
     mock_sync_client.videos.download_content.return_value = mock_download_response
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,
@@ -383,7 +369,6 @@ def test_generate_video_with_progress_callback(handler, base_config, base_reques
     def progress_callback(update):
         progress_calls.append(update)
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,
@@ -407,7 +392,6 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
     mock_sync_client.videos.create.return_value = mock_video
     mock_sync_client.videos.retrieve.return_value = mock_video
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,
@@ -421,7 +405,6 @@ def test_generate_video_handles_network_error(handler, base_config, base_request
     mock_sync_client = MagicMock()
     mock_sync_client.videos.create.side_effect = RuntimeError("Server error")
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.azure_openai.AzureOpenAI",
         return_value=mock_sync_client,

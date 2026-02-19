@@ -625,6 +625,23 @@ wheels = [
 ]
 
 [[package]]
+name = "lumaai"
+version = "1.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/de/81/cbd2e55c81dd2ffae5a8cc73b06c88858b71dc76a593dacf8960ba29f19d/lumaai-1.20.0.tar.gz", hash = "sha256:307b30e9f2576f3acd2683ba7084e58bd1b713a53e313431f38786ae66aaa63c", size = 120394, upload-time = "2026-02-08T00:36:51.754Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/ba/fc224787bc345490b83e71751cab8b742624869592d003ea87b3655cff49/lumaai-1.20.0-py3-none-any.whl", hash = "sha256:cbdb5f73d98233c78ed220c18a6494a3b37485f058669a37fef88e267850575a", size = 95255, upload-time = "2026-02-08T00:36:48.227Z" },
+]
+
+[[package]]
 name = "matplotlib-inline"
 version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1226,6 +1243,10 @@ dependencies = [
 dev = [
     { name = "ipython" },
     { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
 ]
 
@@ -1239,6 +1260,10 @@ requires-dist = [
 dev = [
     { name = "ipython", specifier = ">=9.8.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.0.0" },
     { name = "ruff", specifier = ">=0.14.10" },
 ]
 
@@ -1260,8 +1285,6 @@ openai = [
 [package.dev-dependencies]
 dev = [
     { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
 
@@ -1276,8 +1299,6 @@ provides-extras = ["all", "openai"]
 [package.metadata.requires-dev]
 dev = [
     { name = "pyright", specifier = ">=1.1.0" },
-    { name = "pytest", specifier = ">=7.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "ruff", specifier = ">=0.1.0" },
 ]
 
@@ -1294,21 +1315,19 @@ all = [
     { name = "fal-client" },
     { name = "google-cloud-aiplatform" },
     { name = "google-genai" },
+    { name = "lumaai" },
     { name = "openai" },
     { name = "replicate" },
     { name = "runwayml" },
-]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
 ]
 fal = [
     { name = "fal-client" },
 ]
 google = [
     { name = "google-cloud-aiplatform" },
+]
+luma = [
+    { name = "lumaai" },
 ]
 openai = [
     { name = "openai" },
@@ -1337,19 +1356,17 @@ requires-dist = [
     { name = "google-genai", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "google-genai", marker = "extra == 'veo3'", specifier = ">=1.0.0" },
     { name = "httpx", specifier = ">=0.25.0" },
+    { name = "lumaai", marker = "extra == 'all'", specifier = ">=1.0.0" },
+    { name = "lumaai", marker = "extra == 'luma'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "replicate", marker = "extra == 'all'", specifier = ">=2.0.0b1" },
     { name = "replicate", marker = "extra == 'replicate'", specifier = ">=2.0.0b1" },
     { name = "runwayml", marker = "extra == 'all'", specifier = ">=3.0.0" },
     { name = "runwayml", marker = "extra == 'runway'", specifier = ">=3.0.0" },
 ]
-provides-extras = ["all", "dev", "fal", "google", "openai", "replicate", "runway", "veo3"]
+provides-extras = ["all", "fal", "google", "luma", "openai", "replicate", "runway", "veo3"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pyright", specifier = ">=1.1.407" }]

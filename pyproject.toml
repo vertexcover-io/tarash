@@ -46,5 +46,9 @@ members = ["packages/*"]
 dev = [
     "ipython>=9.8.0",
     "pre-commit>=4.5.1",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-xdist>=3.0.0",
+    "pytest-cov>=4.0.0",
     "ruff>=0.14.10",
 ]

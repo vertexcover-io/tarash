@@ -629,11 +629,6 @@ class FalProviderHandler:
                 + "Install with: pip install tarash-gateway[fal]"
             )
 
-        self._sync_client_cache: dict[str, SyncClient] = {}
-        self._async_client_cache: dict[str, AsyncClient] = {}
-        # Note: AsyncClient is NOT cached to avoid "Event Loop closed" errors
-        # Each async request creates a new client to ensure proper cleanup
-
     @overload
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["async"]
@@ -668,14 +663,9 @@ class FalProviderHandler:
                 + "Install with: pip install tarash-gateway[fal]"
             )
 
-        # Use API key + base_url as cache key
-        cache_key = f"{config.api_key}:{config.base_url or 'default'}"
-
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
 
         if client_type == "async":
-            # Don't cache AsyncClient - create new instance for each request
-            # This prevents "Event Loop closed" errors
             logger.debug(
                 "Creating new async Fal client",
                 {"base_url": config.base_url or "default"},
@@ -685,16 +675,14 @@ class FalProviderHandler:
                 default_timeout=config.timeout,
             )
         else:  # sync
-            if cache_key not in self._sync_client_cache:
-                logger.debug(
-                    "Creating new sync Fal client",
-                    {"base_url": config.base_url or "default"},
-                )
-                self._sync_client_cache[cache_key] = fal_client.SyncClient(
-                    key=config.api_key,
-                    default_timeout=config.timeout,
-                )
-            return self._sync_client_cache[cache_key]
+            logger.debug(
+                "Creating new sync Fal client",
+                {"base_url": config.base_url or "default"},
+            )
+            return fal_client.SyncClient(
+                key=config.api_key,
+                default_timeout=config.timeout,
+            )
 
     def _convert_request(
         self,

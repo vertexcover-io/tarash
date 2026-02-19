@@ -130,9 +130,6 @@ class GoogleProviderHandler:
                 + "Install with: pip install tarash-gateway[google]"
             )
 
-        self._sync_client_cache: dict[str, Client] = {}
-        self._async_client_cache: dict[str, AsyncClient] = {}
-
     @overload
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["async"]
@@ -162,7 +159,6 @@ class GoogleProviderHandler:
                 + "Install with: pip install tarash-gateway[google]"
             )
 
-        # Use API key + base_url as cache key
         # base_url can be used to determine if using Vertex AI
         base_url = config.base_url
         use_vertex = base_url is not None and "vertex" in base_url.lower()
@@ -181,28 +177,22 @@ class GoogleProviderHandler:
             # For project, we might need to extract from a different format
             # For now, we'll use api_key as project if it looks like a project ID
 
-        cache_key = f"{config.api_key}:{base_url or 'default'}:{client_type}"
-
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                # Create a Client and access its .aio property for async operations
-                client = Client(
-                    api_key=config.api_key,
-                    vertexai=use_vertex,
-                    project=project,
-                    location=location,
-                )
-                self._async_client_cache[cache_key] = client.aio
-            return self._async_client_cache[cache_key]
+            # Create a Client and access its .aio property for async operations
+            client = Client(
+                api_key=config.api_key,
+                vertexai=use_vertex,
+                project=project,
+                location=location,
+            )
+            return client.aio
         else:  # sync
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = Client(
-                    api_key=config.api_key,
-                    vertexai=use_vertex,
-                    project=project,
-                    location=location,
-                )
-            return self._sync_client_cache[cache_key]
+            return Client(
+                api_key=config.api_key,
+                vertexai=use_vertex,
+                project=project,
+                location=location,
+            )
 
     def _validate_params(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest

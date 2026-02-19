@@ -47,11 +47,7 @@ def mock_sync_client():
 
 @pytest.fixture
 def mock_async_client():
-    """Patch fal_client.AsyncClient to return a configurable mock.
-
-    Note: In production, AsyncClient is not cached and creates new instances.
-    For testing, we use a single mock that can be configured per test.
-    """
+    """Patch fal_client.AsyncClient and provide mock."""
     mock = AsyncMock()
     with patch(
         "tarash.tarash_gateway.providers.fal.fal_client.AsyncClient",
@@ -81,100 +77,6 @@ def base_config():
 def base_request():
     """Create a base VideoGenerationRequest."""
     return VideoGenerationRequest(prompt="Test prompt")
-
-
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches.
-
-    Note: AsyncClient is not cached, only SyncClient is cached.
-    """
-    assert handler._sync_client_cache == {}
-
-
-# ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_sync_client(
-    handler, base_config, mock_sync_client
-):
-    """Test sync client creation and caching."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_sync_client
-
-
-def test_get_client_creates_new_async_client_each_time(handler, base_config):
-    """Test async client creates new instance each time (not cached).
-
-    AsyncClient is not cached to avoid "Event Loop closed" errors.
-    Each async request gets a fresh client instance.
-    """
-    with patch(
-        "tarash.tarash_gateway.providers.fal.fal_client.AsyncClient"
-    ) as mock_constructor:
-        # Configure mock to return new instances
-        mock_constructor.side_effect = [AsyncMock(), AsyncMock()]
-
-        client1 = handler._get_client(base_config, "async")
-        client2 = handler._get_client(base_config, "async")
-
-        # Each call creates a new instance (not cached)
-        assert client1 is not client2
-
-        # Verify AsyncClient was called twice
-        assert mock_constructor.call_count == 2
-
-
-@pytest.mark.parametrize(
-    "api_key,base_url",
-    [
-        ("key1", None),
-        ("key2", None),
-        ("key1", "https://api1.example.com"),
-        ("key1", "https://api2.example.com"),
-    ],
-)
-def test_get_client_creates_different_clients_for_different_configs(
-    handler, api_key, base_url
-):
-    """Test different clients for different API keys and base_urls."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
-    mock_client1 = MagicMock()
-    mock_client2 = MagicMock()
-
-    config1 = VideoGenerationConfig(
-        model="fal-ai/veo3.1",
-        provider="fal",
-        api_key=api_key,
-        base_url=base_url,
-        timeout=600,
-    )
-    config2 = VideoGenerationConfig(
-        model="fal-ai/veo3.1",
-        provider="fal",
-        api_key="different-key",
-        base_url="https://different.example.com",
-        timeout=600,
-    )
-
-    with patch(
-        "tarash.tarash_gateway.providers.fal.fal_client.SyncClient",
-        side_effect=[mock_client1, mock_client2],
-    ):
-        client1 = handler._get_client(config1, "sync")
-        client2 = handler._get_client(config2, "sync")
-
-        assert client1 is not client2  # Different instances
 
 
 # ==================== Request Conversion Tests ====================
@@ -1077,8 +979,6 @@ def test_generate_video_success_with_progress_callback(
     def progress_callback(update):
         progress_calls.append(update)
 
-    # Clear cache and patch
-    handler._sync_client_cache.clear()
     mock_sync_client.submit.return_value = mock_handler
     with (
         patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued),
@@ -1109,7 +1009,6 @@ def test_generate_video_handles_exceptions(
 
     mock_sync_client.submit.side_effect = http_error
 
-    handler._sync_client_cache.clear()
     with pytest.raises(TarashException, match="Unknown error"):
         handler.generate_video(base_config, base_request)
 

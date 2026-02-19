@@ -27,7 +27,6 @@ from tarash.tarash_gateway.providers.stability import (
 def handler():
     """Create handler instance and clear caches."""
     h = StabilityProviderHandler()
-    h._sync_client_cache.clear()
     return h
 
 
@@ -68,42 +67,6 @@ def test_get_client_creates_sync_client(handler, base_config):
         assert "Authorization" in call_kwargs["headers"]
         assert call_kwargs["headers"]["Authorization"] == "Bearer test-api-key"
         assert call_kwargs["headers"]["Accept"] == "image/*"
-
-
-def test_get_client_caches_sync_clients(handler, base_config):
-    """Test that sync clients are cached by API key."""
-    handler._sync_client_cache.clear()
-
-    with patch("httpx.Client") as mock_client_class:
-        mock_instance1 = MagicMock()
-        mock_instance2 = MagicMock()
-        mock_client_class.side_effect = [mock_instance1, mock_instance2]
-
-        # First call - should create
-        client1 = handler._get_client(base_config, "sync")
-        # Second call - should reuse
-        client2 = handler._get_client(base_config, "sync")
-
-        assert client1 is client2
-        assert mock_client_class.call_count == 1
-
-
-def test_get_client_different_api_keys_different_cache(handler, base_config):
-    """Test that different API keys create different cache entries."""
-    handler._sync_client_cache.clear()
-
-    config2 = base_config.model_copy(update={"api_key": "different-key"})
-
-    with patch("httpx.Client") as mock_client_class:
-        mock_instance1 = MagicMock()
-        mock_instance2 = MagicMock()
-        mock_client_class.side_effect = [mock_instance1, mock_instance2]
-
-        client1 = handler._get_client(base_config, "sync")
-        client2 = handler._get_client(config2, "sync")
-
-        assert client1 is not client2
-        assert mock_client_class.call_count == 2
 
 
 def test_get_client_creates_async_client():

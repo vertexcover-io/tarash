@@ -97,44 +97,6 @@ def video_to_video_request():
     )
 
 
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches."""
-    assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
-
-
-# ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_sync_client(
-    handler, base_config, mock_sync_client
-):
-    """Test sync client creation and caching."""
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_sync_client
-
-
-def test_get_client_creates_and_caches_async_client(
-    handler, base_config, mock_async_client
-):
-    """Test async client creation and caching."""
-    handler._async_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "async")
-    client2 = handler._get_client(base_config, "async")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_async_client
-
-
 # ==================== Endpoint Routing Tests ====================
 
 

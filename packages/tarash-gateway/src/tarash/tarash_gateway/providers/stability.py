@@ -254,8 +254,7 @@ class StabilityProviderHandler:
     """
 
     def __init__(self):
-        """Initialize handler with empty sync client cache."""
-        self._sync_client_cache: dict[str, httpx.Client] = {}
+        """Initialize handler (stateless, no config stored)."""
 
     def _get_client(
         self,
@@ -279,22 +278,17 @@ class StabilityProviderHandler:
         }
 
         if client_type == "async":
-            # Create new async client each time
             return httpx.AsyncClient(
                 base_url=STABILITY_API_BASE,
                 headers=headers,
                 timeout=config.timeout,
             )
         else:
-            # Cache sync clients by API key
-            cache_key = config.api_key
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = httpx.Client(
-                    base_url=STABILITY_API_BASE,
-                    headers=headers,
-                    timeout=config.timeout,
-                )
-            return self._sync_client_cache[cache_key]
+            return httpx.Client(
+                base_url=STABILITY_API_BASE,
+                headers=headers,
+                timeout=config.timeout,
+            )
 
     def _convert_image_request(
         self,
