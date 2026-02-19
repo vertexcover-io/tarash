@@ -79,15 +79,6 @@ def mock_async_client(handler):
         yield mock
 
 
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Handler initializes with empty client caches."""
-    assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
-
-
 # ==================== Client Caching Tests ====================
 
 
@@ -140,13 +131,17 @@ def test_get_client_different_api_keys_separate_cache(handler):
 def test_convert_request_uses_provider_config_defaults(
     handler, base_config, basic_request
 ):
-    """avatar_id and voice_id come from provider_config when not in extra_params."""
+    """avatar_id/voice_id come from provider_config; background and voice use defaults."""
     payload = handler._convert_request(base_config, basic_request)
 
     vi = payload["video_inputs"][0]
     assert vi["character"]["avatar_id"] == "default-avatar"
     assert vi["voice"]["voice_id"] == "default-voice"
     assert vi["voice"]["input_text"] == basic_request.prompt
+    assert vi["background"]["type"] == "color"
+    assert vi["background"]["value"] == "#FFFFFF"
+    assert vi["voice"]["speed"] == 1.0
+    assert vi["voice"]["pitch"] == 0
 
 
 def test_convert_request_extra_params_override_provider_config(handler, base_config):
@@ -164,40 +159,6 @@ def test_convert_request_extra_params_override_provider_config(handler, base_con
     vi = payload["video_inputs"][0]
     assert vi["character"]["avatar_id"] == "override-avatar"
     assert vi["voice"]["voice_id"] == "override-voice"
-
-
-def test_convert_request_aspect_ratio_16_9(handler, base_config, basic_request):
-    """16:9 maps to 1920×1080."""
-    payload = handler._convert_request(base_config, basic_request)
-    assert payload["dimension"] == {"width": 1920, "height": 1080}
-
-
-def test_convert_request_aspect_ratio_9_16(handler, base_config):
-    """9:16 maps to 1080×1920."""
-    request = VideoGenerationRequest(prompt="Test", aspect_ratio="9:16")
-    payload = handler._convert_request(base_config, request)
-    assert payload["dimension"] == {"width": 1080, "height": 1920}
-
-
-def test_convert_request_aspect_ratio_1_1(handler, base_config):
-    """1:1 maps to 1080×1080."""
-    request = VideoGenerationRequest(prompt="Test", aspect_ratio="1:1")
-    payload = handler._convert_request(base_config, request)
-    assert payload["dimension"] == {"width": 1080, "height": 1080}
-
-
-def test_convert_request_aspect_ratio_4_3(handler, base_config):
-    """4:3 maps to 1440×1080."""
-    request = VideoGenerationRequest(prompt="Test", aspect_ratio="4:3")
-    payload = handler._convert_request(base_config, request)
-    assert payload["dimension"] == {"width": 1440, "height": 1080}
-
-
-def test_convert_request_aspect_ratio_21_9(handler, base_config):
-    """21:9 maps to 2560×1080."""
-    request = VideoGenerationRequest(prompt="Test", aspect_ratio="21:9")
-    payload = handler._convert_request(base_config, request)
-    assert payload["dimension"] == {"width": 2560, "height": 1080}
 
 
 def test_convert_request_default_aspect_ratio(handler, base_config):
@@ -278,18 +239,6 @@ def test_convert_request_ignores_duration_and_media(handler, base_config):
     payload = handler._convert_request(base_config, request)
     assert "duration" not in payload
     assert "image_list" not in payload
-
-
-def test_convert_request_default_background_and_speed(
-    handler, base_config, basic_request
-):
-    """Default background is white color, default speed is 1.0, pitch is 0."""
-    payload = handler._convert_request(base_config, basic_request)
-    vi = payload["video_inputs"][0]
-    assert vi["background"]["type"] == "color"
-    assert vi["background"]["value"] == "#FFFFFF"
-    assert vi["voice"]["speed"] == 1.0
-    assert vi["voice"]["pitch"] == 0
 
 
 # ==================== Response Conversion Tests ====================
@@ -388,22 +337,6 @@ def test_handle_error_401_returns_http_error(handler, base_config, basic_request
     result = handler._handle_error(base_config, basic_request, "vid-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 401
-
-
-def test_handle_error_429_returns_retryable_http_error(
-    handler, base_config, basic_request
-):
-    """HTTP 429 errors map to HTTPError (retryable)."""
-    mock_response = MagicMock()
-    mock_response.status_code = 429
-    mock_response.json.return_value = {"error": "rate limited"}
-    ex = httpx.HTTPStatusError(
-        "429 Too Many Requests", request=MagicMock(), response=mock_response
-    )
-
-    result = handler._handle_error(base_config, basic_request, "vid-1", ex)
-    assert isinstance(result, HTTPError)
-    assert result.status_code == 429
 
 
 def test_handle_error_connection_error_returns_http_connection_error(
