@@ -11,6 +11,7 @@ from tarash.tarash_gateway.models import (
 from tarash.tarash_gateway.providers import (
     FalProviderHandler,
     GoogleProviderHandler,
+    HeyGenProviderHandler,
     OpenAIProviderHandler,
     ReplicateProviderHandler,
     RunwayProviderHandler,
@@ -73,6 +74,10 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
         elif provider == "google":
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, GoogleProviderHandler()
+            )
+        elif provider == "heygen":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, HeyGenProviderHandler()
             )
         else:
             log_error(

@@ -64,6 +64,11 @@ from tarash.tarash_gateway.providers.google import (
     GOOGLE_IMAGE_MODEL_REGISTRY,
     get_google_image_field_mappers,
 )
+from tarash.tarash_gateway.providers.heygen import (
+    HeyGenProviderHandler,
+    HeyGenVideoParams,
+    parse_heygen_status,
+)
 
 # Backwards compatibility alias
 Veo3ProviderHandler = GoogleProviderHandler
@@ -124,4 +129,8 @@ __all__ = [
     "IMAGEN3_FIELD_MAPPERS",
     "GOOGLE_IMAGE_MODEL_REGISTRY",
     "get_google_image_field_mappers",
+    # HeyGen
+    "HeyGenProviderHandler",
+    "HeyGenVideoParams",
+    "parse_heygen_status",
 ]
