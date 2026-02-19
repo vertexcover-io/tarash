@@ -183,10 +183,10 @@ async def test_image_to_video_gen4_turbo(runway_api_key):
     )
 
     request = VideoGenerationRequest(
-        prompt="The bunny hops joyfully through the meadow",
+        prompt="The dragon warrior comes to life",
         image_list=[
             {
-                "image": "https://storage.googleapis.com/falserverless/model_tests/runway/bunny.jpg",
+                "image": "https://storage.googleapis.com/falserverless/model_tests/wan/dragon-warrior.jpg",
                 "type": "reference",
             }
         ],
@@ -248,7 +248,7 @@ async def test_image_to_video_with_veo31(runway_api_key):
             }
         ],
         duration_seconds=8,
-        aspect_ratio="1:1",  # Square
+        aspect_ratio="16:9",  # veo3.1 i2v only supports: 16:9, 9:16, 16:9-wide, 9:16-wide
         seed=999,
     )
 
@@ -266,7 +266,7 @@ async def test_image_to_video_with_veo31(runway_api_key):
     print(f"  Video URL: {response.video}")
     print("  Model: veo3.1")
     print("  Duration: 8s")
-    print("  Aspect Ratio: 1:1 (square)")
+    print("  Aspect Ratio: 16:9 (landscape)")
 
 
 @pytest.mark.e2e
@@ -292,8 +292,8 @@ async def test_video_to_video_gen4_aleph(runway_api_key):
     )
 
     request = VideoGenerationRequest(
-        prompt="Add colorful easter elements to the video",
-        video="https://storage.googleapis.com/falserverless/model_tests/runway/sample_video.mp4",
+        prompt="Add colorful artistic elements to the video",
+        video="https://v3b.fal.media/files/b/rabbit/ku8_Wdpf-oTbGRq4lB5DU_output.mp4",
         aspect_ratio="16:9",
         seed=777,
     )
@@ -342,10 +342,10 @@ async def test_video_to_video_with_image_references(runway_api_key):
 
     request = VideoGenerationRequest(
         prompt="Apply the art style from the reference image to the video",
-        video="https://storage.googleapis.com/falserverless/model_tests/runway/sample_video.mp4",
+        video="https://v3b.fal.media/files/b/rabbit/ku8_Wdpf-oTbGRq4lB5DU_output.mp4",
         image_list=[
             {
-                "image": "https://storage.googleapis.com/falserverless/model_tests/runway/easter-scene.jpg",
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
                 "type": "reference",
             }
         ],
@@ -427,7 +427,7 @@ async def test_various_aspect_ratios(runway_api_key):
     - Text-to-video with custom ratios
     """
     config = VideoGenerationConfig(
-        model="veo3",
+        model="veo3.1",  # veo3.1 supports duration 4,6,8; veo3 only supports 8
         provider="runway",
         api_key=runway_api_key,
         timeout=600,
@@ -435,11 +435,11 @@ async def test_various_aspect_ratios(runway_api_key):
         poll_interval=5,
     )
 
-    # Test 21:9 ultrawide
+    # Test 9:16 portrait (text-to-video supports: 16:9, 9:16, 16:9-wide, 9:16-wide)
     request = VideoGenerationRequest(
         prompt="A cinematic wide-angle shot of a desert highway at sunset",
         duration_seconds=4,
-        aspect_ratio="21:9",
+        aspect_ratio="9:16",
     )
 
     # Generate video using API
@@ -451,25 +451,28 @@ async def test_various_aspect_ratios(runway_api_key):
     assert response.video is not None
     assert response.status == "completed"
 
-    print("✓ Generated video with ultrawide aspect ratio")
+    print("✓ Generated video with portrait aspect ratio")
     print(f"  Request ID: {response.request_id}")
     print(f"  Video URL: {response.video}")
-    print("  Aspect Ratio: 21:9 (ultrawide)")
+    print("  Aspect Ratio: 9:16 (portrait)")
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_gen3a_turbo_image_to_video(runway_api_key):
+async def test_gen4_turbo_image_to_video(runway_api_key):
     """
-    Test Runway Gen-3a Turbo model for image-to-video.
+    Test Runway Gen-4 Turbo model for image-to-video.
 
     This tests:
-    - Gen-3a Turbo model
+    - Gen-4 Turbo model
     - Image-to-video capability
     - Alternative model selection
+
+    Note: gen3a_turbo only supports 768:1280, 1280:768 ratios which aren't in
+    our standard ratio maps. Using gen4_turbo which supports more ratios.
     """
     config = VideoGenerationConfig(
-        model="gen3a_turbo",
+        model="gen4_turbo",
         provider="runway",
         api_key=runway_api_key,
         timeout=600,
@@ -486,7 +489,7 @@ async def test_gen3a_turbo_image_to_video(runway_api_key):
             }
         ],
         duration_seconds=10,  # Max duration for image-to-video
-        aspect_ratio="9:16",
+        aspect_ratio="9:16",  # Portrait mode
     )
 
     # Generate video using API
@@ -498,8 +501,9 @@ async def test_gen3a_turbo_image_to_video(runway_api_key):
     assert response.video is not None
     assert response.status == "completed"
 
-    print("✓ Generated video with Gen-3a Turbo")
+    print("✓ Generated video with Gen-4 Turbo")
     print(f"  Request ID: {response.request_id}")
     print(f"  Video URL: {response.video}")
-    print("  Model: gen3a_turbo")
+    print("  Model: gen4_turbo")
     print("  Duration: 10s (max for image-to-video)")
+    print("  Aspect Ratio: 9:16 (portrait)")

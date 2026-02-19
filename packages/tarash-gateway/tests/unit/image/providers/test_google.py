@@ -44,7 +44,7 @@ def base_config():
 def nano_banana_config():
     """Create Nano Banana config."""
     return ImageGenerationConfig(
-        model="gemini-2.5-flash-image-001",
+        model="gemini-2.5-flash-image",
         provider="google",
         api_key="test-api-key",
         timeout=120,
@@ -226,7 +226,6 @@ def test_convert_image_response_with_urls(handler, base_config, base_request):
 
     result = handler._convert_image_response(
         base_config,
-        base_request,
         request_id,
         mock_response,
     )

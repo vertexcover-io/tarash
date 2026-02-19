@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -21,6 +22,17 @@ from tarash.tarash_gateway.providers.google import (
     GoogleProviderHandler,
     parse_veo3_operation,
 )
+
+
+class MockClientError(Exception):
+    """Mock Google API ClientError for testing error handling."""
+
+    def __init__(self, code, message, status):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.details = {"code": code, "message": message, "status": status}
+        self.status = status
 
 
 # ==================== Fixtures ====================
@@ -191,9 +203,6 @@ def test_validate_params_with_invalid_person_generation(handler, base_config):
         handler._validate_params(base_config, request)
 
 
-# ==================== Request Conversion Tests ====================
-
-
 def test_convert_request_with_minimal_fields(handler, base_config):
     """Test conversion with only prompt."""
     request = VideoGenerationRequest(prompt="A test video")
@@ -211,6 +220,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
         prompt="A test video",
         duration_seconds=5,
         aspect_ratio="16:9",
+        resolution="1080p",
         number_of_videos=2,
         generate_audio=True,
         seed=42,
@@ -230,6 +240,7 @@ def test_convert_request_with_all_optional_fields(handler, base_config):
     config = result["config"]
     assert config.duration_seconds == 5
     assert config.aspect_ratio == "16:9"
+    assert config.resolution == "1080p"
     assert config.number_of_videos == 2
     assert config.generate_audio is True
     assert config.seed == 42
@@ -459,9 +470,7 @@ def test_convert_response_with_complete_operation(handler, base_config, base_req
     mock_operation.response = mock_response
     mock_operation.model_dump.return_value = {"name": "operations/123"}
 
-    result = handler._convert_response(
-        base_config, base_request, "req-123", mock_operation
-    )
+    result = handler._convert_response(base_config, "req-123", mock_operation)
 
     assert result.request_id == "req-123"
     assert result.video == "https://example.com/video.mp4"
@@ -490,9 +499,7 @@ def test_convert_response_with_video_bytes(handler, base_config, base_request):
     mock_operation.response = mock_response
     mock_operation.model_dump.return_value = {"name": "operations/456"}
 
-    result = handler._convert_response(
-        base_config, base_request, "req-456", mock_operation
-    )
+    result = handler._convert_response(base_config, "req-456", mock_operation)
 
     assert result.request_id == "req-456"
     assert result.video == {"content": b"fake-video-bytes", "content_type": "video/mp4"}
@@ -507,7 +514,7 @@ def test_convert_response_with_incomplete_operation_raises_error(
     mock_operation.model_dump.return_value = {"done": False}
 
     with pytest.raises(GenerationFailedError, match="Operation is not completed"):
-        handler._convert_response(base_config, base_request, "req-789", mock_operation)
+        handler._convert_response(base_config, "req-789", mock_operation)
 
 
 def test_convert_response_with_operation_error_raises_error(
@@ -520,7 +527,7 @@ def test_convert_response_with_operation_error_raises_error(
     mock_operation.model_dump.return_value = {"error": "Something went wrong"}
 
     with pytest.raises(TarashException, match="Video generation failed"):
-        handler._convert_response(base_config, base_request, "req-999", mock_operation)
+        handler._convert_response(base_config, "req-999", mock_operation)
 
 
 def test_convert_response_with_no_videos_raises_error(
@@ -536,7 +543,7 @@ def test_convert_response_with_no_videos_raises_error(
     mock_operation.response = mock_response
 
     with pytest.raises(GenerationFailedError, match="No generated videos"):
-        handler._convert_response(base_config, base_request, "req-000", mock_operation)
+        handler._convert_response(base_config, "req-000", mock_operation)
 
 
 # ==================== Error Handling Tests ====================
@@ -545,7 +552,7 @@ def test_convert_response_with_no_videos_raises_error(
 def test_handle_error_with_video_generation_error(handler, base_config, base_request):
     """Test TarashException is returned as-is."""
     error = TarashException("Test error", provider="google", model="test-model")
-    result = handler._handle_error(base_config, base_request, "req-1", error)
+    result = handler._handle_error(base_config, "req-1", error)
 
     assert result is error
 
@@ -554,7 +561,7 @@ def test_handle_error_with_unknown_exception(handler, base_config, base_request)
     """Test unknown exception is converted to TarashException."""
     unknown_error = ValueError("Something went wrong")
 
-    result = handler._handle_error(base_config, base_request, "req-3", unknown_error)
+    result = handler._handle_error(base_config, "req-3", unknown_error)
 
     assert isinstance(result, GenerationFailedError)
     assert "Error while generating video" in result.message
@@ -659,6 +666,16 @@ async def test_generate_video_async_success_with_progress_callbacks(
             base_config, base_request, on_progress=sync_callback
         )
 
+        # Assert correct parameters sent to Gemini API
+        mock_async_client.models.generate_videos.assert_called_once()
+        call_kwargs = mock_async_client.models.generate_videos.call_args.kwargs
+        assert call_kwargs["model"] == "veo-3.0-flash-001"
+        assert call_kwargs["prompt"] == "Test prompt"
+        assert call_kwargs["image"] is None
+        assert call_kwargs["video"] is None
+        assert call_kwargs["config"] is not None
+
+        # Assert response is correct
         assert result.request_id == "operations/async-123"
         assert result.video == "https://example.com/async-video.mp4"
         assert len(progress_calls) >= 1  # At least one progress update
@@ -757,16 +774,6 @@ async def test_generate_video_async_handles_400_client_error(
     handler, base_config, base_request
 ):
     """Test async generation handles Google API 400 error and converts to ValidationError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(
         400,
         "dont_allow for personGeneration is currently not supported.",
@@ -801,16 +808,6 @@ async def test_generate_video_async_handles_500_client_error(
     handler, base_config, base_request
 ):
     """Test async generation handles Google API 500 error and converts to HTTPError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(500, "Internal server error", "INTERNAL_ERROR")
 
     mock_async_client = AsyncMock()
@@ -832,6 +829,38 @@ async def test_generate_video_async_handles_500_client_error(
             assert exc_info.value.provider == "google"
             assert exc_info.value.raw_response["status_code"] == 500
             assert exc_info.value.raw_response["error_type"] == "INTERNAL_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_handles_403_content_moderation_error(
+    handler, base_config, base_request
+):
+    """Test async generation handles Google API 403 error and converts to ContentModerationError."""
+    mock_error = MockClientError(
+        403,
+        "Content violates safety policies. Please modify your prompt.",
+        "PERMISSION_DENIED",
+    )
+
+    mock_async_client = AsyncMock()
+    mock_async_client.models.generate_videos = AsyncMock(side_effect=mock_error)
+
+    handler._async_client_cache.clear()
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
+        mock_instance = MagicMock()
+        mock_instance.aio = mock_async_client
+        mock_client_class.return_value = mock_instance
+
+        with patch(
+            "tarash.tarash_gateway.providers.google.ClientError", MockClientError
+        ):
+            with pytest.raises(ContentModerationError) as exc_info:
+                await handler.generate_video_async(base_config, base_request)
+
+            assert "Content violates safety policies" in str(exc_info.value)
+            assert exc_info.value.provider == "google"
+            assert exc_info.value.raw_response["status_code"] == 403
+            assert exc_info.value.raw_response["error_type"] == "PERMISSION_DENIED"
 
 
 # ==================== Sync Video Generation Tests ====================
@@ -885,6 +914,16 @@ def test_generate_video_success_with_progress_callback(
             base_config, base_request, on_progress=progress_callback
         )
 
+    # Assert correct parameters sent to Gemini API
+    mock_sync_client.models.generate_videos.assert_called_once()
+    call_kwargs = mock_sync_client.models.generate_videos.call_args.kwargs
+    assert call_kwargs["model"] == "veo-3.0-flash-001"
+    assert call_kwargs["prompt"] == "Test prompt"
+    assert call_kwargs["image"] is None
+    assert call_kwargs["video"] is None
+    assert call_kwargs["config"] is not None
+
+    # Assert response is correct
     assert result.request_id == "operations/sync-456"
     assert result.video == "https://example.com/sync-video.mp4"
     assert len(progress_calls) >= 1
@@ -933,16 +972,6 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
 
 def test_generate_video_handles_400_client_error(handler, base_config, base_request):
     """Test sync generation handles Google API 400 error and converts to ValidationError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(
         400,
         "dont_allow for personGeneration is currently not supported.",
@@ -973,16 +1002,6 @@ def test_generate_video_handles_400_client_error(handler, base_config, base_requ
 
 def test_generate_video_handles_500_client_error(handler, base_config, base_request):
     """Test sync generation handles Google API 500 error and converts to HTTPError."""
-
-    # Create a mock ClientError class
-    class MockClientError(Exception):
-        def __init__(self, code, message, status):
-            super().__init__(message)
-            self.code = code
-            self.message = message
-            self.details = {"code": code, "message": message, "status": status}
-            self.status = status
-
     mock_error = MockClientError(500, "Internal server error", "INTERNAL_ERROR")
 
     mock_sync_client = MagicMock()
@@ -1109,7 +1128,6 @@ def test_convert_image_response_with_gcs_uri(handler):
     """Test convert_image_response with gcs_uri field."""
     from tarash.tarash_gateway.models import (
         ImageGenerationConfig,
-        ImageGenerationRequest,
     )
 
     config = ImageGenerationConfig(
@@ -1117,7 +1135,6 @@ def test_convert_image_response_with_gcs_uri(handler):
         provider="google",
         api_key="test-key",
     )
-    request = ImageGenerationRequest(prompt="test")
 
     # Mock generated image with gcs_uri
     mock_gen_img = MagicMock()
@@ -1126,33 +1143,29 @@ def test_convert_image_response_with_gcs_uri(handler):
 
     genai_response = {"generated_images": [mock_gen_img]}
 
-    response = handler._convert_image_response(
-        config, request, "req-123", genai_response
-    )
+    response = handler._convert_image_response(config, "req-123", genai_response)
 
     assert response.request_id == "req-123"
     assert len(response.images) == 1
     assert response.images[0] == "https://storage.googleapis.com/bucket/image.png"
 
 
-def test_get_client_with_vertex_url_parsing():
-    """Test _get_client parses location from Vertex AI base_url."""
+def test_get_client_with_vertex_ai_provider_config():
+    """Test _get_client uses Vertex AI when provider_config is provided."""
     from tarash.tarash_gateway.providers.google import GoogleProviderHandler
 
-    # Need a base_url that contains "vertex" to trigger the Vertex AI path
-    # and "-aiplatform" to parse the location
-    # Using "https://{location}-aiplatform.googleapis.com" format with vertex in a different part
     config = VideoGenerationConfig(
         model="veo-3.0-generate-001",
         provider="google",
-        api_key="test-key",
-        base_url="https://us-central1-aiplatform.googleapis.com/vertex",
+        provider_config={
+            "project": "test-project",
+            "location": "us-east1",
+        },
     )
 
     mock_client = MagicMock()
     mock_client.aio = AsyncMock()
 
-    # Patch has_genai BEFORE importing Client, and patch Client at the right location
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
         handler._async_client_cache.clear()
@@ -1161,13 +1174,190 @@ def test_get_client_with_vertex_url_parsing():
             "tarash.tarash_gateway.providers.google.Client", return_value=mock_client
         ) as mock_client_cls:
             handler._get_client(config, "async")
-            # Verify Client was called with vertexai=True and location="us-central1"
             assert mock_client_cls.call_count == 1
-            # Check that Client was called with the right arguments
-            mock_client_cls.assert_called_once()
             call_kwargs = mock_client_cls.call_args.kwargs
             assert call_kwargs.get("vertexai") is True
-            assert call_kwargs.get("location") == "us-central1"
+            assert call_kwargs.get("project") == "test-project"
+            assert call_kwargs.get("location") == "us-east1"
+            assert "api_key" not in call_kwargs
+
+
+def test_get_client_vertex_ai_missing_project_in_provider_config_raises_error():
+    """Test _get_client raises ValidationError when project not in provider_config."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+    from tarash.tarash_gateway.exceptions import ValidationError
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        provider_config={},  # No project
+    )
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        handler._sync_client_cache.clear()
+
+        with pytest.raises(ValidationError) as exc_info:
+            handler._get_client(config, "sync")
+        assert "project" in str(exc_info.value)
+        assert "provider_config" in str(exc_info.value)
+
+
+def test_get_client_vertex_ai_requires_location():
+    """Test _get_client requires location in provider_config."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+    from tarash.tarash_gateway.exceptions import ValidationError
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        provider_config={
+            "project": "test-project",
+            # No location - should raise ValidationError
+        },
+    )
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        handler._sync_client_cache.clear()
+
+        with pytest.raises(ValidationError, match="location.*in provider_config"):
+            handler._get_client(config, "sync")
+
+
+def test_get_client_vertex_ai_with_explicit_location():
+    """Test _get_client uses explicit location when provided."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        provider_config={
+            "project": "test-project",
+            "location": "us-east1",
+        },
+    )
+
+    mock_client = MagicMock()
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        handler._sync_client_cache.clear()
+
+        with patch(
+            "tarash.tarash_gateway.providers.google.Client", return_value=mock_client
+        ) as mock_client_cls:
+            handler._get_client(config, "sync")
+            call_kwargs = mock_client_cls.call_args.kwargs
+            assert call_kwargs.get("location") == "us-east1"
+
+
+def test_get_client_vertex_ai_invalid_credentials_path_raises_error():
+    """Test _get_client raises ValidationError for invalid credentials_path."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+    from tarash.tarash_gateway.exceptions import ValidationError
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        provider_config={
+            "project": "test-project",
+            "location": "us-central1",
+            "credentials_path": "/nonexistent/path/creds.json",
+        },
+    )
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        handler._sync_client_cache.clear()
+
+        with pytest.raises(ValidationError, match="Credentials file not found"):
+            handler._get_client(config, "sync")
+
+
+def test_get_client_vertex_ai_with_credentials_path_in_provider_config(tmp_path):
+    """Test _get_client loads credentials from credentials_path in provider_config."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+
+    creds_file = tmp_path / "service_account.json"
+    creds_file.write_text('{"type": "service_account", "project_id": "test"}')
+
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        provider_config={
+            "project": "test-project",
+            "location": "us-central1",
+            "credentials_path": str(creds_file),
+        },
+    )
+
+    mock_client = MagicMock()
+    mock_credentials = MagicMock()
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+        handler._sync_client_cache.clear()
+
+        with (
+            patch(
+                "tarash.tarash_gateway.providers.google.Client",
+                return_value=mock_client,
+            ) as mock_client_cls,
+            patch(
+                "tarash.tarash_gateway.providers.google.service_account.Credentials.from_service_account_file",
+                return_value=mock_credentials,
+            ) as mock_creds_loader,
+        ):
+            handler._get_client(config, "sync")
+            mock_creds_loader.assert_called_once_with(
+                str(creds_file),
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            call_kwargs = mock_client_cls.call_args.kwargs
+            assert call_kwargs.get("credentials") is mock_credentials
+
+
+def test_get_cache_key_different_provider_configs_create_different_keys():
+    """Test that different provider_config values create different cache keys."""
+    from tarash.tarash_gateway.providers.google import GoogleProviderHandler
+
+    with patch("tarash.tarash_gateway.providers.google.has_genai", True):
+        handler = GoogleProviderHandler()
+
+        config1 = VideoGenerationConfig(
+            model="veo-3.0-generate-001",
+            provider="google",
+            provider_config={"project": "project-1", "location": "us-central1"},
+        )
+        config2 = VideoGenerationConfig(
+            model="veo-3.0-generate-001",
+            provider="google",
+            provider_config={"project": "project-2", "location": "us-central1"},
+        )
+        config3 = VideoGenerationConfig(
+            model="veo-3.0-generate-001",
+            provider="google",
+            provider_config={"project": "project-1", "location": "europe-west1"},
+        )
+        config_with_api_key = VideoGenerationConfig(
+            model="veo-3.0-generate-001",
+            provider="google",
+            api_key="test-api-key",
+        )
+
+        key1 = handler._get_cache_key(config1, "sync")
+        key2 = handler._get_cache_key(config2, "sync")
+        key3 = handler._get_cache_key(config3, "sync")
+        key4 = handler._get_cache_key(config_with_api_key, "sync")
+
+        # Different projects should have different keys
+        assert key1 != key2
+        # Different locations should have different keys
+        assert key1 != key3
+        # API key mode should have different key
+        assert key1 != key4
+        assert key4 == "test-api-key:sync"
 
 
 def test_handle_error_with_aiohttp_timeout():
@@ -1244,7 +1434,7 @@ def test_convert_response_with_no_response_raises_error(
     with pytest.raises(
         GenerationFailedError, match="No response in completed operation"
     ):
-        handler._convert_response(base_config, base_request, "req-428", mock_operation)
+        handler._convert_response(base_config, "req-428", mock_operation)
 
 
 def test_convert_response_with_none_video_obj_raises_error(
@@ -1263,7 +1453,7 @@ def test_convert_response_with_none_video_obj_raises_error(
     mock_operation.model_dump.return_value = {"done": True}
 
     with pytest.raises(GenerationFailedError, match="Video object is None"):
-        handler._convert_response(base_config, base_request, "req-444", mock_operation)
+        handler._convert_response(base_config, "req-444", mock_operation)
 
 
 def test_convert_response_with_no_video_bytes_or_mime_raises_error(
@@ -1288,7 +1478,7 @@ def test_convert_response_with_no_video_bytes_or_mime_raises_error(
     mock_operation.model_dump.return_value = {"done": True}
 
     with pytest.raises(GenerationFailedError, match="no URI and no video_bytes"):
-        handler._convert_response(base_config, base_request, "req-459", mock_operation)
+        handler._convert_response(base_config, "req-459", mock_operation)
 
 
 def test_convert_response_with_string_video_bytes(handler, base_config, base_request):
@@ -1310,9 +1500,7 @@ def test_convert_response_with_string_video_bytes(handler, base_config, base_req
     mock_operation.response = mock_response
     mock_operation.model_dump.return_value = {"done": True}
 
-    result = handler._convert_response(
-        base_config, base_request, "req-466", mock_operation
-    )
+    result = handler._convert_response(base_config, "req-466", mock_operation)
 
     assert result.video["content"] == b"fake-video-bytes-as-string"
 
@@ -1346,6 +1534,42 @@ def test_convert_request_with_multiple_first_frames_raises_error(handler, base_c
         handler._convert_request(base_config, request)
 
 
+def test_convert_request_with_resolution_720p(handler, base_config):
+    """Test conversion with 720p resolution."""
+    request = VideoGenerationRequest(prompt="test", resolution="720p")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution == "720p"
+
+
+def test_convert_request_with_resolution_1080p(handler, base_config):
+    """Test conversion with 1080p resolution."""
+    request = VideoGenerationRequest(prompt="test", resolution="1080p")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution == "1080p"
+
+
+def test_convert_request_with_resolution_4k(handler, base_config):
+    """Test conversion with 4k resolution."""
+    request = VideoGenerationRequest(prompt="test", resolution="4k")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution == "4k"
+
+
+def test_convert_request_resolution_not_set(handler, base_config):
+    """Test that resolution is not included in config when not set."""
+    request = VideoGenerationRequest(prompt="test")
+
+    result = handler._convert_request(base_config, request)
+
+    assert result["config"].resolution is None
+
+
 def test_handle_error_with_httpx_timeout(handler, base_config):
     """Test _handle_error with httpx timeout error (line 495)."""
     import httpx
@@ -1358,9 +1582,7 @@ def test_handle_error_with_httpx_timeout(handler, base_config):
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        result = handler._handle_error(
-            config, VideoGenerationRequest(prompt="test"), "req-1", error
-        )
+        result = handler._handle_error(config, "req-1", error)
 
     assert isinstance(result, TimeoutError)
 
@@ -1377,9 +1599,7 @@ def test_handle_error_with_httpx_connect_error(handler, base_config):
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        result = handler._handle_error(
-            config, VideoGenerationRequest(prompt="test"), "req-1", error
-        )
+        result = handler._handle_error(config, "req-1", error)
 
     assert isinstance(result, HTTPConnectionError)
 
@@ -1388,7 +1608,6 @@ def test_convert_image_response_with_image_but_no_gcs_uri(handler):
     """Test convert_image_response when image has no gcs_uri (lines 658-660)."""
     from tarash.tarash_gateway.models import (
         ImageGenerationConfig,
-        ImageGenerationRequest,
     )
 
     config = ImageGenerationConfig(
@@ -1396,7 +1615,6 @@ def test_convert_image_response_with_image_but_no_gcs_uri(handler):
         provider="google",
         api_key="test-key",
     )
-    request = ImageGenerationRequest(prompt="test")
 
     # Mock generated image with image attribute but no gcs_uri
     mock_gen_img = MagicMock()
@@ -1405,9 +1623,7 @@ def test_convert_image_response_with_image_but_no_gcs_uri(handler):
 
     genai_response = {"generated_images": [mock_gen_img]}
 
-    response = handler._convert_image_response(
-        config, request, "req-123", genai_response
-    )
+    response = handler._convert_image_response(config, "req-123", genai_response)
 
     assert response.request_id == "req-123"
     # Should have empty images list since gcs_uri is None
@@ -1418,7 +1634,6 @@ def test_convert_image_response_with_no_image_attribute(handler):
     """Test convert_image_response when generated_image has no image attribute."""
     from tarash.tarash_gateway.models import (
         ImageGenerationConfig,
-        ImageGenerationRequest,
     )
 
     config = ImageGenerationConfig(
@@ -1426,7 +1641,6 @@ def test_convert_image_response_with_no_image_attribute(handler):
         provider="google",
         api_key="test-key",
     )
-    request = ImageGenerationRequest(prompt="test")
 
     # Mock generated image without image attribute
     mock_gen_img = MagicMock()
@@ -1435,10 +1649,294 @@ def test_convert_image_response_with_no_image_attribute(handler):
 
     genai_response = {"generated_images": [mock_gen_img]}
 
-    response = handler._convert_image_response(
-        config, request, "req-123", genai_response
-    )
+    response = handler._convert_image_response(config, "req-123", genai_response)
 
     assert response.request_id == "req-123"
     # Should have empty images list
     assert len(response.images) == 0
+
+
+# ==================== API Parameter Verification Tests ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_sends_all_optional_params_to_api(handler):
+    """Test that all optional parameters are correctly sent to Gemini API."""
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        api_key="test-api-key",
+        timeout=600,
+        poll_interval=1,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A cinematic video",
+        duration_seconds=8,
+        aspect_ratio="9:16",
+        resolution="1080p",
+        number_of_videos=2,
+        generate_audio=True,
+        seed=12345,
+        negative_prompt="blur, noise",
+        enhance_prompt=True,
+        image_list=[
+            {"image": "https://example.com/first.jpg", "type": "first_frame"},
+            {"image": "https://example.com/last.jpg", "type": "last_frame"},
+        ],
+    )
+
+    # Create mock operation for immediate completion
+    mock_video = MagicMock()
+    mock_video.uri = "https://example.com/video.mp4"
+    mock_video.video_bytes = None
+    mock_video.mime_type = "video/mp4"
+
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = mock_video
+
+    mock_response = MagicMock()
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.name = "operations/params-test"
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"name": "operations/params-test"}
+
+    mock_async_client = AsyncMock()
+    mock_async_client.models.generate_videos = AsyncMock(return_value=mock_operation)
+
+    handler._async_client_cache.clear()
+    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_class:
+        mock_instance = MagicMock()
+        mock_instance.aio = mock_async_client
+        mock_client_class.return_value = mock_instance
+
+        await handler.generate_video_async(config, request)
+
+    # Assert correct parameters sent to Gemini API
+    mock_async_client.models.generate_videos.assert_called_once()
+    call_kwargs = mock_async_client.models.generate_videos.call_args.kwargs
+
+    # Verify model
+    assert call_kwargs["model"] == "veo-3.0-generate-001"
+
+    # Verify prompt
+    assert call_kwargs["prompt"] == "A cinematic video"
+
+    # Verify first_frame image
+    assert call_kwargs["image"] == {"gcs_uri": "https://example.com/first.jpg"}
+
+    # Verify no video (not set in request)
+    assert call_kwargs["video"] is None
+
+    # Verify GenerateVideosConfig parameters
+    gen_config = call_kwargs["config"]
+    assert gen_config.duration_seconds == 8
+    assert gen_config.aspect_ratio == "9:16"
+    assert gen_config.resolution == "1080p"
+    assert gen_config.number_of_videos == 2
+    assert gen_config.generate_audio is True
+    assert gen_config.seed == 12345
+    assert gen_config.negative_prompt == "blur, noise"
+    assert gen_config.enhance_prompt is True
+
+    # Verify last_frame in config
+    assert gen_config.last_frame.gcs_uri == "https://example.com/last.jpg"
+
+
+def test_generate_video_sends_video_extension_params_to_api(handler):
+    """Test that video extension parameters are correctly sent to Gemini API."""
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        api_key="test-api-key",
+        timeout=600,
+        poll_interval=1,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Continue the video with more action",
+        video={"content": b"fake-video-bytes", "content_type": "video/mp4"},
+        resolution="720p",
+    )
+
+    # Create mock operation for immediate completion
+    mock_video = MagicMock()
+    mock_video.uri = "https://example.com/extended-video.mp4"
+    mock_video.video_bytes = None
+    mock_video.mime_type = "video/mp4"
+
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = mock_video
+
+    mock_response = MagicMock()
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.name = "operations/video-ext"
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"name": "operations/video-ext"}
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.models.generate_videos.return_value = mock_operation
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.providers.google.Client",
+        return_value=mock_sync_client,
+    ):
+        handler.generate_video(config, request)
+
+    # Assert correct parameters sent to Gemini API
+    mock_sync_client.models.generate_videos.assert_called_once()
+    call_kwargs = mock_sync_client.models.generate_videos.call_args.kwargs
+
+    # Verify model
+    assert call_kwargs["model"] == "veo-3.0-generate-001"
+
+    # Verify prompt
+    assert call_kwargs["prompt"] == "Continue the video with more action"
+
+    # Verify no image (not set in request)
+    assert call_kwargs["image"] is None
+
+    # Verify video bytes
+    assert call_kwargs["video"] == {
+        "video_bytes": b"fake-video-bytes",
+        "mime_type": "video/mp4",
+    }
+
+    # Verify config
+    gen_config = call_kwargs["config"]
+    assert gen_config.resolution == "720p"
+
+
+def test_generate_video_sends_reference_images_to_api(handler):
+    """Test that reference images (asset/style) are correctly sent to Gemini API."""
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        api_key="test-api-key",
+        timeout=600,
+        poll_interval=1,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Generate video with these references",
+        image_list=[
+            {"image": "https://example.com/asset1.jpg", "type": "asset"},
+            {"image": "https://example.com/style1.jpg", "type": "style"},
+        ],
+    )
+
+    # Create mock operation for immediate completion
+    mock_video = MagicMock()
+    mock_video.uri = "https://example.com/ref-video.mp4"
+    mock_video.video_bytes = None
+    mock_video.mime_type = "video/mp4"
+
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = mock_video
+
+    mock_response = MagicMock()
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.name = "operations/ref-images"
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"name": "operations/ref-images"}
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.models.generate_videos.return_value = mock_operation
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.providers.google.Client",
+        return_value=mock_sync_client,
+    ):
+        handler.generate_video(config, request)
+
+    # Assert correct parameters sent to Gemini API
+    mock_sync_client.models.generate_videos.assert_called_once()
+    call_kwargs = mock_sync_client.models.generate_videos.call_args.kwargs
+
+    # Verify model and prompt
+    assert call_kwargs["model"] == "veo-3.0-generate-001"
+    assert call_kwargs["prompt"] == "Generate video with these references"
+
+    # Verify no first_frame image (using reference images mode)
+    assert call_kwargs["image"] is None
+
+    # Verify reference_images in config
+    gen_config = call_kwargs["config"]
+    assert gen_config.reference_images is not None
+    assert len(gen_config.reference_images) == 2
+
+    # Verify reference image types
+    ref_types = [ref.reference_type.value for ref in gen_config.reference_images]
+    assert "ASSET" in ref_types
+    assert "STYLE" in ref_types
+
+
+def test_generate_video_sends_extra_params_to_api(handler):
+    """Test that extra_params (person_generation) are correctly sent to Gemini API."""
+    config = VideoGenerationConfig(
+        model="veo-3.0-generate-001",
+        provider="google",
+        api_key="test-api-key",
+        timeout=600,
+        poll_interval=1,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Generate video with people",
+        extra_params={"person_generation": "allow_adult"},
+    )
+
+    # Create mock operation for immediate completion
+    mock_video = MagicMock()
+    mock_video.uri = "https://example.com/people-video.mp4"
+    mock_video.video_bytes = None
+    mock_video.mime_type = "video/mp4"
+
+    mock_generated_video = MagicMock()
+    mock_generated_video.video = mock_video
+
+    mock_response = MagicMock()
+    mock_response.generated_videos = [mock_generated_video]
+
+    mock_operation = MagicMock()
+    mock_operation.name = "operations/extra-params"
+    mock_operation.done = True
+    mock_operation.error = None
+    mock_operation.response = mock_response
+    mock_operation.model_dump.return_value = {"name": "operations/extra-params"}
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.models.generate_videos.return_value = mock_operation
+
+    handler._sync_client_cache.clear()
+    with patch(
+        "tarash.tarash_gateway.providers.google.Client",
+        return_value=mock_sync_client,
+    ):
+        handler.generate_video(config, request)
+
+    # Assert correct parameters sent to Gemini API
+    mock_sync_client.models.generate_videos.assert_called_once()
+    call_kwargs = mock_sync_client.models.generate_videos.call_args.kwargs
+
+    # Verify model and prompt
+    assert call_kwargs["model"] == "veo-3.0-generate-001"
+    assert call_kwargs["prompt"] == "Generate video with people"
+
+    # Verify person_generation in config
+    gen_config = call_kwargs["config"]
+    assert gen_config.person_generation == "allow_adult"

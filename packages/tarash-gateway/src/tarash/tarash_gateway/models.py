@@ -123,7 +123,9 @@ class VideoGenerationConfig(BaseModel):
 
     model: str  # e.g., "fal-ai/veo3.1", "openai/sora-2"
     provider: str  # e.g., "fal", "openai", "vertex", "replicate"
-    api_key: str
+    api_key: str | None = (
+        None  # Required for most providers, optional for Google Vertex AI
+    )
     base_url: str | None = None
     api_version: str | None = None  # For Azure OpenAI (e.g., "2024-05-01-preview")
     timeout: int = 600  # 10 minutes default
@@ -131,6 +133,9 @@ class VideoGenerationConfig(BaseModel):
     poll_interval: int = 5  # seconds
     mock: "MockConfig | None" = None  # Mock configuration
     fallback_configs: list["VideoGenerationConfig"] | None = None  # Fallback chain
+    provider_config: dict[str, Any] = Field(
+        default_factory=dict
+    )  # Provider-specific config
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
@@ -226,7 +231,9 @@ class ImageGenerationConfig(BaseModel):
 
     model: str  # e.g., "fal-ai/flux-pro", "dall-e-3"
     provider: str  # e.g., "fal", "openai"
-    api_key: str
+    api_key: str | None = (
+        None  # Required for most providers, optional for Google Vertex AI
+    )
     base_url: str | None = None
     api_version: str | None = None  # For Azure OpenAI
     timeout: int = 120  # 2 minutes default (images are faster)
@@ -234,6 +241,9 @@ class ImageGenerationConfig(BaseModel):
     poll_interval: int = 2  # seconds
     mock: "MockConfig | None" = None
     fallback_configs: list["ImageGenerationConfig"] | None = None
+    provider_config: dict[str, Any] = Field(
+        default_factory=dict
+    )  # Provider-specific config
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 

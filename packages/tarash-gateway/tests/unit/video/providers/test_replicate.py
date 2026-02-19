@@ -51,9 +51,13 @@ def handler():
 
 @pytest.fixture
 def base_config():
-    """Create a base VideoGenerationConfig."""
+    """Create a base VideoGenerationConfig.
+
+    Uses Luma Dream Machine since it supports text-to-video (no image required).
+    For Kling-specific tests, use a dedicated kling_config fixture.
+    """
     return VideoGenerationConfig(
-        model="kwaivgi/kling-v2.1",
+        model="luma/dream-machine",
         provider="replicate",
         api_key="test-api-key",
         timeout=600,
@@ -297,10 +301,16 @@ def test_get_client_creates_different_clients_for_different_keys(handler):
 # ==================== Request Conversion Tests ====================
 
 
-def test_convert_request_with_minimal_fields(handler, base_config):
-    """Test conversion with only prompt."""
+def test_convert_request_with_minimal_fields(handler):
+    """Test conversion with only prompt (using Luma which supports text-to-video)."""
+    # Use Luma config since it supports text-to-video (no image required)
+    config = VideoGenerationConfig(
+        model="luma/dream-machine",
+        provider="replicate",
+        api_key="test-key",
+    )
     request = VideoGenerationRequest(prompt="A test video")
-    result = handler._convert_request(base_config, request)
+    result = handler._convert_request(config, request)
 
     assert result == {"prompt": "A test video"}
 
@@ -328,7 +338,8 @@ def test_convert_request_with_kling_fields(handler):
     assert result["aspect_ratio"] == "16:9"
     assert result["negative_prompt"] == "blurry, distorted"
     assert result["seed"] == 42
-    assert result["image"] == "https://example.com/image.jpg"
+    # Replicate Kling v2.1 uses start_image (image-to-video only)
+    assert result["start_image"] == "https://example.com/image.jpg"
 
 
 def test_convert_request_with_minimax_duration_validation(handler):
@@ -358,14 +369,20 @@ def test_convert_request_with_minimax_duration_validation(handler):
         handler._convert_request(config, request_invalid)
 
 
-def test_convert_request_with_extra_params(handler, base_config, base_request):
+def test_convert_request_with_extra_params(handler):
     """Test that extra_params are merged into output."""
+    # Use Luma config since it supports text-to-video (no image required)
+    config = VideoGenerationConfig(
+        model="luma/dream-machine",
+        provider="replicate",
+        api_key="test-key",
+    )
     request = VideoGenerationRequest(
         prompt="Test video",
         extra_params={"custom_param": "value", "another_param": 123},
     )
 
-    result = handler._convert_request(base_config, request)
+    result = handler._convert_request(config, request)
 
     assert result["prompt"] == "Test video"
     assert result["custom_param"] == "value"
@@ -597,6 +614,9 @@ def test_generate_video_success_without_progress(handler, base_config, base_requ
         assert result.video == "https://example.com/video.mp4"
         assert result.status == "completed"
         mock_client.run.assert_called_once()
+        call_args = mock_client.run.call_args
+        assert call_args.args[0] == "luma/dream-machine"
+        assert call_args.kwargs["input"]["prompt"] == "Test prompt for video generation"
 
 
 def test_generate_video_success_with_progress_callback(
@@ -650,6 +670,10 @@ def test_generate_video_success_with_progress_callback(
     assert result.request_id == "pred-progress"
     assert result.video == "https://example.com/video.mp4"
     assert len(progress_calls) >= 1
+    mock_replicate.predictions.create.assert_called_once()
+    call_args = mock_replicate.predictions.create.call_args
+    assert call_args.kwargs["version"] == "luma/dream-machine"
+    assert call_args.kwargs["input"]["prompt"] == "Test prompt for video generation"
 
 
 def test_generate_video_handles_failure(
@@ -676,8 +700,9 @@ def test_generate_video_handles_failure(
 
 def test_generate_video_handles_timeout(handler, base_request, mock_replicate):
     """Test handling of prediction timeout (v2.0.0 API)."""
+    # Use Luma since it supports text-to-video (no image required)
     config = VideoGenerationConfig(
-        model="kwaivgi/kling-v2.1",
+        model="luma/dream-machine",
         provider="replicate",
         api_key="test-key",
         poll_interval=1,
@@ -723,6 +748,9 @@ async def test_generate_video_async_success_without_progress(
         assert result.video == "https://example.com/video.mp4"
         assert result.status == "completed"
         mock_async_client.run.assert_called_once()
+        call_args = mock_async_client.run.call_args
+        assert call_args.args[0] == "luma/dream-machine"
+        assert call_args.kwargs["input"]["prompt"] == "Test prompt for video generation"
 
 
 @pytest.mark.asyncio
@@ -782,6 +810,10 @@ async def test_generate_video_async_success_with_progress_callback(
     assert result.request_id == "pred-async-progress"
     assert result.video == "https://example.com/video.mp4"
     assert len(progress_calls) >= 1
+    mock_async_client.predictions.create.assert_called_once()
+    call_args = mock_async_client.predictions.create.call_args
+    assert call_args.kwargs["version"] == "luma/dream-machine"
+    assert call_args.kwargs["input"]["prompt"] == "Test prompt for video generation"
 
 
 @pytest.mark.asyncio
@@ -859,7 +891,8 @@ def test_full_kling_request_conversion(handler):
     assert result["aspect_ratio"] == "16:9"
     assert result["negative_prompt"] == "low quality, blurry"
     assert result["seed"] == 12345
-    assert result["image"] == "https://example.com/dragon.jpg"
+    # Replicate Kling v2.1 uses start_image (image-to-video only)
+    assert result["start_image"] == "https://example.com/dragon.jpg"
     assert result["cfg_scale"] == 0.8
 
 

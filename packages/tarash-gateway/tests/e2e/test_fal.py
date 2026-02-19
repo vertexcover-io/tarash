@@ -117,14 +117,21 @@ async def test_comprehensive_async_video_generation(fal_api_key):
 
 
 @pytest.mark.e2e
-def test_sync_video_generation_with_images(fal_api_key):
+def test_sync_veo31_image_to_video(fal_api_key):
     """
-    Sync test combining:
-    - Basic sync generation
-    - Reference images
-    - Different aspect ratios
+    Sync test for veo3.1 image-to-video:
+    - Sync generation path
+    - Field mapping: image_list with type="reference" -> image_url
+    - Vertical aspect ratio (9:16)
+    - Progress callback in sync mode
     """
-    fal_config = VideoGenerationConfig(
+    progress_updates = []
+
+    def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
         model="fal-ai/veo3.1/fast/image-to-video",
         provider="fal",
         api_key=fal_api_key,
@@ -134,22 +141,36 @@ def test_sync_video_generation_with_images(fal_api_key):
     )
 
     request = VideoGenerationRequest(
-        prompt="A calm ocean wave rolling onto a sandy beach, inspired by the reference style",
-        duration_seconds=5,
+        prompt="A calm ocean wave rolling onto a sandy beach with seagulls flying",
+        duration_seconds=6,
         aspect_ratio="9:16",
-        image_url="https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
+        resolution="720p",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
+                "type": "reference",
+            }
+        ],
+        generate_audio=False,
+        auto_fix=True,
     )
 
-    # Generate video using API (sync)
-    response = api.generate_video(fal_config, request)
+    response = api.generate_video(config, request, on_progress=progress_callback)
 
-    # Validate response
     assert isinstance(response, VideoGenerationResponse)
     assert response.request_id is not None
     assert response.video is not None
     assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
 
-    print(f"✓ Generated video with reference image: {response.request_id}")
+    assert len(progress_updates) > 0
+    statuses = [update.status for update in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated veo3.1 image-to-video (sync): {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
 
 
 @pytest.mark.e2e
@@ -258,65 +279,6 @@ async def test_kling_motion_control(fal_api_key):
     print(f"  Model: {kling_config.model}")
     print("  Character orientation: video")
     print("  Keep original sound: True")
-
-
-@pytest.mark.e2e
-@pytest.mark.asyncio
-async def test_veo31_image_to_video_with_image_list(fal_api_key):
-    """
-    Test veo3.1 image-to-video using image_list parameter.
-
-    This tests:
-    - Veo 3.1 image-to-video model (fal-ai/veo3.1/fast/image-to-video)
-    - Field mapping: image_list with type="reference" -> image_url
-    - All veo3.1 parameters (aspect_ratio, resolution, generate_audio, auto_fix)
-    - Prefix matching in registry
-    """
-    veo31_config = VideoGenerationConfig(
-        model="fal-ai/veo3.1/fast/image-to-video",
-        provider="fal",
-        api_key=fal_api_key,
-        timeout=600,
-        max_poll_attempts=120,
-        poll_interval=5,
-    )
-
-    request = VideoGenerationRequest(
-        prompt="A serene mountain landscape with clouds slowly moving across the sky",
-        duration_seconds=6,
-        aspect_ratio="16:9",
-        resolution="720p",
-        image_list=[
-            {
-                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
-                "type": "reference",
-            }
-        ],
-        generate_audio=True,
-        auto_fix=True,
-    )
-
-    # Generate video using API (async)
-    response = await api.generate_video_async(veo31_config, request)
-
-    # Validate response
-    assert isinstance(response, VideoGenerationResponse)
-    assert response.request_id is not None
-    assert response.video is not None
-    assert response.status == "completed"
-
-    # Video should be a URL
-    assert isinstance(response.video, str), "Video should be a string"
-    assert response.video.startswith("http"), (
-        f"Expected HTTP URL, got: {response.video}"
-    )
-
-    print(f"✓ Generated veo3.1 image-to-video: {response.request_id}")
-    print(f"  Video URL: {response.video}")
-    print(f"  Model: {veo31_config.model}")
-    print("  Duration: 6s")
-    print("  Aspect Ratio: 16:9")
-    print("  Resolution: 720p")
 
 
 @pytest.mark.e2e
@@ -646,3 +608,97 @@ async def test_veo31_fast_extend_video(fal_api_key):
     print("  Generate Audio: True")
     print(f"  Progress updates: {len(progress_updates)}")
     print(f"  Statuses: {statuses}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_sora2_text_to_video(fal_api_key):
+    """
+    Test Sora 2 text-to-video model.
+
+    This tests:
+    - Sora 2 text-to-video model (fal-ai/sora-2/text-to-video)
+    - Field mapping: duration_seconds -> duration (int)
+    - Sora 2 parameters: aspect_ratio, resolution
+    - Duration values: 4, 8, or 12 seconds
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/sora-2/text-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A serene waterfall in a peaceful forest with morning sunlight filtering through the trees",
+        duration_seconds=8,
+        aspect_ratio="16:9",
+        resolution="720p",
+    )
+
+    response = await api.generate_video_async(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated Sora 2 text-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {config.model}")
+    print("  Duration: 8s")
+    print("  Aspect Ratio: 16:9")
+    print("  Resolution: 720p")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_sora2_image_to_video(fal_api_key):
+    """
+    Test Sora 2 image-to-video model.
+
+    This tests:
+    - Sora 2 image-to-video model (fal-ai/sora-2/image-to-video)
+    - Field mapping: image_list with type="reference" -> image_url
+    - Different duration (4s) and aspect ratio (1:1)
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/sora-2/image-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="The scene comes to life with gentle motion and ambient sounds",
+        duration_seconds=4,
+        aspect_ratio="1:1",
+        resolution="720p",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg",
+                "type": "reference",
+            }
+        ],
+    )
+
+    response = await api.generate_video_async(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated Sora 2 image-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Model: {config.model}")
+    print("  Duration: 4s")
+    print("  Aspect Ratio: 1:1")

@@ -487,7 +487,7 @@ GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Image model registry for Fal
 FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # FLUX models
-    "fal-ai/flux-pro": FLUX_IMAGE_FIELD_MAPPERS,
+    # "fal-ai/flux-pro": FLUX_IMAGE_FIELD_MAPPERS, # Depricated by fal
     "fal-ai/flux": FLUX_IMAGE_FIELD_MAPPERS,  # Prefix match for all flux variants
     # FLUX.2 models (newer generation with multi-reference support)
     "fal-ai/flux-2": FLUX2_PRO_IMAGE_FIELD_MAPPERS,

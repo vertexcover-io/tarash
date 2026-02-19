@@ -213,9 +213,9 @@ async def test_kling_o1_video_to_video_edit_standard(fal_api_key):
         extra_params={
             "elements": [
                 {
-                    "frontal_image_url": "https://v3.fal.media/files/panda/MQp-ghIqshvMZROKh9lW3_character_front.png",
+                    "frontal_image_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=512&h=512&fit=crop",
                     "reference_image_urls": [
-                        "https://v3b.fal.media/files/kangaroo/YMpmQkYt9xugpOTQyZW0O.png"
+                        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=512&h=512&fit=crop"
                     ],
                 }
             ]

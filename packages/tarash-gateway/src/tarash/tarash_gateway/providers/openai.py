@@ -368,7 +368,7 @@ class OpenAIProviderHandler:
                 config.provider,
                 config.model,
             )
-            openai_params["seconds"] = validated_duration
+            openai_params["seconds"] = str(validated_duration)
 
         # Size/resolution: OpenAI uses 'size' in format "WIDTHxHEIGHT"
         # Convert aspect_ratio to size if provided
@@ -829,10 +829,8 @@ class OpenAIProviderHandler:
         poll_attempts = 0
         last_logged_progress = -1
         while poll_attempts < config.max_poll_attempts:
-            if video.status == "completed" or video.status == "failed":
-                break
-
             # Log status updates
+            start = time.time()
             last_logged_progress = self._log_poll_status(
                 logger,
                 video,
@@ -841,12 +839,16 @@ class OpenAIProviderHandler:
                 last_logged_progress,
             )
 
-            start = time.time()
+            # Send progress update (including final "completed" status)
             if on_progress:
                 update = parse_openai_video_status(video)
                 result = on_progress(update)
                 if asyncio.iscoroutine(result):
                     await result
+
+            # Check for completion AFTER sending progress
+            if video.status == "completed" or video.status == "failed":
+                break
 
             end_time = time.time()
             if end_time - start < config.poll_interval:

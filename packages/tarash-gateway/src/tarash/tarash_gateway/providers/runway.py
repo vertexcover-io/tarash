@@ -313,13 +313,14 @@ class RunwayProviderHandler:
 
         # Common parameters
         params["model"] = config.model
-        if request.seed is not None:
-            params["seed"] = int(request.seed)
-        if "content_moderation" in request.extra_params:
-            params["content_moderation"] = request.extra_params["content_moderation"]
 
         # Endpoint-specific parameters
+        # Note: seed and content_moderation are only supported by image_to_video
+        # and video_to_video endpoints, NOT text_to_video
         if endpoint == "text_to_video":
+            # Remove params not supported by text_to_video endpoint
+            params.pop("seed", None)
+            params.pop("content_moderation", None)
             params["prompt_text"] = request.prompt
             params["ratio"] = _convert_aspect_ratio(
                 request.aspect_ratio,
@@ -364,6 +365,13 @@ class RunwayProviderHandler:
                         provider=config.provider,
                     )
                 params["duration"] = int(request.duration_seconds)
+            # image_to_video supports seed and content_moderation
+            if request.seed is not None:
+                params["seed"] = int(request.seed)
+            if "content_moderation" in request.extra_params:
+                params["content_moderation"] = request.extra_params[
+                    "content_moderation"
+                ]
 
         elif endpoint == "video_to_video":
             if not request.video:
@@ -390,6 +398,13 @@ class RunwayProviderHandler:
                         {"type": "image", "uri": str(img["image"])}
                         for img in reference_imgs
                     ]
+            # video_to_video supports seed and content_moderation
+            if request.seed is not None:
+                params["seed"] = int(request.seed)
+            if "content_moderation" in request.extra_params:
+                params["content_moderation"] = request.extra_params[
+                    "content_moderation"
+                ]
 
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
         logger.info(
@@ -706,7 +721,9 @@ class RunwayProviderHandler:
                 redact=True,
             )
 
-            response = self._convert_response(config, request, request_id, task)
+            response = self._convert_response(
+                config, request, request_id, completed_task
+            )
 
             logger.info("Final generated response", {"response": response}, redact=True)
 

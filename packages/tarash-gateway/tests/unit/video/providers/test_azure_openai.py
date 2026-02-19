@@ -182,6 +182,11 @@ async def test_generate_video_async_basic_success(handler, base_config, base_req
     ):
         result = await handler.generate_video_async(base_config, base_request)
 
+        mock_async_client.videos.create.assert_called_once()
+        call_kwargs = mock_async_client.videos.create.call_args.kwargs
+        assert call_kwargs["model"] == "sora-deployment"
+        assert call_kwargs["prompt"] == "Test prompt"
+
         assert result.request_id == "video-async-123"
         assert isinstance(result.video, dict)
         assert result.video["content"] == video_content
@@ -222,9 +227,9 @@ async def test_generate_video_async_with_duration(handler, base_config):
         result = await handler.generate_video_async(base_config, request)
 
         assert result.duration == 8.0
-        # Verify the API was called with correct duration (as integer)
+        # Verify the API was called with correct duration (as string)
         call_args = mock_async_client.videos.create.call_args[1]
-        assert call_args["seconds"] == 8
+        assert call_args["seconds"] == "8"
 
 
 @pytest.mark.asyncio
@@ -271,6 +276,11 @@ async def test_generate_video_async_with_progress_callbacks(
         result = await handler.generate_video_async(
             base_config, base_request, on_progress=sync_callback
         )
+
+        mock_async_client.videos.create.assert_called_once()
+        call_kwargs = mock_async_client.videos.create.call_args.kwargs
+        assert call_kwargs["model"] == "sora-deployment"
+        assert call_kwargs["prompt"] == "Test prompt"
 
         assert result.request_id == "video-progress"
         assert len(progress_calls) >= 1
@@ -346,6 +356,11 @@ def test_generate_video_basic_success(handler, base_config, base_request):
     ):
         result = handler.generate_video(base_config, base_request)
 
+        mock_sync_client.videos.create.assert_called_once()
+        call_kwargs = mock_sync_client.videos.create.call_args.kwargs
+        assert call_kwargs["model"] == "sora-deployment"
+        assert call_kwargs["prompt"] == "Test prompt"
+
         assert result.request_id == "video-sync-123"
         assert isinstance(result.video, dict)
         assert result.video["content"] == video_content
@@ -391,6 +406,11 @@ def test_generate_video_with_progress_callback(handler, base_config, base_reques
         result = handler.generate_video(
             base_config, base_request, on_progress=progress_callback
         )
+
+    mock_sync_client.videos.create.assert_called_once()
+    call_kwargs = mock_sync_client.videos.create.call_args.kwargs
+    assert call_kwargs["model"] == "sora-deployment"
+    assert call_kwargs["prompt"] == "Test prompt"
 
     assert result.request_id == "video-sync-progress"
     assert len(progress_calls) >= 1

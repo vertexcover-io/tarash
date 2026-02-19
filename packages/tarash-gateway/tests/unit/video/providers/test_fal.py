@@ -956,11 +956,16 @@ async def test_generate_video_async_success_with_progress_callbacks(
             base_config, base_request, on_progress=sync_callback
         )
 
+        mock_async_client.submit.assert_called_once()
+        call_args = mock_async_client.submit.call_args
+        assert call_args.args[0] == "fal-ai/veo3.1"
+        assert call_args.kwargs["arguments"]["prompt"] == "Test prompt"
+
         assert result.request_id == "fal-req-123"
         assert result.video == "https://example.com/video.mp4"
-        assert len(progress_calls) == 3  # queued, processing, completed
+        assert len(progress_calls) == 3
 
-        # Test with async callback
+        mock_async_client.submit.reset_mock()
         async_progress_calls = []
 
         async def async_callback(update):
@@ -1087,6 +1092,11 @@ def test_generate_video_success_with_progress_callback(
         result = handler.generate_video(
             base_config, base_request, on_progress=progress_callback
         )
+
+    mock_sync_client.submit.assert_called_once()
+    call_args = mock_sync_client.submit.call_args
+    assert call_args.args[0] == "fal-ai/veo3.1"
+    assert call_args.kwargs["arguments"]["prompt"] == "Test prompt"
 
     assert result.request_id == "fal-req-456"
     assert result.video == "https://example.com/video.mp4"
