@@ -153,6 +153,60 @@ KLING_O1_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "keep_audio": passthrough_field_mapper("keep_audio"),
 }
 
+# Kling Video O3 - Unified mapper for all variants
+# Supports: text-to-video, image-to-video, reference-to-video (Pro and Standard tiers)
+# Duration: 3-15 seconds (string format without "s" suffix)
+#
+# Image type conventions (controls which API field is used):
+#   - image_type="reference" → image_url (for I2V)
+#   - image_type="first_frame" → start_image_url (for R2V first frame)
+#   - image_type="last_frame" → end_image_url (for I2V/R2V end frame)
+#
+# Reference-to-video usage:
+#   Pass elements via extra_params in Fal's expected format:
+#   extra_params={
+#       "elements": [
+#           {
+#               "frontal_image_url": "url",
+#               "reference_image_urls": ["url1", "url2"]  # Optional, 1-3 additional angles
+#           }
+#       ]
+#   }
+KLING_O3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core required (all variants)
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Image-to-video: uses image_url (user provides image_type="reference")
+    # strict=False allows R2V to use multiple reference images without error
+    "image_url": single_image_field_mapper(
+        required=False, image_type="reference", strict=False
+    ),
+    # Reference-to-video: uses start_image_url (user provides image_type="first_frame")
+    "start_image_url": single_image_field_mapper(
+        required=False, image_type="first_frame"
+    ),
+    # End frame support (both I2V and R2V)
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    # Reference-to-video: style/appearance references (max 4 total with elements)
+    "image_urls": image_list_field_mapper(image_type="reference"),
+    # Reference-to-video: character/object definitions (passed via extra_params)
+    "elements": extra_params_field_mapper("elements"),
+    # Common optional parameters
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=[str(i) for i in range(3, 16)],  # "3", "4", ..., "15"
+        provider="fal",
+        model="kling-o3",
+        add_suffix=False,
+    ),
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    # Text-to-video: voice support (max 2, reference as <<<voice_1>>> in prompt)
+    "voice_ids": extra_params_field_mapper("voice_ids"),
+    # Multi-shot support (all variants)
+    "multi_prompt": extra_params_field_mapper("multi_prompt"),
+    "shot_type": extra_params_field_mapper("shot_type"),
+}
+
 # Veo 3 and Veo 3.1 models field mappings
 # Supports text-to-video, image-to-video, first-last-frame-to-video, and video-to-video (extend-video)
 #
@@ -261,6 +315,50 @@ WAN_ANIMATE_MAPPERS: dict[str, FieldMapper] = {
     ),
 }
 
+# Wan v2.2-a14b - Unified mapper for all v2.2-a14b endpoints
+# Supports: text-to-video/lora, image-to-video, image-to-video/lora, video-to-video
+# Uses num_frames instead of duration; has LoRA, interpolation, and acceleration support
+WAN_V22_A14B_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core parameters (all variants)
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "seed": passthrough_field_mapper("seed"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "enable_prompt_expansion": passthrough_field_mapper("enhance_prompt"),
+    # Image/Video inputs (optional - used by i2v and v2v variants)
+    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "video_url": video_url_field_mapper(required=False),
+    # Generation parameters (via extra_params)
+    "num_frames": extra_params_field_mapper("num_frames"),
+    "frames_per_second": extra_params_field_mapper("frames_per_second"),
+    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
+    "guidance_scale": extra_params_field_mapper("guidance_scale"),
+    "guidance_scale_2": extra_params_field_mapper("guidance_scale_2"),
+    "shift": extra_params_field_mapper("shift"),
+    "acceleration": extra_params_field_mapper("acceleration"),
+    # Interpolation parameters
+    "interpolator_model": extra_params_field_mapper("interpolator_model"),
+    "num_interpolated_frames": extra_params_field_mapper("num_interpolated_frames"),
+    "adjust_fps_for_interpolation": extra_params_field_mapper(
+        "adjust_fps_for_interpolation"
+    ),
+    # Quality/output parameters
+    "video_quality": extra_params_field_mapper("video_quality"),
+    "video_write_mode": extra_params_field_mapper("video_write_mode"),
+    # LoRA and variant-specific
+    "loras": extra_params_field_mapper("loras"),
+    "reverse_video": extra_params_field_mapper("reverse_video"),
+    "strength": extra_params_field_mapper("strength"),  # v2v only
+    "resample_fps": extra_params_field_mapper("resample_fps"),  # v2v only
+    # Safety
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+    "enable_output_safety_checker": extra_params_field_mapper(
+        "enable_output_safety_checker"
+    ),
+}
+
 # ByteDance Seedance - Unified mapper for all versions and variants
 # Supports v1 (text-to-video, image-to-video, reference-to-video) and v1.5 (text-to-video)
 # Works with all ByteDance Seedance models regardless of version
@@ -361,6 +459,8 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/minimax": MINIMAX_FIELD_MAPPERS,
     # Kling Video O1 - All variants (image-to-video, reference-to-video, video-to-video/edit) use unified mapper
     "fal-ai/kling-video/o1": KLING_O1_FIELD_MAPPERS,
+    # Kling Video O3 - All variants (text-to-video, image-to-video, reference-to-video) for Pro and Standard tiers
+    "fal-ai/kling-video/o3/": KLING_O3_FIELD_MAPPERS,
     # Kling Video v2.6 - supports both image-to-video and motion-control
     "fal-ai/kling-video/v2.6": KLING_VIDEO_V26_FIELD_MAPPERS,
     # Veo 3.1 - prefix must be registered before veo3 for longest-match precedence
@@ -376,6 +476,8 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/wan-25-preview/": WAN_VIDEO_GENERATION_MAPPERS,
     # Wan v2.2-14b Animate
     "fal-ai/wan/v2.2-14b/animate/": WAN_ANIMATE_MAPPERS,
+    # Wan v2.2-a14b - All variants (text-to-video/lora, image-to-video, image-to-video/lora, video-to-video)
+    "fal-ai/wan/v2.2-a14b/": WAN_V22_A14B_FIELD_MAPPERS,
     # ByteDance Seedance - Unified mapper for all versions (v1, v1.5) and variants (text-to-video, image-to-video, reference-to-video)
     "fal-ai/bytedance/seedance": BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     # Pixverse - All variants (text-to-video, image-to-video, transition, effects, swap) use unified mapper
@@ -487,7 +589,6 @@ GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Image model registry for Fal
 FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # FLUX models
-    # "fal-ai/flux-pro": FLUX_IMAGE_FIELD_MAPPERS, # Depricated by fal
     "fal-ai/flux": FLUX_IMAGE_FIELD_MAPPERS,  # Prefix match for all flux variants
     # FLUX.2 models (newer generation with multi-reference support)
     "fal-ai/flux-2": FLUX2_PRO_IMAGE_FIELD_MAPPERS,

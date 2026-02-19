@@ -539,6 +539,130 @@ async def test_wan_v22_animate_move(fal_api_key):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_wan_v22_a14b_text_to_video_lora(fal_api_key):
+    """
+    Test Wan v2.2-a14b text-to-video with LoRA support.
+
+    This tests:
+    - Wan v2.2-a14b text-to-video/lora (fal-ai/wan/v2.2-a14b/text-to-video/lora)
+    - Progress tracking via async callback
+    - LoRA weight support
+    - Generation params: guidance_scale, shift, num_inference_steps, acceleration
+    - Quality params: video_quality, video_write_mode
+    - Prefix matching in registry (fal-ai/wan/v2.2-a14b/)
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    wan_config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/text-to-video/lora",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A cinematic scene of a magical forest with glowing fireflies at night",
+        aspect_ratio="16:9",
+        resolution="480p",
+        seed=42,
+        negative_prompt="low quality, blurry, distorted",
+        enhance_prompt=True,
+        extra_params={
+            "num_frames": 81,
+            "guidance_scale": 3.5,
+            "shift": 5.0,
+            "num_inference_steps": 27,
+            "acceleration": "regular",
+            "video_quality": "high",
+            "video_write_mode": "balanced",
+        },
+    )
+
+    response = await api.generate_video_async(
+        wan_config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Wan v2.2-a14b text-to-video/lora: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_wan_v22_a14b_image_to_video_lora(fal_api_key):
+    """
+    Test Wan v2.2-a14b image-to-video with LoRA support.
+
+    This tests:
+    - Wan v2.2-a14b image-to-video/lora (fal-ai/wan/v2.2-a14b/image-to-video/lora)
+    - Field mapping: image_list -> image_url
+    - enable_prompt_expansion mapping from enhance_prompt
+    - Interpolation params: interpolator_model, num_interpolated_frames
+    - Safety checkers
+    """
+    wan_config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/image-to-video/lora",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Camera slowly zooming in on the subject with gentle motion",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+                "type": "reference",
+            }
+        ],
+        resolution="480p",
+        seed=42,
+        enhance_prompt=True,
+        extra_params={
+            "num_frames": 81,
+            "guidance_scale": 3.5,
+            "num_inference_steps": 27,
+            "interpolator_model": "film",
+            "num_interpolated_frames": 1,
+            "acceleration": "regular",
+            "video_quality": "high",
+        },
+    )
+
+    response = await api.generate_video_async(wan_config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated Wan v2.2-a14b image-to-video/lora: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_veo31_fast_extend_video(fal_api_key):
     """
     Test Veo 3.1 fast extend-video model.

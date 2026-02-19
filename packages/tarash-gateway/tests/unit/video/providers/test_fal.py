@@ -24,6 +24,7 @@ from tarash.tarash_gateway.providers.fal import (
     get_image_field_mappers,
     WAN_VIDEO_GENERATION_MAPPERS,
     WAN_ANIMATE_MAPPERS,
+    WAN_V22_A14B_FIELD_MAPPERS,
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     PIXVERSE_FIELD_MAPPERS,
     parse_fal_status,
@@ -1301,6 +1302,162 @@ def test_wan_v22_animate_move_conversion(handler):
     assert result["use_turbo"] is True
     assert result["video_quality"] == "high"
     assert result["video_write_mode"] == "balanced"
+
+
+# ==================== Wan v2.2-a14b Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_wan_v22_a14b_all_variants():
+    """Test unified mapper for all Wan v2.2-a14b variants via prefix matching."""
+    variants = [
+        "fal-ai/wan/v2.2-a14b/image-to-video",
+        "fal-ai/wan/v2.2-a14b/image-to-video/lora",
+        "fal-ai/wan/v2.2-a14b/text-to-video/lora",
+        "fal-ai/wan/v2.2-a14b/video-to-video",
+    ]
+    for variant in variants:
+        mappers = get_field_mappers(variant)
+        assert mappers is WAN_V22_A14B_FIELD_MAPPERS, (
+            f"Expected WAN_V22_A14B_FIELD_MAPPERS for {variant}"
+        )
+
+
+# ==================== Wan v2.2-a14b Request Conversion Tests ====================
+
+
+def test_wan_v22_a14b_text_to_video_lora_conversion(handler):
+    """Test Wan v2.2-a14b text-to-video/lora request conversion with LoRA and generation params."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/text-to-video/lora",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A cyberpunk cat walking through neon streets",
+        aspect_ratio="16:9",
+        resolution="720p",
+        seed=42,
+        negative_prompt="low quality, blurry",
+        enhance_prompt=True,
+        extra_params={
+            "num_frames": 81,
+            "frames_per_second": 16,
+            "guidance_scale": 3.5,
+            "guidance_scale_2": 4.0,
+            "shift": 5.0,
+            "num_inference_steps": 27,
+            "acceleration": "regular",
+            "loras": [{"path": "https://example.com/lora.safetensors", "scale": 0.8}],
+            "reverse_video": True,
+            "video_quality": "high",
+            "video_write_mode": "balanced",
+            "interpolator_model": "film",
+            "num_interpolated_frames": 1,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A cyberpunk cat walking through neon streets"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+    assert result["seed"] == 42
+    assert result["negative_prompt"] == "low quality, blurry"
+    assert result["enable_prompt_expansion"] is True
+    assert result["num_frames"] == 81
+    assert result["frames_per_second"] == 16
+    assert result["guidance_scale"] == 3.5
+    assert result["guidance_scale_2"] == 4.0
+    assert result["shift"] == 5.0
+    assert result["num_inference_steps"] == 27
+    assert result["acceleration"] == "regular"
+    assert result["loras"] == [
+        {"path": "https://example.com/lora.safetensors", "scale": 0.8}
+    ]
+    assert result["reverse_video"] is True
+    assert result["video_quality"] == "high"
+    assert result["video_write_mode"] == "balanced"
+    assert result["interpolator_model"] == "film"
+    assert result["num_interpolated_frames"] == 1
+    # Should not have image/video fields
+    assert "image_url" not in result
+    assert "video_url" not in result
+    assert "end_image_url" not in result
+
+
+def test_wan_v22_a14b_image_to_video_lora_conversion(handler):
+    """Test Wan v2.2-a14b image-to-video/lora conversion with image and end_image."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/image-to-video/lora",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Camera slowly orbiting around the subject",
+        image_list=[
+            {"image": "https://example.com/start.jpg", "type": "reference"},
+            {"image": "https://example.com/end.jpg", "type": "last_frame"},
+        ],
+        seed=123,
+        extra_params={
+            "guidance_scale": 3.5,
+            "loras": [{"path": "https://example.com/lora.safetensors", "scale": 1.0}],
+            "enable_safety_checker": True,
+            "enable_output_safety_checker": True,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Camera slowly orbiting around the subject"
+    assert result["image_url"] == "https://example.com/start.jpg"
+    assert result["end_image_url"] == "https://example.com/end.jpg"
+    assert result["seed"] == 123
+    assert result["guidance_scale"] == 3.5
+    assert result["loras"] == [
+        {"path": "https://example.com/lora.safetensors", "scale": 1.0}
+    ]
+    assert result["enable_safety_checker"] is True
+    assert result["enable_output_safety_checker"] is True
+    # Should not have video fields
+    assert "video_url" not in result
+
+
+def test_wan_v22_a14b_video_to_video_conversion(handler):
+    """Test Wan v2.2-a14b video-to-video conversion with video input and strength."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/video-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Transform the scene into anime style",
+        video="https://example.com/input-video.mp4",
+        resolution="720p",
+        aspect_ratio="16:9",
+        seed=42,
+        extra_params={
+            "strength": 0.9,
+            "resample_fps": True,
+            "guidance_scale": 3.5,
+            "num_frames": 81,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Transform the scene into anime style"
+    assert result["video_url"] == "https://example.com/input-video.mp4"
+    assert result["resolution"] == "720p"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["seed"] == 42
+    assert result["strength"] == 0.9
+    assert result["resample_fps"] is True
+    assert result["guidance_scale"] == 3.5
+    assert result["num_frames"] == 81
+    # Should not have image fields
+    assert "image_url" not in result
+    assert "end_image_url" not in result
 
 
 # ==================== ByteDance Seedance Field Mapper Selection Tests ====================
