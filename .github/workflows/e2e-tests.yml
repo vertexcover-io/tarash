@@ -39,7 +39,7 @@ jobs:
           if [ -n "${{ github.event.inputs.provider }}" ]; then
             echo 'providers=["${{ github.event.inputs.provider }}"]' >> $GITHUB_OUTPUT
           else
-            echo 'providers=["fallback","bytedance","stability_image","pixverse","fal_image","fal","google_video","kling_o1","google_image","openai","openai_image","replicate_image","replicate","runway","luma"]' >> $GITHUB_OUTPUT
+            echo 'providers=["fallback","bytedance","stability_image","pixverse","fal_image","fal","google_video","kling_o1","google_image","openai","openai_image","replicate_image","replicate","runway"]' >> $GITHUB_OUTPUT
           fi
 
   e2e:
