@@ -223,7 +223,17 @@ def parse_openai_video_status(video: Video) -> VideoGenerationUpdate:
 
 
 class OpenAIProviderHandler:
-    """Handler for OpenAI Sora video generation."""
+    """Provider handler for OpenAI Sora video and DALL-E image generation.
+
+    Supports both the OpenAI API and Azure OpenAI endpoints. Azure is selected
+    automatically when ``config.api_version`` is set on the config.
+
+    Install the required extra before use:
+
+    ```bash
+    pip install tarash-gateway[openai]
+    ```
+    """
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""

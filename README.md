@@ -1,20 +1,13 @@
 # Tarash
 
-A unified wrapper library for various AI code editing tools, organized as a monorepo.
+A monorepo of Python SDKs for AI-powered media generation.
 
-## Overview
+## Packages
 
-Tarash provides a consistent interface for interacting with multiple AI-powered code editing tools, making it easier to integrate and switch between different AI assistants in your development workflow.
-
-## Structure
-
-This project uses a workspace-based monorepo structure:
-
-```
-tarash/
-├── packages/          # Individual tool wrappers
-└── pyproject.toml     # Workspace configuration
-```
+| Package | Description |
+|---------|-------------|
+| [`tarash-gateway`](packages/tarash-gateway/) | Unified SDK for AI video and image generation across multiple providers |
+| [`tarash-captions`](packages/tarash-captions/) | Caption generation SDK with multi-provider support |
 
 ## Development
 
@@ -26,15 +19,11 @@ tarash/
 ### Setup
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd tarash
 
-# Install dependencies
+# Install all workspace dependencies
 uv sync
-
-# Install development dependencies
-uv sync --group dev
 ```
 
 ### Adding Workspace Packages
@@ -52,4 +41,4 @@ package-name = { workspace = true }
 
 ## License
 
-[Add your license here]
+MIT

@@ -519,7 +519,19 @@ def get_image_field_mappers(model_name: str) -> dict[str, FieldMapper]:
 
 
 def parse_fal_image_status(request_id: str, status: Status) -> ImageGenerationUpdate:
-    """Parse Fal status update into ImageGenerationUpdate."""
+    """Convert a Fal polling status event into an ``ImageGenerationUpdate``.
+
+    Args:
+        request_id: Tarash request ID for correlation.
+        status: Fal status object (``Queued``, ``InProgress``, or ``Completed``).
+
+    Returns:
+        Normalised ``ImageGenerationUpdate`` with status, progress, and raw
+        event payload.
+
+    Raises:
+        ValueError: If ``status`` is an unrecognised type.
+    """
     if isinstance(status, Completed):
         return ImageGenerationUpdate(
             request_id=request_id,
@@ -586,7 +598,19 @@ def get_field_mappers(model_name: str) -> dict[str, FieldMapper]:
 
 
 def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
-    """Parse Fal status update into VideoGenerationUpdate."""
+    """Convert a Fal polling status event into a ``VideoGenerationUpdate``.
+
+    Args:
+        request_id: Tarash request ID for correlation.
+        status: Fal status object (``Queued``, ``InProgress``, or ``Completed``).
+
+    Returns:
+        Normalised ``VideoGenerationUpdate`` with status, progress, and raw
+        event payload.
+
+    Raises:
+        ValueError: If ``status`` is an unrecognised type.
+    """
     if isinstance(status, Completed):
         return VideoGenerationUpdate(
             request_id=request_id,
@@ -619,10 +643,25 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
 
 
 class FalProviderHandler:
-    """Handler for Fal.ai provider."""
+    """Provider handler for the Fal.ai platform.
+
+    Supports text-to-video, image-to-video, and image generation across all
+    Fal-hosted models (Veo3, Kling, MiniMax, Sora, Flux, and more).
+    Uses model-specific field mappers for parameter translation.
+
+    Install the required extra before use:
+
+    ```bash
+    pip install tarash-gateway[fal]
+    ```
+    """
 
     def __init__(self):
-        """Initialize handler (stateless, no config stored)."""
+        """Initialise the Fal provider handler.
+
+        Raises:
+            ImportError: If ``fal-client`` is not installed.
+        """
         if not has_fal_client:
             raise ImportError(
                 "fal-client is required for Fal provider. "

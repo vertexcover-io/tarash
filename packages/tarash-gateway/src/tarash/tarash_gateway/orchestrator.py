@@ -20,19 +20,26 @@ from tarash.tarash_gateway.registry import get_handler
 
 
 class ExecutionOrchestrator:
-    """Orchestrator for managing fallback chain execution with metadata tracking."""
+    """Manages provider execution with automatic fallback and metadata tracking.
+
+    Traverses the fallback chain depth-first, retrying with each successive
+    provider on retryable errors. Attaches ``ExecutionMetadata`` to every
+    response for observability.
+    """
 
     @staticmethod
     def collect_fallback_chain(
         config: VideoGenerationConfig,
     ) -> list[VideoGenerationConfig]:
-        """Collect fallback chain using depth-first traversal.
+        """Collect the full fallback chain using depth-first traversal.
 
         Args:
-            config: Primary configuration (root of fallback tree)
+            config: Root config (primary provider). Its ``fallback_configs``
+                are recursively traversed depth-first.
 
         Returns:
-            List of configs in execution order (depth-first)
+            Ordered list of ``VideoGenerationConfig`` objects to try, starting
+            with ``config`` itself.
         """
         chain = [config]
 
@@ -49,18 +56,24 @@ class ExecutionOrchestrator:
         request: VideoGenerationRequest,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
-        """Execute video generation with fallback support (async).
+        """Execute video generation asynchronously with fallback support.
+
+        Iterates the fallback chain in order. On a retryable error the next
+        provider is tried; on a non-retryable error execution stops immediately.
 
         Args:
-            config: Primary video generation configuration
-            request: Video generation request
-            on_progress: Optional progress callback
+            config: Primary configuration. Fallbacks are read from
+                ``config.fallback_configs`` recursively.
+            request: Video generation parameters.
+            on_progress: Optional callback forwarded to the active provider.
 
         Returns:
-            VideoGenerationResponse with execution metadata
+            ``VideoGenerationResponse`` with ``execution_metadata`` attached.
 
         Raises:
-            Last exception if all attempts fail
+            TarashException: The last exception raised if all providers fail.
+                Non-retryable errors are re-raised immediately without trying
+                further fallbacks.
         """
         fallback_chain = self.collect_fallback_chain(config)
         attempts: list[AttemptMetadata] = []
@@ -197,18 +210,22 @@ class ExecutionOrchestrator:
         request: VideoGenerationRequest,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
-        """Execute video generation with fallback support (sync).
+        """Execute video generation synchronously with fallback support.
+
+        Blocking version of ``execute_async``. Iterates the fallback chain in
+        order, stopping on non-retryable errors.
 
         Args:
-            config: Primary video generation configuration
-            request: Video generation request
-            on_progress: Optional progress callback
+            config: Primary configuration. Fallbacks are read from
+                ``config.fallback_configs`` recursively.
+            request: Video generation parameters.
+            on_progress: Optional callback forwarded to the active provider.
 
         Returns:
-            VideoGenerationResponse with execution metadata
+            ``VideoGenerationResponse`` with ``execution_metadata`` attached.
 
         Raises:
-            Last exception if all attempts fail
+            TarashException: The last exception raised if all providers fail.
         """
         fallback_chain = self.collect_fallback_chain(config)
         attempts: list[AttemptMetadata] = []

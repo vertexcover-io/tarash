@@ -116,15 +116,30 @@ MOCK_VIDEO_LIBRARY: list[MockVideoSpec] = [
 
 
 class MockPollingConfig(BaseModel):
-    """Configuration for simulating polling updates."""
+    """Controls the simulated polling sequence emitted by the mock provider.
 
-    enabled: bool = True
+    When set on ``MockConfig.polling``, the mock will call the ``on_progress``
+    callback once per entry in ``status_sequence`` before returning the final
+    response.
+    """
+
+    enabled: bool = Field(default=True, description="Enable polling simulation.")
     status_sequence: list[StatusType] = Field(  # type: ignore[assignment]
-        default_factory=lambda: ["queued", "processing", "completed"]
+        default_factory=lambda: ["queued", "processing", "completed"],
+        description="Ordered status values emitted to the progress callback.",
     )
-    delay_between_updates: float = 0.5
-    progress_percentages: list[int] | None = None
-    custom_updates: list[dict[str, object]] | None = None
+    delay_between_updates: float = Field(
+        default=0.5,
+        description="Seconds to sleep between each simulated polling update.",
+    )
+    progress_percentages: list[int] | None = Field(
+        default=None,
+        description="Per-step progress values (0–100). Length must match status_sequence.",
+    )
+    custom_updates: list[dict[str, object]] | None = Field(
+        default=None,
+        description="Per-step custom payload merged into each VideoGenerationUpdate. Length must match status_sequence.",
+    )
 
     @model_validator(mode="after")
     def validate_polling_config(self) -> "MockPollingConfig":
@@ -144,13 +159,33 @@ class MockPollingConfig(BaseModel):
 
 
 class MockResponse(BaseModel):
-    """A single mock response (success or error) with weight."""
+    """A single weighted outcome in the mock response pool.
 
-    weight: float = 1.0
-    mock_response: VideoGenerationResponse | None = None
-    output_video: MediaType | None = None
-    output_video_type: Literal["url", "content"] = "url"
-    error: Exception | None = None
+    ``MockConfig.responses`` holds one or more ``MockResponse`` objects.
+    On each request, one is randomly selected proportional to ``weight``.
+    Exactly one of ``mock_response``, ``output_video``, or ``error`` should
+    be set; if none are set the provider auto-selects a matching sample video.
+    """
+
+    weight: float = Field(
+        default=1.0, description="Relative probability weight. Must be positive."
+    )
+    mock_response: VideoGenerationResponse | None = Field(
+        default=None,
+        description="Return this exact response (request_id and is_mock will be overwritten).",
+    )
+    output_video: MediaType | None = Field(
+        default=None,
+        description="Video URL, base64 string, or bytes to return as the generated video.",
+    )
+    output_video_type: Literal["url", "content"] = Field(
+        default="url",
+        description="'url' returns the video as a URL; 'content' downloads it and returns bytes.",
+    )
+    error: Exception | None = Field(
+        default=None,
+        description="If set, raise this exception instead of returning a response.",
+    )
 
     @model_validator(mode="after")
     def validate_response(self) -> "MockResponse":
@@ -173,11 +208,36 @@ class MockResponse(BaseModel):
 
 
 class MockConfig(BaseModel):
-    """Configuration for mocking video generation responses."""
+    """Enables mock video generation for testing without real API calls.
 
-    enabled: bool
-    responses: list[MockResponse] | None = None
-    polling: MockPollingConfig | None = None
+    Set on ``VideoGenerationConfig.mock`` to intercept generation requests.
+    When ``enabled=True`` the mock provider is used instead of the real one.
+
+    Example:
+        ```python
+        from tarash.tarash_gateway.mock import MockConfig, MockPollingConfig
+        from tarash.tarash_gateway.models import VideoGenerationConfig
+
+        config = VideoGenerationConfig(
+            provider="fal",
+            api_key="ignored-in-mock",
+            mock=MockConfig(
+                enabled=True,
+                polling=MockPollingConfig(delay_between_updates=0.1),
+            ),
+        )
+        ```
+    """
+
+    enabled: bool = Field(description="Set to True to activate the mock provider.")
+    responses: list[MockResponse] | None = Field(
+        default=None,
+        description="Pool of possible outcomes. Defaults to a single auto-matched success response.",
+    )
+    polling: MockPollingConfig | None = Field(
+        default=None,
+        description="Controls the simulated polling sequence. If None, no progress callbacks are fired.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -598,7 +658,22 @@ def handle_mock_request_sync(
     request: VideoGenerationRequest,
     on_progress: ProgressCallback | None = None,
 ) -> VideoGenerationResponse:
-    """Handle mock request (sync)."""
+    """Execute a mock video generation request synchronously.
+
+    Selects a ``MockResponse`` by weight, optionally fires polling callbacks,
+    and either returns a response or raises the configured error.
+
+    Args:
+        mock_config: Mock configuration with response pool and polling settings.
+        request: Video generation request used for auto-matching a sample video.
+        on_progress: Optional callback invoked once per simulated polling step.
+
+    Returns:
+        ``VideoGenerationResponse`` with ``is_mock=True``.
+
+    Raises:
+        Exception: Whatever error is configured on the selected ``MockResponse``.
+    """
     request_id = generate_mock_request_id()
     selected = select_mock_response(mock_config.responses)  # type: ignore[arg-type]
 
@@ -632,7 +707,23 @@ async def handle_mock_request_async(
     request: VideoGenerationRequest,
     on_progress: ProgressCallback | None = None,
 ) -> VideoGenerationResponse:
-    """Handle mock request (async)."""
+    """Execute a mock video generation request asynchronously.
+
+    Async version of ``handle_mock_request_sync``. Supports both sync and
+    async ``on_progress`` callbacks.
+
+    Args:
+        mock_config: Mock configuration with response pool and polling settings.
+        request: Video generation request used for auto-matching a sample video.
+        on_progress: Optional callback invoked once per simulated polling step.
+            Accepts both sync and async callables.
+
+    Returns:
+        ``VideoGenerationResponse`` with ``is_mock=True``.
+
+    Raises:
+        Exception: Whatever error is configured on the selected ``MockResponse``.
+    """
     request_id = generate_mock_request_id()
     selected = select_mock_response(mock_config.responses)  # type: ignore[arg-type]
 

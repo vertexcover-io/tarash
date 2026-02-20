@@ -1,0 +1,86 @@
+[project]
+site_name = "Tarash"
+site_description = "Unified Python SDK for AI video and image generation"
+site_url = "https://vertexcover-io.github.io/tarash"
+docs_dir = "docs"
+nav = [
+  { "Home" = "index.md" },
+  { "Getting Started" = [
+    { "Installation" = "getting-started/installation.md" },
+    { "Quickstart" = "getting-started/quickstart.md" },
+    { "Authentication" = "getting-started/authentication.md" },
+  ]},
+  { "Providers" = [
+    { "Overview" = "providers/index.md" },
+    { "OpenAI" = "providers/openai.md" },
+    { "Azure OpenAI" = "providers/azure-openai.md" },
+    { "Fal.ai" = "providers/fal.md" },
+    { "Google" = "providers/google.md" },
+    { "Runway" = "providers/runway.md" },
+    { "Replicate" = "providers/replicate.md" },
+{ "Stability AI" = "providers/stability.md" },
+  ]},
+  { "Guides" = [
+    { "Video Generation" = "guides/video-generation.md" },
+    { "Image Generation" = "guides/image-generation.md" },
+    { "Image to Video" = "guides/image-to-video.md" },
+  ]},
+  { "API Reference" = [
+    { "Gateway" = "api-reference/gateway.md" },
+    { "Models" = "api-reference/models.md" },
+    { "Exceptions" = "api-reference/exceptions.md" },
+    { "Mock Provider" = "api-reference/mock.md" },
+  ]},
+]
+
+[project.repo]
+url = "https://github.com/vertexcover-io/tarash"
+name = "vertexcover-io/tarash"
+
+[project.theme]
+name = "material"
+features = [
+  "navigation.expand",
+  "navigation.path",
+  "navigation.top",
+  "search.highlight",
+  "search.suggest",
+  "content.code.copy",
+  "content.code.annotate",
+]
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+[project.theme.palette.toggle]
+icon = "material/brightness-7"
+name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "indigo"
+accent = "indigo"
+[project.theme.palette.toggle]
+icon = "material/brightness-4"
+name = "Switch to light mode"
+
+# mkdocstrings plugin
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["packages/tarash-gateway/src"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+show_source = true
+show_signature_annotations = true
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+members_order = "source"
+separate_signature = true
+merge_init_into_class = true
+docstring_section_style = "table"

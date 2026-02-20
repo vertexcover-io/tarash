@@ -233,7 +233,17 @@ def parse_runway_task_status(
 
 
 class RunwayProviderHandler:
-    """Handler for Runway ML video generation."""
+    """Provider handler for Runway Gen-3 video generation.
+
+    Supports text-to-video and image-to-video workflows via the Runway API.
+    Handles endpoint selection automatically based on model name and input type.
+
+    Install the required extra before use:
+
+    ```bash
+    pip install tarash-gateway[runway]
+    ```
+    """
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
