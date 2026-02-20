@@ -1,0 +1,112 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: 'Provider to test (leave empty for all)'
+        required: false
+        default: ''
+  pull_request:
+    types: [labeled]
+
+jobs:
+  setup:
+    # For label trigger: only run when the label is exactly 'run-e2e'
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'run-e2e')
+    runs-on: ubuntu-latest
+    outputs:
+      providers: ${{ steps.set-matrix.outputs.providers }}
+    steps:
+      - name: Check actor permissions
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor,
+            });
+            if (!['admin', 'write'].includes(data.permission)) {
+              core.setFailed(`${context.actor} does not have write access — ignoring run-e2e label`);
+            }
+
+      - id: set-matrix
+        run: |
+          if [ -n "${{ github.event.inputs.provider }}" ]; then
+            echo 'providers=["${{ github.event.inputs.provider }}"]' >> $GITHUB_OUTPUT
+          else
+            echo 'providers=["fallback","bytedance","stability_image","pixverse","fal_image","fal","google_video","kling_o1","google_image","openai","openai_image","replicate_image","replicate","runway","luma"]' >> $GITHUB_OUTPUT
+          fi
+
+  e2e:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        provider: ${{ fromJson(needs.setup.outputs.providers) }}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-caching: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Write Google credentials
+        run: |
+          CREDS_FILE=$(mktemp /tmp/google-creds-XXXXXX.json)
+          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > "$CREDS_FILE"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDS_FILE" >> "$GITHUB_ENV"
+
+      - name: Run e2e tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
+          LUMAAI_API_KEY: ${{ secrets.LUMAAI_API_KEY }}
+          REPLICATE_API_KEY: ${{ secrets.REPLICATE_API_KEY }}
+          STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          GOOGLE_CLOUD_LOCATION: ${{ secrets.GOOGLE_CLOUD_LOCATION }}
+          GOOGLE_OUTPUT_GCS_BUCKET: ${{ secrets.GOOGLE_OUTPUT_GCS_BUCKET }}
+          SORA_VIDEO_ID: ${{ secrets.SORA_VIDEO_ID }}
+        run: |
+          uv run pytest packages/tarash-gateway/tests/e2e/test_${{ matrix.provider }}.py \
+            -v --tb=short \
+            --junit-xml=test-results/${{ matrix.provider }}.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.provider }}
+          path: test-results/
+          retention-days: 7
+
+  cleanup:
+    needs: e2e
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove run-e2e label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'run-e2e'
+            })
