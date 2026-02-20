@@ -75,7 +75,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
-          LUMAAI_API_KEY: ${{ secrets.LUMAAI_API_KEY }}
           REPLICATE_API_KEY: ${{ secrets.REPLICATE_API_KEY }}
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
