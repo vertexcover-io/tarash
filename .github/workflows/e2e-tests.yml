@@ -83,7 +83,7 @@ jobs:
           SORA_VIDEO_ID: ${{ secrets.SORA_VIDEO_ID }}
         run: |
           uv run pytest packages/tarash-gateway/tests/e2e/test_${{ matrix.provider }}.py \
-            -v --tb=short -r s \
+            --e2e -v --tb=short -r s \
             --junit-xml=test-results/${{ matrix.provider }}.xml
 
       - name: Upload test results
