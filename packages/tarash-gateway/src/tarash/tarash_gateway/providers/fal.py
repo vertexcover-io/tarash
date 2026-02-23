@@ -11,6 +11,7 @@ from fal_client.client import FalClientHTTPError
 import httpx
 from tarash.tarash_gateway.logging import ProviderLogger, log_error
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -858,6 +859,16 @@ class FalProviderHandler:
                 "response_headers": ex.response_headers,
                 "response": ex.response.content,
             }
+
+            # Content policy violation (422 with content_policy_violation type)
+            if ex.status_code == 422 and "content_policy_violation" in ex.message:
+                return ContentModerationError(
+                    ex.message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
 
             # Validation errors (400, 422)
             if ex.status_code in (400, 422):

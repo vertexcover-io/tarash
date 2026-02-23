@@ -7,6 +7,7 @@ from fal_client.client import FalClientHTTPError
 # from pydantic import ValidationError as Pydantic ValidationError  # Not used with FieldMapper approach
 
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPError,
     TarashException,
@@ -722,6 +723,46 @@ def test_handle_error_with_fal_client_http_error(handler, base_config, base_requ
     assert result.raw_response["response_headers"] == {
         "Content-Type": "application/json"
     }
+
+
+def test_handle_error_content_policy_violation(handler, base_config, base_request):
+    """Test 422 with content_policy_violation is mapped to ContentModerationError."""
+    mock_response = MagicMock()
+    mock_response.content = b"Content policy violation"
+
+    http_error = FalClientHTTPError(
+        status_code=422,
+        message="[{'type': 'content_policy_violation', 'msg': 'flagged by content checker'}]",
+        response_headers={"Content-Type": "application/json"},
+        response=mock_response,
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-cp", http_error)
+
+    assert isinstance(result, ContentModerationError)
+    assert result.provider == "fal"
+    assert result.raw_response["status_code"] == 422
+
+
+def test_handle_error_422_validation_not_content_policy(
+    handler, base_config, base_request
+):
+    """Test 422 without content_policy_violation is still mapped to ValidationError."""
+    mock_response = MagicMock()
+    mock_response.content = b"Validation error"
+
+    http_error = FalClientHTTPError(
+        status_code=422,
+        message="[{'type': 'value_error', 'msg': 'Field required'}]",
+        response_headers={"Content-Type": "application/json"},
+        response=mock_response,
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-val", http_error)
+
+    assert isinstance(result, ValidationError)
+    assert result.provider == "fal"
+    assert result.raw_response["status_code"] == 422
 
 
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
