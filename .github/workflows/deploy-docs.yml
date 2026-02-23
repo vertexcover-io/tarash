@@ -30,7 +30,7 @@ jobs:
         run: uv sync --all-packages --group dev
 
       - name: Build docs
-        run: uv run zensical build
+        run: uv run zensical build --clean --verbose
 
       - name: Verify build output
         run: |
