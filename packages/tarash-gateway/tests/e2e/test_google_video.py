@@ -64,7 +64,7 @@ def google_video_config(vertex_ai_provider_config):
     It requires Vertex AI with OAuth2/service account credentials.
     """
     return VideoGenerationConfig(
-        model="veo-3.0-generate-preview",
+        model="veo-3.1-generate-preview",
         provider="google",
         api_key=None,  # Vertex AI uses OAuth2, not API keys
         timeout=600,
