@@ -32,6 +32,19 @@ jobs:
       - name: Build docs
         run: uv run zensical build
 
+      - name: Verify build output
+        run: |
+          if [ ! -d "site" ]; then
+            echo "ERROR: site/ directory does not exist after build"
+            exit 1
+          fi
+          FILE_COUNT=$(find site/ -type f | wc -l)
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "ERROR: site/ directory is empty after build"
+            exit 1
+          fi
+          echo "Build verification passed: $FILE_COUNT files in site/"
+
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
