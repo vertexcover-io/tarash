@@ -70,7 +70,7 @@ class AttemptMetadata:
     """Metadata for a single provider attempt within the fallback chain.
 
     Captured automatically by the orchestrator for each provider tried.
-    Accessible via ``VideoGenerationResponse.execution_metadata.attempts``.
+    Accessible via [VideoGenerationResponse][] ``execution_metadata.attempts``.
     """
 
     provider: str
@@ -106,7 +106,7 @@ class AttemptMetadata:
 class ExecutionMetadata:
     """Metadata for the complete execution across all fallback attempts.
 
-    Attached to every ``VideoGenerationResponse`` and ``ImageGenerationResponse``
+    Attached to every [VideoGenerationResponse][] and [ImageGenerationResponse][]
     so callers can inspect timing, retry behaviour, and which provider ultimately
     succeeded.
     """
@@ -145,31 +145,13 @@ class ExecutionMetadata:
 
 
 class VideoGenerationConfig(BaseModel):
-    """Configuration for a video generation request.
-
-    Passed to ``generate_video()`` or ``generate_video_async()`` to select the
-    provider, model, credentials, and timeout behaviour. Immutable — create a
-    copy via ``model_copy(update={...})`` to change fields.
-
-    Example:
-        ```python
-        config = VideoGenerationConfig(
-            provider="fal",
-            model="fal-ai/veo3",
-            api_key="FAL_KEY",
-            timeout=600,
-            fallback_configs=[
-                VideoGenerationConfig(provider="runway", api_key="RUNWAY_KEY"),
-            ],
-        )
-        ```
-    """
+    """Configuration for a video generation request."""
 
     model: str = Field(
         description="Model identifier, e.g. 'fal-ai/veo3', 'openai/sora-2'."
     )
     provider: str = Field(
-        description="Provider identifier, e.g. 'fal', 'openai', 'runway'."
+        description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability', 'luma'."
     )
     api_key: str | None = Field(
         default=None,
@@ -210,29 +192,7 @@ class VideoGenerationConfig(BaseModel):
 
 
 class VideoGenerationRequest(BaseModel):
-    """Parameters for a video generation request.
-
-    All standard fields map to a common interface shared across providers.
-    Provider-specific parameters that have no standard equivalent can be passed
-    as keyword arguments — they are automatically captured into ``extra_params``
-    by the ``capture_extra_fields`` validator.
-
-    Example:
-        ```python
-        # Standard usage
-        request = VideoGenerationRequest(
-            prompt="A cat playing piano",
-            duration_seconds=4,
-            aspect_ratio="16:9",
-        )
-
-        # Kling-specific param captured into extra_params automatically
-        request = VideoGenerationRequest(
-            prompt="A cat playing piano",
-            cfg_scale=0.5,
-        )
-        ```
-    """
+    """Parameters for a video generation request."""
 
     prompt: str = Field(description="Text description of the video to generate.")
     duration_seconds: int | None = Field(
@@ -302,11 +262,7 @@ class VideoGenerationRequest(BaseModel):
 
 
 class VideoGenerationResponse(BaseModel):
-    """Normalized response returned by every video generation call.
-
-    Immutable. All provider-specific data is preserved in ``raw_response``
-    and ``provider_metadata`` for debugging.
-    """
+    """Normalized response returned by every video generation call."""
 
     request_id: str = Field(description="Tarash-assigned unique ID for this request.")
     video: MediaType = Field(
@@ -350,12 +306,7 @@ class VideoGenerationResponse(BaseModel):
 
 
 class VideoGenerationUpdate(BaseModel):
-    """A progress event emitted during video generation polling.
-
-    Passed to the ``on_progress`` callback on each polling cycle. When
-    ``status`` is ``"completed"``, ``result`` will be populated with the
-    final response.
-    """
+    """A progress event emitted during video generation polling."""
 
     request_id: str = Field(
         description="Same ID as the originating request, for correlation."
@@ -379,17 +330,13 @@ class VideoGenerationUpdate(BaseModel):
 
 
 class ImageGenerationConfig(BaseModel):
-    """Configuration for an image generation request.
-
-    Passed to ``generate_image()`` or ``generate_image_async()``. Immutable —
-    use ``model_copy(update={...})`` to derive a modified copy.
-    """
+    """Configuration for an image generation request."""
 
     model: str = Field(
         description="Model identifier, e.g. 'dall-e-3', 'fal-ai/flux-pro'."
     )
     provider: str = Field(
-        description="Provider identifier, e.g. 'openai', 'fal', 'stability'."
+        description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability', 'luma'."
     )
     api_key: str | None = Field(
         default=None,
@@ -428,12 +375,7 @@ class ImageGenerationConfig(BaseModel):
 
 
 class ImageGenerationRequest(BaseModel):
-    """Parameters for an image generation request.
-
-    Unknown keyword arguments are automatically captured into ``extra_params``
-    by the ``capture_extra_fields`` validator, allowing provider-specific
-    parameters to be passed without modifying the standard interface.
-    """
+    """Parameters for an image generation request."""
 
     prompt: str = Field(description="Text description of the image to generate.")
     negative_prompt: str | None = Field(
@@ -497,11 +439,7 @@ class ImageGenerationRequest(BaseModel):
 
 
 class ImageGenerationResponse(BaseModel):
-    """Normalized response returned by every image generation call.
-
-    Immutable. All provider-specific data is preserved in ``raw_response``
-    and ``provider_metadata`` for debugging.
-    """
+    """Normalized response returned by every image generation call."""
 
     request_id: str = Field(description="Tarash-assigned unique ID for this request.")
     images: list[str] = Field(
@@ -537,12 +475,7 @@ class ImageGenerationResponse(BaseModel):
 
 
 class ImageGenerationUpdate(BaseModel):
-    """A progress event emitted during image generation polling.
-
-    Passed to the ``on_progress`` callback on each polling cycle. When
-    ``status`` is ``"completed"``, ``result`` will be populated with the
-    final response.
-    """
+    """A progress event emitted during image generation polling."""
 
     request_id: str = Field(
         description="Same ID as the originating request, for correlation."

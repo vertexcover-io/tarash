@@ -12,17 +12,17 @@ You are adding a new model to the Fal provider in the tarash-gateway package.
 
 The user provided model ID: `$ARGUMENTS`
 
-## Key File Paths (relative to packages/tarash-gateway/)
+## Key File Paths (from repo root)
 
-- **Fal provider**: `src/tarash/tarash_gateway/providers/fal.py`
-- **Field mappers framework**: `src/tarash/tarash_gateway/providers/field_mappers.py`
-- **Models/types**: `src/tarash/tarash_gateway/models.py`
-- **API entry point**: `src/tarash/tarash_gateway/api.py`
-- **Unit tests (video)**: `tests/unit/video/providers/test_fal.py`
-- **Unit tests (image)**: `tests/unit/image/providers/test_fal.py`
-- **E2E video tests**: `tests/e2e/test_fal.py`
-- **E2E image tests**: `tests/e2e/test_fal_image.py`
-- **Test config**: `tests/conftest.py`
+- **Fal provider**: `packages/tarash-gateway/src/tarash/tarash_gateway/providers/fal.py`
+- **Field mappers framework**: `packages/tarash-gateway/src/tarash/tarash_gateway/providers/field_mappers.py`
+- **Models/types**: `packages/tarash-gateway/src/tarash/tarash_gateway/models.py`
+- **API entry point**: `packages/tarash-gateway/src/tarash/tarash_gateway/api.py`
+- **Unit tests (video)**: `packages/tarash-gateway/tests/unit/video/providers/test_fal.py`
+- **Unit tests (image)**: `packages/tarash-gateway/tests/unit/image/providers/test_fal.py`
+- **E2E video tests**: `packages/tarash-gateway/tests/e2e/test_fal.py`
+- **E2E image tests**: `packages/tarash-gateway/tests/e2e/test_fal_image.py`
+- **Test config**: `packages/tarash-gateway/tests/conftest.py`
 
 ## CRITICAL: Read Before Writing
 
@@ -355,11 +355,11 @@ async def test_<model>_<variant>_async(fal_api_key):
 Run the unit tests first:
 
 ```bash
-uv run pytest tests/unit/video/providers/test_fal.py -v
+uv run pytest packages/tarash-gateway/tests/unit/video/providers/test_fal.py -v
 ```
 Or for image models:
 ```bash
-uv run pytest tests/unit/image/providers/test_fal.py -v
+uv run pytest packages/tarash-gateway/tests/unit/image/providers/test_fal.py -v
 ```
 
 If tests fail:
@@ -385,11 +385,11 @@ Before running e2e tests:
 
 3. Run the e2e tests:
    ```bash
-   uv run pytest tests/e2e/test_fal.py -v --e2e -k "<model_name>"
+   uv run pytest packages/tarash-gateway/tests/e2e/test_fal.py -v --e2e -k "<model_name>"
    ```
    Or for image models:
    ```bash
-   uv run pytest tests/e2e/test_fal_image.py -v --e2e -k "<model_name>"
+   uv run pytest packages/tarash-gateway/tests/e2e/test_fal_image.py -v --e2e -k "<model_name>"
    ```
 
 4. If tests fail:
@@ -403,7 +403,7 @@ Before running e2e tests:
 Once all tests pass:
 1. Run the full fal unit test suite to ensure no regressions:
    ```bash
-   uv run pytest tests/unit/video/providers/test_fal.py -v
+   uv run pytest packages/tarash-gateway/tests/unit/video/providers/test_fal.py -v
    ```
 2. Summarize what was added:
    - Model name and variants

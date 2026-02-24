@@ -42,8 +42,8 @@ def register_provider(
 
     Args:
         provider: Unique provider identifier (e.g. ``"my-provider"``). Must
-            match the ``provider`` field passed in ``VideoGenerationConfig``.
-        handler: Instantiated handler implementing the ``ProviderHandler``
+            match the ``provider`` field passed in [VideoGenerationConfig][].
+        handler: Instantiated handler implementing the [ProviderHandler][]
             protocol.
 
     Example:
@@ -64,7 +64,7 @@ def register_provider(
 
         register_provider("my-provider", MyHandler())
 
-        config = VideoGenerationConfig(provider="my-provider", api_key="...")
+        config = VideoGenerationConfig(provider="my-provider", model="my-model", api_key="...")
         ```
     """
     _register_provider(provider, handler)
@@ -76,7 +76,7 @@ def register_provider_field_mapping(
 ) -> None:
     """Register field mappings for a provider's models.
 
-    Configures how ``VideoGenerationRequest`` fields are translated to the
+    Configures how [VideoGenerationRequest][] fields are translated to the
     provider's own API parameter names and formats. Supports prefix-based
     lookup so a single mapping can cover a family of model variants.
 
@@ -158,10 +158,10 @@ async def generate_video_async(
         request: Video generation parameters (prompt, duration, aspect ratio,
             etc.). Unknown fields are captured into ``extra_params``.
         on_progress: Optional callback invoked on each polling cycle with a
-            ``VideoGenerationUpdate``. Accepts both sync and async callables.
+            [VideoGenerationUpdate][]. Accepts both sync and async callables.
 
     Returns:
-        ``VideoGenerationResponse`` with the video URL, status, and full
+        [VideoGenerationResponse][] with the video URL, status, and full
         ``execution_metadata`` including timing and fallback attempts.
 
     Raises:
@@ -179,7 +179,11 @@ async def generate_video_async(
         )
 
         async def main():
-            config = VideoGenerationConfig(provider="fal", api_key="FAL_KEY")
+            config = VideoGenerationConfig(
+                provider="fal",
+                model="fal-ai/veo3",
+                api_key="FAL_KEY",
+            )
             request = VideoGenerationRequest(
                 prompt="A cat playing piano, cinematic lighting",
                 duration_seconds=4,
@@ -190,7 +194,7 @@ async def generate_video_async(
                 print(f"{update.status} — {update.progress_percent}%")
 
             response = await generate_video_async(config, request, on_progress)
-            print(response.video_url)
+            print(response.video)
 
         asyncio.run(main())
         ```
@@ -216,7 +220,7 @@ def generate_video(
 ) -> VideoGenerationResponse:
     """Generate a video synchronously using the configured provider.
 
-    Blocking version of ``generate_video_async``. Runs the full orchestration
+    Blocking version of [generate_video_async][]. Runs the full orchestration
     pipeline and returns only when generation is complete. Automatically falls
     back to ``config.fallback_configs`` on retryable errors.
 
@@ -226,10 +230,10 @@ def generate_video(
         request: Video generation parameters (prompt, duration, aspect ratio,
             etc.). Unknown fields are captured into ``extra_params``.
         on_progress: Optional callback invoked on each polling cycle with a
-            ``VideoGenerationUpdate``. Accepts both sync and async callables.
+            [VideoGenerationUpdate][]. Accepts both sync and async callables.
 
     Returns:
-        ``VideoGenerationResponse`` with the video URL, status, and full
+        [VideoGenerationResponse][] with the video URL, status, and full
         ``execution_metadata`` including timing and fallback attempts.
 
     Raises:
@@ -241,14 +245,18 @@ def generate_video(
         from tarash.tarash_gateway import generate_video
         from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
-        config = VideoGenerationConfig(provider="fal", api_key="FAL_KEY")
+        config = VideoGenerationConfig(
+            provider="fal",
+            model="fal-ai/veo3",
+            api_key="FAL_KEY",
+        )
         request = VideoGenerationRequest(
             prompt="A cat playing piano, cinematic lighting",
             duration_seconds=4,
             aspect_ratio="16:9",
         )
         response = generate_video(config, request)
-        print(response.video_url)
+        print(response.video)
         ```
     """
     log_info(
@@ -284,11 +292,11 @@ async def generate_image_async(
             optional fallback chain.
         request: Image generation parameters (prompt, size, quality, style,
             etc.). Unknown fields are captured into ``extra_params``.
-        on_progress: Optional callback invoked with an ``ImageGenerationUpdate``
+        on_progress: Optional callback invoked with an [ImageGenerationUpdate][]
             during generation. Accepts both sync and async callables.
 
     Returns:
-        ``ImageGenerationResponse`` containing a list of generated images
+        [ImageGenerationResponse][] containing a list of generated images
         (base64 or URL), status, and ``execution_metadata``.
 
     Raises:
@@ -339,7 +347,7 @@ def generate_image(
 ) -> ImageGenerationResponse:
     """Generate an image synchronously using the configured provider.
 
-    Blocking version of ``generate_image_async``. Runs the full orchestration
+    Blocking version of [generate_image_async][]. Runs the full orchestration
     pipeline and returns only when generation is complete. Automatically falls
     back to ``config.fallback_configs`` on retryable errors.
 
@@ -348,11 +356,11 @@ def generate_image(
             optional fallback chain.
         request: Image generation parameters (prompt, size, quality, style,
             etc.). Unknown fields are captured into ``extra_params``.
-        on_progress: Optional callback invoked with an ``ImageGenerationUpdate``
+        on_progress: Optional callback invoked with an [ImageGenerationUpdate][]
             during generation. Accepts both sync and async callables.
 
     Returns:
-        ``ImageGenerationResponse`` containing a list of generated images
+        [ImageGenerationResponse][] containing a list of generated images
         (base64 or URL), status, and ``execution_metadata``.
 
     Raises:

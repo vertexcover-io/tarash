@@ -118,9 +118,9 @@ MOCK_VIDEO_LIBRARY: list[MockVideoSpec] = [
 class MockPollingConfig(BaseModel):
     """Controls the simulated polling sequence emitted by the mock provider.
 
-    When set on ``MockConfig.polling``, the mock will call the ``on_progress``
-    callback once per entry in ``status_sequence`` before returning the final
-    response.
+    When set on [MockConfig][] ``polling``, the mock will call the
+    ``on_progress`` callback once per entry in ``status_sequence`` before
+    returning the final response.
     """
 
     enabled: bool = Field(default=True, description="Enable polling simulation.")
@@ -161,7 +161,7 @@ class MockPollingConfig(BaseModel):
 class MockResponse(BaseModel):
     """A single weighted outcome in the mock response pool.
 
-    ``MockConfig.responses`` holds one or more ``MockResponse`` objects.
+    [MockConfig][] ``responses`` holds one or more [MockResponse][] objects.
     On each request, one is randomly selected proportional to ``weight``.
     Exactly one of ``mock_response``, ``output_video``, or ``error`` should
     be set; if none are set the provider auto-selects a matching sample video.
@@ -210,7 +210,7 @@ class MockResponse(BaseModel):
 class MockConfig(BaseModel):
     """Enables mock video generation for testing without real API calls.
 
-    Set on ``VideoGenerationConfig.mock`` to intercept generation requests.
+    Set on [VideoGenerationConfig][] ``mock`` to intercept generation requests.
     When ``enabled=True`` the mock provider is used instead of the real one.
 
     Example:
@@ -660,7 +660,7 @@ def handle_mock_request_sync(
 ) -> VideoGenerationResponse:
     """Execute a mock video generation request synchronously.
 
-    Selects a ``MockResponse`` by weight, optionally fires polling callbacks,
+    Selects a [MockResponse][] by weight, optionally fires polling callbacks,
     and either returns a response or raises the configured error.
 
     Args:
@@ -669,10 +669,10 @@ def handle_mock_request_sync(
         on_progress: Optional callback invoked once per simulated polling step.
 
     Returns:
-        ``VideoGenerationResponse`` with ``is_mock=True``.
+        [VideoGenerationResponse][] with ``is_mock=True``.
 
     Raises:
-        Exception: Whatever error is configured on the selected ``MockResponse``.
+        Exception: Whatever error is configured on the selected [MockResponse][].
     """
     request_id = generate_mock_request_id()
     selected = select_mock_response(mock_config.responses)  # type: ignore[arg-type]
@@ -709,7 +709,7 @@ async def handle_mock_request_async(
 ) -> VideoGenerationResponse:
     """Execute a mock video generation request asynchronously.
 
-    Async version of ``handle_mock_request_sync``. Supports both sync and
+    Async version of [handle_mock_request_sync][]. Supports both sync and
     async ``on_progress`` callbacks.
 
     Args:
@@ -719,10 +719,10 @@ async def handle_mock_request_async(
             Accepts both sync and async callables.
 
     Returns:
-        ``VideoGenerationResponse`` with ``is_mock=True``.
+        [VideoGenerationResponse][] with ``is_mock=True``.
 
     Raises:
-        Exception: Whatever error is configured on the selected ``MockResponse``.
+        Exception: Whatever error is configured on the selected [MockResponse][].
     """
     request_id = generate_mock_request_id()
     selected = select_mock_response(mock_config.responses)  # type: ignore[arg-type]
@@ -756,11 +756,7 @@ async def handle_mock_request_async(
 
 
 class MockProviderHandler:
-    """Provider handler for mock video generation.
-
-    This handler wraps the mock logic and presents it as a standard ProviderHandler,
-    allowing mock to be treated like any other provider in the execution orchestrator.
-    """
+    """Provider handler that wraps mock logic as a standard ProviderHandler."""
 
     async def generate_video_async(
         self,
@@ -768,19 +764,7 @@ class MockProviderHandler:
         request: VideoGenerationRequest,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
-        """Generate mock video asynchronously.
-
-        Args:
-            config: Video generation configuration (with mock config)
-            request: Video generation request
-            on_progress: Optional progress callback
-
-        Returns:
-            Mock video generation response
-
-        Raises:
-            TarashException: If mock is configured to raise an error
-        """
+        """Generate a mock video asynchronously."""
         if not config.mock or not config.mock.enabled:
             raise ValueError("MockProviderHandler requires mock config to be enabled")
 
@@ -792,19 +776,7 @@ class MockProviderHandler:
         request: VideoGenerationRequest,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
-        """Generate mock video synchronously.
-
-        Args:
-            config: Video generation configuration (with mock config)
-            request: Video generation request
-            on_progress: Optional progress callback
-
-        Returns:
-            Mock video generation response
-
-        Raises:
-            TarashException: If mock is configured to raise an error
-        """
+        """Generate a mock video synchronously."""
         if not config.mock or not config.mock.enabled:
             raise ValueError("MockProviderHandler requires mock config to be enabled")
 

@@ -199,10 +199,10 @@ def is_retryable_error(error: Exception) -> bool:
     - Other unknown exceptions
 
     Args:
-        error: Exception to classify
+        error: The exception to classify.
 
     Returns:
-        True if error should trigger fallback, False otherwise
+        ``True`` if a fallback should be attempted, ``False`` otherwise.
     """
     # Retryable: Generation failures, timeouts, connection errors
     if isinstance(error, (GenerationFailedError, TimeoutError, HTTPConnectionError)):
@@ -229,9 +229,9 @@ def handle_video_generation_errors(func: F) -> F:
     Works with both sync and async functions automatically.
 
     Behaviour:
-    - ``TarashException`` subclasses — propagate unchanged.
+    - [TarashException][] subclasses — propagate unchanged.
     - ``PydanticValidationError`` — propagate unchanged.
-    - Any other exception — wrapped in ``TarashException`` with full traceback
+    - Any other exception — wrapped in [TarashException][] with full traceback
       captured in ``raw_response`` and logged at ERROR level.
 
     Example:
