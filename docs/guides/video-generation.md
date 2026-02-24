@@ -6,7 +6,11 @@
 from tarash.tarash_gateway import generate_video
 from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
-config = VideoGenerationConfig(provider="fal", api_key="YOUR_KEY")
+config = VideoGenerationConfig(
+    provider="fal",
+    model="fal-ai/veo3",
+    # api_key omitted — reads FAL_KEY env var automatically
+)
 request = VideoGenerationRequest(
     prompt="A drone shot over mountain peaks at golden hour",
     duration_seconds=5,
@@ -18,6 +22,22 @@ print(response.video)
 print(response.status)          # "completed"
 print(response.duration)        # actual duration in seconds
 ```
+
+## Config parameters
+
+| Parameter | Type | Required | Default | Description |
+|---|---|:---:|---|---|
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"runway"`, `"google"`, `"replicate"` |
+| `model` | `str` | ✅ | — | Model ID, e.g. `"fal-ai/veo3"`, `"openai/sora-2"` |
+| `api_key` | `str \| None` | — | `None` | API key; omit to auto-read provider env var |
+| `base_url` | `str \| None` | — | `None` | Override the provider's base API URL |
+| `api_version` | `str \| None` | — | `None` | API version string (required for Azure OpenAI) |
+| `timeout` | `int` | — | `600` | Max seconds to wait for generation to complete |
+| `max_poll_attempts` | `int` | — | `120` | Max polling iterations before timeout |
+| `poll_interval` | `int` | — | `5` | Seconds between status polls |
+| `mock` | `MockConfig \| None` | — | `None` | Enable mock generation for testing |
+| `fallback_configs` | `list[VideoGenerationConfig] \| None` | — | `None` | Ordered fallback provider chain |
+| `provider_config` | `dict` | — | `{}` | Provider-specific config (e.g. GCP project for Google Vertex AI) |
 
 ## Request parameters
 
@@ -74,5 +94,25 @@ config = VideoGenerationConfig(
     model="fal-ai/kling-video/v2.1/standard/text-to-video",
 )
 ```
+
+## Accessing the raw response
+
+Every response preserves the original, unmodified provider payload:
+
+```python
+response = generate_video(config, request)
+
+# Full provider JSON — useful for debugging or accessing provider-specific fields
+print(response.raw_response)
+
+# Additional provider fields not in the standard interface
+print(response.provider_metadata)
+
+# Example: extract a provider-specific field
+fal_request_id = response.raw_response.get("request_id")
+```
+
+`raw_response` is always populated. Use it when you need a field that isn't in
+the standard `VideoGenerationResponse` interface.
 
 See the [API reference](../api-reference/gateway.md) for the full function signature.

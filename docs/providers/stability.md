@@ -15,16 +15,6 @@ Stability AI provides image generation via Stable Diffusion 3.5 and Stable Image
 !!! info "Image only"
     Stability AI does not support video generation. Use this provider with `ImageGenerationConfig` and `generate_image()`.
 
-## Installation
-
-No extra SDK required — Tarash uses `httpx` which is already a core dependency.
-
-```bash
-pip install tarash-gateway
-# or
-uv add tarash-gateway
-```
-
 ## Configuration
 
 ```python

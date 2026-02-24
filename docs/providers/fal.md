@@ -23,14 +23,6 @@ Fal.ai is a serverless AI inference platform that hosts multiple video and image
 | Async | ✅ |
 | Progress callbacks | ✅ |
 
-## Installation
-
-```bash
-pip install tarash-gateway[fal]
-# or
-uv add tarash-gateway[fal]
-```
-
 ## Configuration
 
 ```python
@@ -57,17 +49,27 @@ config = VideoGenerationConfig(
 
 ## Video Models
 
-Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry.
+Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry,
+so any sub-variant automatically inherits the right field mappers.
 
-| Model ID (prefix) | Duration Options | Image-to-Video | Notes |
+| Model prefix | Duration | Image-to-Video | Notes |
 |---|---|:---:|---|
-| `fal-ai/veo3` | 4s, 6s, 8s | ✅ | With audio; first/last frame support |
-| `fal-ai/veo3.1` | 4s, 6s, 8s, 7s | ✅ | Latest Veo; extend-video via `fal-ai/veo3.1/fast/extend-video` |
-| `fal-ai/minimax` | 6s, 10s | ✅ | Hailuo series |
-| `fal-ai/kling-video/v2.6` | 5s, 10s | ✅ | Motion control support |
-| `fal-ai/kling-video/o1` | 5s, 10s | ✅ | Reference-to-video, video-to-video edit |
-| `fal-ai/sora-2` | 4s, 8s, 12s | ✅ | Sora via Fal; remix support |
-| `fal-ai/ltx` | 5s, 10s | ✅ | |
+| `fal-ai/veo3` | 4s, 6s, 8s | ✅ | Audio; first/last frame; extend-video |
+| `fal-ai/veo3.1` | 4s, 6s, 7s, 8s | ✅ | Latest Veo; fast variant via `/fast`; extend-video via `/fast/extend-video` |
+| `fal-ai/minimax` | 6s, 10s | ✅ | Hailuo series; prompt optimizer support |
+| `fal-ai/kling-video/v2.6` | 5s, 10s | ✅ | Motion control, cfg_scale, last-frame pinning |
+| `fal-ai/kling-video/o1` | 5s, 10s | ✅ | Reference-to-video, video edit, start/end frame |
+| `fal-ai/sora-2` | 4s, 8s, 12s | ✅ | Sora via Fal; remix via `/video-to-video/remix` |
+| `wan/v2.6/` | configurable | ✅ | Wan v2.6; text, image, reference-to-video |
+| `fal-ai/wan-25-preview/` | configurable | ✅ | Wan v2.5 preview |
+| `fal-ai/wan/v2.2-14b/animate/` | — | ✅ | Wan animate: video+image motion control |
+| `fal-ai/bytedance/seedance` | 2s–12s | ✅ | ByteDance Seedance v1/v1.5; reference-to-video |
+| `fal-ai/pixverse/v5` | 5s, 8s, 10s | ✅ | Pixverse v5; transition, effects, swap |
+| `fal-ai/pixverse/v5.5` | 5s, 8s, 10s | ✅ | Pixverse v5.5; same API as v5 |
+| `fal-ai/pixverse/swap` | — | ✅ | Pixverse swap variant |
+| Any other `fal-ai/*` | — | ✅ | Generic field mappers (prompt, seed, aspect_ratio) |
+
+Any Fal model not in this table gets **generic mappers** (prompt passthrough + common fields). For full support with model-specific parameters, [add the model](https://github.com/vertexcover-io/tarash/issues) or use `/add-fal-model`.
 
 ## Image Models
 

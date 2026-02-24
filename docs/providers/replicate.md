@@ -12,14 +12,6 @@ Replicate is a platform for running open-source AI models. Tarash supports video
 | Async | ✅ |
 | Progress callbacks | ✅ |
 
-## Installation
-
-```bash
-pip install tarash-gateway[replicate]
-# or
-uv add tarash-gateway[replicate]
-```
-
 ## Configuration
 
 ```python

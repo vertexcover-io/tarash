@@ -12,14 +12,6 @@ OpenAI provides video generation via **Sora** and image generation via **DALL-E*
 | Async | ✅ |
 | Progress callbacks | ✅ |
 
-## Installation
-
-```bash
-pip install tarash-gateway[openai]
-# or
-uv add tarash-gateway[openai]
-```
-
 ## Configuration
 
 ```python

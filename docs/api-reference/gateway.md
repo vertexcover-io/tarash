@@ -1,6 +1,34 @@
 # Gateway
 
-Public API entry point for video and image generation.
+Public API entry points. Import from `tarash.tarash_gateway`.
+
+## Function signatures
+
+```python
+from tarash.tarash_gateway import (
+    generate_video,
+    generate_video_async,
+    generate_image,
+    generate_image_async,
+    register_provider,
+    register_provider_field_mapping,
+    get_provider_field_mapping,
+)
+```
+
+| Function | Sync/Async | Returns |
+|---|---|---|
+| `generate_video(config, request, on_progress=None)` | Sync | `VideoGenerationResponse` |
+| `generate_video_async(config, request, on_progress=None)` | Async | `VideoGenerationResponse` |
+| `generate_image(config, request, on_progress=None)` | Sync | `ImageGenerationResponse` |
+| `generate_image_async(config, request, on_progress=None)` | Async | `ImageGenerationResponse` |
+| `register_provider(name, handler)` | — | `None` |
+| `register_provider_field_mapping(provider, model_mappings)` | — | `None` |
+| `get_provider_field_mapping(provider)` | — | `dict \| None` |
+
+See the [Custom Providers guide](../guides/custom-providers.md) for registration usage.
+
+---
 
 ::: tarash.tarash_gateway.api
     options:

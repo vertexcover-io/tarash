@@ -13,14 +13,6 @@ Google provides **Veo 3** video generation and **Imagen 3** / **Gemini** image g
 | Async | ✅ |
 | Progress callbacks | ✅ |
 
-## Installation
-
-```bash
-pip install tarash-gateway[veo3]
-# or
-uv add tarash-gateway[veo3]
-```
-
 ## Configuration
 
 ### Gemini Developer API (API key)

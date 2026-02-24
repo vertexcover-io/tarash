@@ -1,49 +1,51 @@
 # Authentication
 
-Each provider requires its own API key. Tarash accepts keys either directly in config or via
-environment variables.
+Each provider requires its own API key. You can pass it directly or rely on the
+provider's standard environment variable — Tarash passes `None` to the provider
+SDK which then reads the env var automatically.
 
-## Passing keys directly
+## Option 1: Pass the key directly
 
 ```python
 from tarash.tarash_gateway.models import VideoGenerationConfig
 
 config = VideoGenerationConfig(
     provider="fal",
+    model="fal-ai/veo3",
     api_key="fal-xxxxxxxxxxxxxxxx",
 )
 ```
 
 !!! warning
-    Avoid hardcoding keys in source code. Use environment variables instead.
+    Never hardcode API keys in source files. Use environment variables or a secrets manager.
 
-## Using environment variables
+## Option 2: Use environment variables (recommended)
 
-Set the key in your environment and read it at runtime:
+Set the key in your environment and omit `api_key` — the provider SDK reads it automatically:
 
 ```bash
 export FAL_KEY="fal-xxxxxxxxxxxxxxxx"
 export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxx"
-export RUNWAY_API_KEY="rw-xxxxxxxxxxxxxxxx"
 ```
 
 ```python
-import os
-from tarash.tarash_gateway.models import VideoGenerationConfig
-
 config = VideoGenerationConfig(
     provider="fal",
-    api_key=os.environ["FAL_KEY"],
+    model="fal-ai/veo3",
+    # api_key omitted — FAL_KEY is read automatically
 )
 ```
 
-## Provider API key reference
+No `os.environ` calls needed. The provider SDK handles it.
 
-| Provider | Env var convention | Where to get it |
+## Provider env var reference
+
+| Provider | Env var | Where to get it |
 |---|---|---|
 | Fal.ai | `FAL_KEY` | [fal.ai/dashboard](https://fal.ai/dashboard) |
 | OpenAI | `OPENAI_API_KEY` | [platform.openai.com](https://platform.openai.com/api-keys) |
+| Azure OpenAI | `AZURE_OPENAI_API_KEY` | Azure Portal |
 | Runway | `RUNWAY_API_KEY` | [app.runwayml.com](https://app.runwayml.com) |
-| Google (Veo3) | `GOOGLE_APPLICATION_CREDENTIALS` | GCP Service Account |
+| Google (Veo3) | `GOOGLE_APPLICATION_CREDENTIALS` | GCP Service Account JSON path |
 | Replicate | `REPLICATE_API_TOKEN` | [replicate.com/account](https://replicate.com/account) |
 | Stability AI | `STABILITY_API_KEY` | [platform.stability.ai](https://platform.stability.ai) |

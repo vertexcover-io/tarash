@@ -3,53 +3,31 @@
 ## Requirements
 
 - Python 3.12+
-- `uv` (recommended) or `pip`
 
 ## Install
 
 Install with all provider dependencies:
 
-=== "uv"
+```bash
+pip install tarash-gateway[all]
+```
 
-    ```bash
-    uv add tarash-gateway[all]
-    ```
+Or install a single provider:
 
-=== "pip"
-
-    ```bash
-    pip install tarash-gateway[all]
-    ```
-
-## Install a single provider
-
-If you only need one provider, install just that extra:
-
-=== "uv"
-
-    ```bash
-    uv add tarash-gateway[fal]
-    uv add tarash-gateway[openai]
-    uv add tarash-gateway[runway]
-    ```
-
-=== "pip"
-
-    ```bash
-    pip install tarash-gateway[fal]
-    pip install tarash-gateway[openai]
-    pip install tarash-gateway[runway]
-    ```
+```bash
+pip install tarash-gateway[fal]
+pip install tarash-gateway[openai]
+pip install tarash-gateway[runway]
+```
 
 ## Available extras
 
 | Extra | Providers included |
 |---|---|
 | `fal` | Fal.ai |
-| `openai` | OpenAI Sora |
+| `openai` | OpenAI, Azure OpenAI |
 | `runway` | Runway Gen-3 |
 | `veo3` | Google Veo3 (Vertex AI) |
-| `google` | Google Cloud AI Platform |
 | `replicate` | Replicate |
 | `all` | All of the above |
 

@@ -12,14 +12,6 @@ Azure OpenAI provides Sora video generation through Microsoft Azure's managed Op
 | Async | ✅ |
 | Progress callbacks | ✅ |
 
-## Installation
-
-```bash
-pip install tarash-gateway[openai]
-# or
-uv add tarash-gateway[openai]
-```
-
 ## Configuration
 
 ```python

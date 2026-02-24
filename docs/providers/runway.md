@@ -13,14 +13,6 @@ Runway provides video generation (Gen-3, Aleph) via the `runwayml` Python SDK. I
 | Async | ✅ |
 | Progress callbacks | ✅ |
 
-## Installation
-
-```bash
-pip install tarash-gateway[runway]
-# or
-uv add tarash-gateway[runway]
-```
-
 ## Configuration
 
 ```python
