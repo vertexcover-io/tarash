@@ -1,5 +1,5 @@
 [project]
-site_name = "Tarash"
+site_name = "Tarash Gateway"
 site_description = "Unified Python SDK for AI video and image generation"
 site_url = "https://vertexcover-io.github.io/tarash"
 docs_dir = "docs"
@@ -24,6 +24,9 @@ nav = [
     { "Video Generation" = "guides/video-generation.md" },
     { "Image Generation" = "guides/image-generation.md" },
     { "Image to Video" = "guides/image-to-video.md" },
+    { "Fallback & Routing" = "guides/fallback-and-routing.md" },
+    { "Mock Provider" = "guides/mock.md" },
+    { "Custom Providers" = "guides/custom-providers.md" },
   ]},
   { "API Reference" = [
     { "Gateway" = "api-reference/gateway.md" },
