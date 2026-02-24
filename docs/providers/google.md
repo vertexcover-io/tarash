@@ -2,6 +2,28 @@
 
 Google provides **Veo 3** video generation and **Imagen 3** / **Gemini** image generation via the `google-genai` SDK. Supports both the Gemini Developer API (API key) and Google Cloud Vertex AI (service account / ADC).
 
+## Supported Models
+
+### Video
+
+| Model ID | Notes |
+|---|---|
+| `veo-3.0-generate-preview` | Veo 3 — standard |
+| `veo-3.5-generate-preview` | Veo 3.5 — longer sequences |
+
+**Supported resolutions:** 720p, 1080p, 4k
+
+### Image
+
+| Model ID | Notes |
+|---|---|
+| `imagen-3.0-generate-001` | Imagen 3 |
+| `imagen-3.0-generate-002` | Imagen 3 latest |
+| `gemini-2.5-flash-image` | Nano Banana |
+| `gemini-3-pro-image` | Gemini pro image |
+
+Imagen models use the dedicated `generate_images` API. Gemini image models (`gemini-*`) use the `generate_content` API. Tarash detects automatically based on model name prefix.
+
 ## Capabilities
 
 | Feature | Supported |
@@ -23,7 +45,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig
 config = VideoGenerationConfig(
     provider="google",
     model="veo-3.0-generate-preview",
-    api_key="AIza...",   # Gemini API key
+    api_key="AIza...",   # or omit — reads GOOGLE_API_KEY env var
     timeout=600,
     max_poll_attempts=120,
     poll_interval=5,
@@ -39,20 +61,12 @@ config = VideoGenerationConfig(
     api_key=None,   # No API key for Vertex AI
     provider_config={
         "gcp_project": "my-gcp-project",
-        "location": "us-central1",              # Optional, default us-central1
+        "location": "us-central1",               # Optional, default us-central1
         "credentials_path": "/path/to/key.json", # Optional, uses ADC if omitted
     },
     timeout=600,
 )
 ```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `str \| None` | — | Gemini API key. Omit for Vertex AI. |
-| `provider_config` | `dict \| None` | — | Vertex AI settings (see below) |
-| `timeout` | `int` | `600` | Request timeout in seconds |
-| `max_poll_attempts` | `int` | `120` | Max polling iterations |
-| `poll_interval` | `int` | `5` | Seconds between status checks |
 
 **`provider_config` keys for Vertex AI:**
 
@@ -62,25 +76,7 @@ config = VideoGenerationConfig(
 | `location` | — | Region (default: `us-central1`) |
 | `credentials_path` | — | Path to service account JSON. Omit to use Application Default Credentials. |
 
-## Video Models
-
-| Model ID | Notes |
-|---|---|
-| `veo-3.0-generate-preview` | Veo 3 — standard |
-| `veo-3.5-generate-preview` | Veo 3.5 — longer sequences |
-
-**Supported resolutions:** 720p, 1080p, 4k (Veo 3+ only)
-
-## Image Models
-
-| Model ID | API Used | Notes |
-|---|---|---|
-| `imagen-3.0-generate-001` | `generate_images` | Imagen 3 |
-| `imagen-3.0-generate-002` | `generate_images` | Imagen 3 latest |
-| `gemini-2.5-flash-image` | `generate_content` | Nano Banana |
-| `gemini-3-pro-image` | `generate_content` | Gemini pro image |
-
-Imagen models use the dedicated `generate_images` API. Gemini image models (`gemini-*`) use the `generate_content` API. Tarash detects automatically based on model name prefix.
+**Authentication detection:** If `api_key` is set, the Gemini Developer API is used. If `api_key` is `None`, Vertex AI mode is activated and `provider_config.gcp_project` is required (or the `GOOGLE_CLOUD_PROJECT` environment variable).
 
 ## Quick Example
 
@@ -113,8 +109,8 @@ from tarash.tarash_gateway.models import ImageType
 request = VideoGenerationRequest(
     prompt="The sun rises above the mountain",
     image_list=[
-        ImageType(url="https://example.com/dawn.jpg", type="first_frame"),
-        ImageType(url="https://example.com/sunrise.jpg", type="last_frame"),
+        ImageType(image="https://example.com/dawn.jpg", type="first_frame"),
+        ImageType(image="https://example.com/sunrise.jpg", type="last_frame"),
     ],
 )
 ```
@@ -145,8 +141,6 @@ request = VideoGenerationRequest(
 | First + last frame (interpolation) | 1 + 1 |
 | Reference images + first_frame | ❌ Not allowed |
 | Any + last_frame without first_frame | ❌ Requires first_frame |
-
-**Authentication detection:** If `api_key` is set, the Gemini Developer API is used. If `api_key` is `None`, Vertex AI mode is activated and `provider_config.gcp_project` is required (or the `GOOGLE_CLOUD_PROJECT` environment variable).
 
 **No SDK caching:** Google clients are created fresh per request. The `google-genai` SDK manages its own connection pooling internally.
 

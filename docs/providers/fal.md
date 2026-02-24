@@ -1,53 +1,21 @@
 # Fal.ai
 
-!!! tip "Adding a new Fal model? There's a skill for that. <span style='background:#1565C0;color:#fff;padding:1px 7px;border-radius:4px;font-size:0.72em;font-weight:700;letter-spacing:0.04em;vertical-align:middle'>BETA</span>"
-    Fal hosts hundreds of models. To add one that isn't in the registry yet, run this in Claude Code:
+!!! tip "Model not listed? Add it in seconds."
+    **Option 1 — GitHub issue** (no local setup needed):
+    [Open an "Add Fal model" issue](https://github.com/vertexcover-io/tarash/issues/new?template=add-fal-model.yml) — a bot picks it up, runs the skill, and opens a PR automatically.
 
+    **Option 2 — Claude Code skill** (in your terminal):
     ```
     /add-fal-model fal-ai/your-model-id
     ```
 
-    It fetches the model schema from fal.ai, generates field mappers, registers the model, and writes unit + e2e tests — all in one shot.
+    Both paths fetch the model schema from fal.ai, generate field mappers, register the model, and write unit + e2e tests automatically.
 
 Fal.ai is a serverless AI inference platform that hosts multiple video and image generation models including Veo3, Sora, Minimax (Hailuo), Kling, and Flux.
 
-## Capabilities
+## Supported Models
 
-| Feature | Supported |
-|---|:---:|
-| Video generation | ✅ |
-| Image generation | ✅ |
-| Image-to-video | ✅ |
-| First/last frame | ✅ |
-| Video extend/remix | ✅ |
-| Async | ✅ |
-| Progress callbacks | ✅ |
-
-## Configuration
-
-```python
-from tarash.tarash_gateway.models import VideoGenerationConfig
-
-config = VideoGenerationConfig(
-    provider="fal",
-    model="fal-ai/veo3",
-    api_key="...",          # Required: Fal API key
-    base_url=None,          # Optional: override Fal endpoint
-    timeout=600,
-    max_poll_attempts=120,
-    poll_interval=5,
-)
-```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `str` | — | Fal API key |
-| `base_url` | `str \| None` | `None` | Override Fal endpoint |
-| `timeout` | `int` | `600` | Request timeout in seconds |
-| `max_poll_attempts` | `int` | `120` | Max polling iterations |
-| `poll_interval` | `int` | `5` | Seconds between status checks |
-
-## Video Models
+### Video
 
 Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry,
 so any sub-variant automatically inherits the right field mappers.
@@ -69,9 +37,9 @@ so any sub-variant automatically inherits the right field mappers.
 | `fal-ai/pixverse/swap` | — | ✅ | Pixverse swap variant |
 | Any other `fal-ai/*` | — | ✅ | Generic field mappers (prompt, seed, aspect_ratio) |
 
-Any Fal model not in this table gets **generic mappers** (prompt passthrough + common fields). For full support with model-specific parameters, [add the model](https://github.com/vertexcover-io/tarash/issues) or use `/add-fal-model`.
+Any Fal model not in this table gets **generic mappers** (prompt passthrough + common fields). For full support with model-specific parameters, use `/add-fal-model` in Claude Code.
 
-## Image Models
+### Image
 
 Fal hosts many Flux-family image models. Use any Fal image model path as the `model` field in `ImageGenerationConfig`.
 
@@ -82,7 +50,34 @@ Fal hosts many Flux-family image models. Use any Fal image model path as the `mo
 | `fal-ai/flux-realism` | Photorealism LoRA |
 | `fal-ai/flux-pro/kontext` | Context-aware editing |
 
-For unlisted Fal image models, Tarash applies generic field mappers (prompt passthrough + seed).
+For unlisted Fal image models, Tarash Gateway applies generic field mappers (prompt passthrough + seed).
+
+## Capabilities
+
+| Feature | Supported |
+|---|:---:|
+| Video generation | ✅ |
+| Image generation | ✅ |
+| Image-to-video | ✅ |
+| First/last frame | ✅ |
+| Video extend/remix | ✅ |
+| Async | ✅ |
+| Progress callbacks | ✅ |
+
+## Configuration
+
+```python
+from tarash.tarash_gateway.models import VideoGenerationConfig
+
+config = VideoGenerationConfig(
+    provider="fal",
+    model="fal-ai/veo3",
+    api_key="...",          # or omit — reads FAL_KEY env var
+    timeout=600,
+    max_poll_attempts=120,
+    poll_interval=5,
+)
+```
 
 ## Quick Example
 
@@ -186,4 +181,3 @@ request = VideoGenerationRequest(
 - Requires both `prompt` and a `video` input
 
 **Veo3.1 vs veo3:** Use `fal-ai/veo3.1` for the latest model. Both use the same field mappers, so switching is transparent. `fal-ai/veo3.1/fast` also matches the `fal-ai/veo3.1` prefix.
-

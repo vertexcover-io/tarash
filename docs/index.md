@@ -18,77 +18,91 @@ Switch providers by changing two words:
 config = VideoGenerationConfig(provider="runway", model="gen3a_turbo")
 ```
 
+```bash
+pip install tarash-gateway[fal]     # single provider
+pip install tarash-gateway[all]     # every provider
+```
+
+[:fontawesome-solid-rocket: Get Started](getting-started/installation.md){ .md-button .md-button--primary }
+[:fontawesome-brands-github: GitHub](https://github.com/vertexcover-io/tarash){ .md-button }
+
 ---
 
 ## Why Tarash Gateway
 
-Sora, Veo3, Runway, Kling, Imagen — every provider ships a different API with different parameters, auth patterns, and polling logic. Tarash Gateway handles the translation. You write one integration and it runs on all of them.
+Sora, Veo3, Runway, Kling, Imagen — every provider ships a different API, different parameters, and different polling logic. Tarash Gateway handles the translation. You write one integration and it runs on all of them.
 
 ---
 
 ## Features
 
-<div class="grid cards" markdown>
+### Fallback chains
 
--   **Fallback chains**
+If a provider fails or rate-limits, Tarash Gateway automatically tries the next one in your chain:
 
-    If a provider fails or rate-limits, automatically continue with the next one.
-    [Learn more →](guides/fallback-and-routing.md)
+```python
+config = VideoGenerationConfig(
+    provider="fal",
+    model="fal-ai/veo3",
+    fallback_configs=[
+        VideoGenerationConfig(provider="replicate", model="google/veo-3"),
+        VideoGenerationConfig(provider="openai", model="openai/sora-2"),
+    ],
+)
+response = generate_video(config, request)
+# Fal → Replicate → OpenAI — first success wins
+```
 
-    ```python
-    config = VideoGenerationConfig(
-        provider="fal", model="fal-ai/veo3",
-        fallback_configs=[
-            VideoGenerationConfig(provider="replicate", model="google/veo-3"),
-        ],
-    )
-    ```
+[Fallback & Routing guide →](guides/fallback-and-routing.md)
 
--   **Async + progress callbacks**
+### Mock provider
 
-    Every method has a sync and async variant. Get real-time status updates during generation.
+Test your full pipeline locally without hitting any API or spending credits:
 
-    ```python
-    async def on_progress(update):
-        print(f"{update.status} — {update.progress_percent}%")
+```python
+from tarash.tarash_gateway.mock import MockConfig
 
-    response = await generate_video_async(config, request, on_progress=on_progress)
-    ```
+config = VideoGenerationConfig(
+    provider="fal",
+    model="fal-ai/veo3",
+    mock=MockConfig(enabled=True),
+)
+response = generate_video(config, request)
+print(response.is_mock)   # True — no real API call was made
+```
 
--   **Mock provider**
+[Mock Provider guide →](guides/mock.md)
 
-    Run your full integration locally without hitting any API or spending credits.
-    [Learn more →](guides/mock.md)
+### Progress callbacks
 
-    ```python
-    from tarash.tarash_gateway.mock import MockConfig
+Track generation in real time with sync or async callbacks:
 
-    config = VideoGenerationConfig(
-        provider="fal", model="fal-ai/veo3",
-        mock=MockConfig(enabled=True),
-    )
-    ```
+```python
+def on_progress(update):
+    print(f"[{update.status}] {update.progress_percent}%")
 
--   **Raw response access**
+response = generate_video(config, request, on_progress=on_progress)
+```
 
-    Every response preserves the original provider payload for debugging and
-    accessing provider-specific fields.
+### Raw response access
 
-    ```python
-    response.raw_response       # full provider JSON
-    response.provider_metadata  # extra provider fields
-    ```
+Every response keeps the original provider JSON — useful for debugging or reading provider-specific fields not in the standard interface:
 
--   **Pydantic v2**
+```python
+response = generate_video(config, request)
+print(response.raw_response)       # original provider JSON, unmodified
+print(response.provider_metadata)  # extra provider-specific fields
+```
 
-    Every request and response is a typed model. No dict guessing. Full IDE support.
+### Sync + async
 
--   **Custom providers**
+Every call has both a sync and async variant:
 
-    Plug in your own provider or extend Fal with any model.
-    [Learn more →](guides/custom-providers.md)
+```python
+response = generate_video(config, request)            # sync
+response = await generate_video_async(config, request)  # async
+```
 
-</div>
 
 ---
 
@@ -103,28 +117,3 @@ Sora, Veo3, Runway, Kling, Imagen — every provider ships a different API with 
 | [Runway](providers/runway.md) | ✅ | — | `runway` |
 | [Replicate](providers/replicate.md) | ✅ | — | `replicate` |
 | [Stability AI](providers/stability.md) | — | ✅ | — |
-
----
-
-## Adding a new Fal model
-
-Fal hosts hundreds of models. To add support for one that isn't registered yet,
-open a GitHub issue — or run this in Claude Code:
-
-```
-/add-fal-model fal-ai/your-model-id
-```
-
-The skill fetches the model schema, generates field mappers, and writes tests automatically.
-
----
-
-## Installation
-
-```bash
-pip install tarash-gateway[fal]       # single provider
-pip install tarash-gateway[all]       # every provider
-```
-
-[:fontawesome-solid-rocket: Get Started](getting-started/installation.md){ .md-button .md-button--primary }
-[:fontawesome-brands-github: GitHub](https://github.com/vertexcover-io/tarash){ .md-button }

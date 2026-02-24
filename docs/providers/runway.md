@@ -2,6 +2,32 @@
 
 Runway provides video generation (Gen-3, Aleph) via the `runwayml` Python SDK. It supports text-to-video, image-to-video, and video-to-video editing.
 
+## Supported Models
+
+Tarash automatically selects the correct Runway endpoint (`text_to_video`, `image_to_video`, or `video_to_video`) based on the model name and the inputs provided.
+
+| Model | Notes |
+|---|---|
+| `gen3a_turbo` | Requires image input |
+| `gen-3-alpha` | Auto-selected based on input (text or image) |
+| `aleph` | Requires video input; editing/extending |
+| VEO-prefixed models | Auto-selected based on input |
+
+**Aspect ratio support:** Runway uses pixel dimensions instead of ratio strings. Tarash converts automatically.
+
+| Mode | `aspect_ratio` | Runway Size |
+|---|---|---|
+| Text-to-video | `16:9` | 1280:720 |
+| Text-to-video | `9:16` | 720:1280 |
+| Text-to-video | `16:9-wide` | 1080:1920 |
+| Text-to-video | `9:16-wide` | 1920:1080 |
+| Image-to-video | `16:9` | 1280:720 |
+| Image-to-video | `9:16` | 720:1280 |
+| Image-to-video | `4:3` | 1104:832 |
+| Image-to-video | `3:4` | 832:1104 |
+| Image-to-video | `1:1` | 960:960 |
+| Image-to-video | `21:9` | 1584:672 |
+
 ## Capabilities
 
 | Feature | Supported |
@@ -21,54 +47,12 @@ from tarash.tarash_gateway.models import VideoGenerationConfig
 config = VideoGenerationConfig(
     provider="runway",
     model="gen3a_turbo",
-    api_key="...",      # Required: Runway API key
+    api_key="...",      # or omit — reads RUNWAY_API_KEY env var
     timeout=600,
     max_poll_attempts=120,
     poll_interval=5,
 )
 ```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `str` | — | Runway API key |
-| `timeout` | `int` | `600` | Request timeout in seconds |
-| `max_poll_attempts` | `int` | `120` | Max polling iterations |
-| `poll_interval` | `int` | `5` | Seconds between status checks |
-
-## Video Models
-
-Tarash automatically selects the correct Runway endpoint (`text_to_video`, `image_to_video`, or `video_to_video`) based on the model name and the inputs provided.
-
-| Model | Endpoint Selected | Notes |
-|---|---|---|
-| `gen3a_turbo` | `image_to_video` | Requires image input |
-| `gen-3-alpha` | `text_to_video` or `image_to_video` | Auto-selected based on input |
-| `aleph` | `video_to_video` | Requires video input; editing/extending |
-| VEO-prefixed models | `text_to_video` or `image_to_video` | Auto-selected |
-
-## Aspect Ratio Support
-
-Runway uses pixel dimensions instead of ratio strings. Tarash converts automatically.
-
-### Text-to-video
-
-| `aspect_ratio` | Runway Size |
-|---|---|
-| `16:9` | 1280:720 |
-| `9:16` | 720:1280 |
-| `16:9-wide` | 1080:1920 |
-| `9:16-wide` | 1920:1080 |
-
-### Image-to-video
-
-| `aspect_ratio` | Runway Size |
-|---|---|
-| `16:9` | 1280:720 |
-| `9:16` | 720:1280 |
-| `4:3` | 1104:832 |
-| `3:4` | 832:1104 |
-| `1:1` | 960:960 |
-| `21:9` | 1584:672 |
 
 ## Quick Example
 
@@ -91,7 +75,7 @@ request = VideoGenerationRequest(
     prompt="The astronaut floats gently away from the ship",
     aspect_ratio="16:9",
     image_list=[
-        ImageType(url="https://example.com/astronaut.jpg", type="reference"),
+        ImageType(image="https://example.com/astronaut.jpg", type="reference"),
     ],
 )
 

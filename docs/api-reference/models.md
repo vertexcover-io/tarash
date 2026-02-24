@@ -4,13 +4,25 @@ Core Pydantic models for requests, responses, and configuration.
 
 ---
 
+## Type aliases
+
+| Alias | Definition | Notes |
+|---|---|---|
+| `MediaType` | `Base64 \| HttpUrl \| MediaContent` | Video/image data — a URL string, base64 string, or a `{"content": bytes, "content_type": str}` dict |
+| `ImageType` | `TypedDict` | `{"image": MediaType, "type": "reference" \| "first_frame" \| "last_frame" \| "asset" \| "style"}` |
+| `MediaContent` | `TypedDict` | `{"content": bytes, "content_type": str}` — raw bytes with MIME type |
+| `Resolution` | `Literal` | `"360p" \| "480p" \| "720p" \| "1080p" \| "4k"` |
+| `AspectRatio` | `Literal` | `"16:9" \| "9:16" \| "1:1" \| "4:3" \| "21:9"` |
+
+---
+
 ## VideoGenerationConfig
 
-Configuration passed to `generate_video()` and `generate_video_async()`.
+Configuration passed to `generate_video()` and `generate_video_async()`. Immutable — use `model_copy(update={...})` to derive a modified copy.
 
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
-| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"` |
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"luma"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"fal-ai/veo3"`, `"openai/sora-2"` |
 | `api_key` | `str \| None` | — | `None` | API key; omit to auto-read provider env var |
 | `base_url` | `str \| None` | — | `None` | Override provider base URL |
@@ -32,8 +44,8 @@ Parameters for a video generation request. Unknown kwargs are automatically capt
 |---|---|:---:|---|---|
 | `prompt` | `str` | ✅ | — | Text description of the video |
 | `duration_seconds` | `int \| None` | — | `None` | Duration in seconds (provider may round) |
-| `resolution` | `"360p" \| "480p" \| "720p" \| "1080p" \| "4k" \| None` | — | `None` | Requested resolution |
-| `aspect_ratio` | `"16:9" \| "9:16" \| "1:1" \| "4:3" \| "21:9" \| None` | — | `None` | Requested aspect ratio |
+| `resolution` | `Resolution \| None` | — | `None` | Requested resolution |
+| `aspect_ratio` | `AspectRatio \| None` | — | `None` | Requested aspect ratio |
 | `generate_audio` | `bool \| None` | — | `None` | Generate audio alongside video |
 | `image_list` | `list[ImageType]` | — | `[]` | Input images with semantic roles |
 | `video` | `MediaType \| None` | — | `None` | Input video for extend or remix |
@@ -64,11 +76,26 @@ Parameters for a video generation request. Unknown kwargs are automatically capt
 
 ---
 
+## VideoGenerationUpdate
+
+Passed to the `on_progress` callback on each polling cycle during video generation.
+
+| Field | Type | Description |
+|---|---|---|
+| `request_id` | `str` | Same ID as the originating request |
+| `status` | `"queued" \| "processing" \| "completed" \| "failed"` | Current status |
+| `progress_percent` | `int \| None` | Estimated completion (0–100), if provided by the provider |
+| `update` | `dict` | Raw event payload from the polling cycle |
+| `result` | `VideoGenerationResponse \| None` | Final response — only set when `status == "completed"` |
+| `error` | `str \| None` | Error message — only set when `status == "failed"` |
+
+---
+
 ## ImageGenerationConfig
 
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
-| `provider` | `str` | ✅ | — | Provider ID |
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"luma"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"dall-e-3"`, `"fal-ai/flux-pro"` |
 | `api_key` | `str \| None` | — | `None` | API key; omit to auto-read env var |
 | `base_url` | `str \| None` | — | `None` | Override base URL |
@@ -105,7 +132,7 @@ Parameters for a video generation request. Unknown kwargs are automatically capt
 | Field | Type | Description |
 |---|---|---|
 | `request_id` | `str` | Tarash-assigned unique ID |
-| `images` | `list[str]` | Generated images (URLs or base64) |
+| `images` | `list[str]` | Generated images as URLs or base64-encoded strings |
 | `status` | `"completed" \| "failed"` | Final status |
 | `content_type` | `str \| None` | MIME type (default `"image/png"`) |
 | `is_mock` | `bool` | True if produced by mock provider |
@@ -116,10 +143,24 @@ Parameters for a video generation request. Unknown kwargs are automatically capt
 
 ---
 
+## ImageGenerationUpdate
+
+Passed to the `on_progress` callback on each polling cycle during image generation.
+
+| Field | Type | Description |
+|---|---|---|
+| `request_id` | `str` | Same ID as the originating request |
+| `status` | `"queued" \| "processing" \| "completed" \| "failed"` | Current status |
+| `progress_percent` | `int \| None` | Estimated completion (0–100) |
+| `update` | `dict` | Raw event payload from the polling cycle |
+| `result` | `ImageGenerationResponse \| None` | Final response — only set when `status == "completed"` |
+| `error` | `str \| None` | Error message — only set when `status == "failed"` |
+
+---
+
 ## ExecutionMetadata
 
-Attached to every response by the orchestrator. Inspect it to understand which provider
-succeeded and how long each attempt took.
+Attached to every response by the orchestrator. Inspect it to understand which provider succeeded and how long each attempt took.
 
 | Field | Type | Description |
 |---|---|---|
@@ -132,12 +173,31 @@ succeeded and how long each attempt took.
 
 ---
 
-## Full auto-generated reference
+## AttemptMetadata
 
-::: tarash.tarash_gateway.models
+One entry per provider tried. Accessible via `response.execution_metadata.attempts`.
+
+| Field | Type | Description |
+|---|---|---|
+| `provider` | `str` | Provider identifier for this attempt |
+| `model` | `str` | Model name used |
+| `attempt_number` | `int` | 1-based index in the fallback chain |
+| `started_at` | `datetime` | UTC timestamp when this attempt began |
+| `ended_at` | `datetime \| None` | UTC timestamp when completed, or `None` if still running |
+| `status` | `"success" \| "failed" \| "skipped"` | Outcome of this attempt |
+| `error_type` | `str \| None` | Exception class name if failed |
+| `error_message` | `str \| None` | Human-readable error if failed |
+| `is_retryable` | `bool \| None` | Whether the error triggered the next fallback |
+| `request_id` | `str \| None` | Provider-assigned request ID if available |
+| `elapsed_seconds` | `float \| None` | Duration of this attempt (computed property) |
+
+---
+
+## ProviderHandler
+
+Interface that all provider implementations must satisfy. Register a custom implementation with `register_provider()`. See the [Custom Providers guide](../guides/custom-providers.md) for a complete walkthrough.
+
+::: tarash.tarash_gateway.models.ProviderHandler
     options:
       show_source: false
-      show_signature_annotations: true
-      show_symbol_type_heading: true
-      members_order: source
-      separate_signature: true
+      members: false

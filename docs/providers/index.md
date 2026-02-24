@@ -5,15 +5,15 @@ Change `provider` and `model` in your config — nothing else in your code chang
 
 ## Supported providers
 
-| Provider | Video | Image | Image-to-Video | Async | Install extra |
-|---|:---:|:---:|:---:|:---:|---|
-| [OpenAI](openai.md) | ✅ | ✅ | ✅ | ✅ | `openai` |
-| [Azure OpenAI](azure-openai.md) | ✅ | ✅ | ✅ | ✅ | `openai` |
-| [Fal.ai](fal.md) | ✅ | ✅ | ✅ | ✅ | `fal` |
-| [Google](google.md) | ✅ | ✅ | ✅ | ✅ | `veo3` |
-| [Runway](runway.md) | ✅ | — | ✅ | ✅ | `runway` |
-| [Replicate](replicate.md) | ✅ | — | ✅ | ✅ | `replicate` |
-| [Stability AI](stability.md) | — | ✅ | — | ✅ | — |
+| Provider | Video | Image | Image-to-Video | Install extra |
+|---|:---:|:---:|:---:|---|
+| [OpenAI](openai.md) | ✅ | ✅ | ✅ | `openai` |
+| [Azure OpenAI](azure-openai.md) | ✅ | ✅ | ✅ | `openai` |
+| [Fal.ai](fal.md) | ✅ | ✅ | ✅ | `fal` |
+| [Google](google.md) | ✅ | ✅ | ✅ | `veo3` |
+| [Runway](runway.md) | ✅ | — | ✅ | `runway` |
+| [Replicate](replicate.md) | ✅ | — | ✅ | `replicate` |
+| [Stability AI](stability.md) | — | ✅ | — | — |
 
 ## Switching providers
 
@@ -23,44 +23,17 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 request = VideoGenerationRequest(
     prompt="A cat playing piano, cinematic lighting",
-    duration_seconds=5,
+    duration_seconds=4,
     aspect_ratio="16:9",
 )
 
 # Use Fal.ai
-config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3")
+config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3", api_key="YOUR_FAL_KEY")
 response = generate_video(config, request)
 
 # Switch to Runway — same request, one line change
-config = VideoGenerationConfig(provider="runway", model="gen3a_turbo")
+config = VideoGenerationConfig(provider="runway", model="gen-3-alpha", api_key="YOUR_RUNWAY_KEY")
 response = generate_video(config, request)
 ```
 
-## Fallback chains
-
-Configure automatic fallback to a backup provider if the primary fails or rate-limits:
-
-```python
-config = VideoGenerationConfig(
-    provider="fal",
-    model="fal-ai/veo3",
-    fallback_configs=[
-        VideoGenerationConfig(
-            provider="replicate",
-            model="google/veo-3",
-        ),
-    ],
-)
-```
-
-See the [Fallback & Routing guide](../guides/fallback-and-routing.md) for full details on retry behavior, execution metadata, and chaining multiple providers.
-
-## Adding a new Fal model
-
-Fal hosts hundreds of models. To add one that isn't registered:
-
-```
-/add-fal-model fal-ai/your-model-id
-```
-
-Or [open a GitHub issue](https://github.com/vertexcover-io/tarash/issues).
+For automatic failover between providers, see the [Fallback & Routing guide](../guides/fallback-and-routing.md).

@@ -2,6 +2,33 @@
 
 OpenAI provides video generation via **Sora** and image generation via **DALL-E** and **GPT Image**. Tarash uses the official `openai` Python SDK.
 
+## Supported Models
+
+### Video
+
+| Model ID | Duration Options | Aspect Ratios | Notes |
+|---|---|---|---|
+| `openai/sora-2` | 4s, 8s, 12s | 16:9, 9:16, 1:1, 16:10, 10:16 | Standard Sora |
+| `openai/sora-2-pro` | 10s, 15s, 25s | 16:9, 9:16, 1:1, 16:10, 10:16 | Higher quality, longer |
+
+Aspect ratio is automatically converted to the pixel dimensions Sora expects:
+
+| Aspect Ratio | Size |
+|---|---|
+| `16:9` | 1280×720 |
+| `9:16` | 720×1280 |
+| `1:1` | 1024×1024 |
+| `16:10` | 1792×1024 |
+| `10:16` | 1024×1792 |
+
+### Image
+
+| Model ID | Max Images | Sizes |
+|---|---|---|
+| `gpt-image-1.5` | 1 | 1024×1024, 1024×1792, 1792×1024, auto |
+| `dall-e-3` | 1 | 1024×1024, 1024×1792, 1792×1024 |
+| `dall-e-2` | up to 10 | 256×256, 512×512, 1024×1024 |
+
 ## Capabilities
 
 | Feature | Supported |
@@ -20,46 +47,12 @@ from tarash.tarash_gateway.models import VideoGenerationConfig
 config = VideoGenerationConfig(
     provider="openai",
     model="openai/sora-2",
-    api_key="sk-...",           # Required
-    base_url=None,              # Optional: override endpoint
-    timeout=600,                # Seconds before timeout (default: 600)
-    max_poll_attempts=120,      # Max status checks (default: 120)
-    poll_interval=5,            # Seconds between polls (default: 5)
+    api_key="sk-...",       # or omit — reads OPENAI_API_KEY env var
+    timeout=600,
+    max_poll_attempts=120,
+    poll_interval=5,
 )
 ```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `str` | — | OpenAI API key |
-| `base_url` | `str \| None` | `None` | Override API endpoint |
-| `timeout` | `int` | `600` | Request timeout in seconds |
-| `max_poll_attempts` | `int` | `120` | Max polling iterations |
-| `poll_interval` | `int` | `5` | Seconds between status checks |
-
-## Video Models
-
-| Model ID | Duration Options | Aspect Ratios | Notes |
-|---|---|---|---|
-| `openai/sora-2` | 4s, 8s, 12s | 16:9, 9:16, 1:1, 16:10, 10:16 | Standard Sora |
-| `openai/sora-2-pro` | 10s, 15s, 25s | 16:9, 9:16, 1:1, 16:10, 10:16 | Higher quality, longer |
-
-**Aspect ratio → size mapping:**
-
-| Aspect Ratio | Size |
-|---|---|
-| `16:9` | 1280×720 |
-| `9:16` | 720×1280 |
-| `1:1` | 1024×1024 |
-| `16:10` | 1792×1024 |
-| `10:16` | 1024×1792 |
-
-## Image Models
-
-| Model ID | Max Images | Sizes |
-|---|---|---|
-| `gpt-image-1.5` | 1 | 1024×1024, 1024×1792, 1792×1024, auto |
-| `dall-e-3` | 1 | 1024×1024, 1024×1792, 1792×1024 |
-| `dall-e-2` | up to 10 | 256×256, 512×512, 1024×1024 |
 
 ## Quick Example
 
@@ -84,7 +77,7 @@ video_request = VideoGenerationRequest(
     aspect_ratio="16:9",
 )
 video_response = generate_video(video_config, video_request)
-print(video_response.video)  # URL to the generated video
+print(video_response.video)
 
 # Image generation (DALL-E 3)
 image_config = ImageGenerationConfig(
@@ -132,7 +125,7 @@ from tarash.tarash_gateway.models import ImageType
 
 request = VideoGenerationRequest(
     prompt="The car drives away into the sunset",
-    image_list=[ImageType(url="https://example.com/car.jpg", type="reference")],
+    image_list=[ImageType(image="https://example.com/car.jpg", type="reference")],
     duration_seconds=8,
 )
 ```

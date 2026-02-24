@@ -2,6 +2,20 @@
 
 Azure OpenAI provides Sora video generation through Microsoft Azure's managed OpenAI service. It inherits all capabilities from the [OpenAI provider](openai.md) but authenticates against an Azure endpoint.
 
+## Supported Models
+
+### Video
+
+Azure OpenAI uses **deployment names** rather than model names. The deployment name is whatever name you gave your deployment in the Azure portal.
+
+| Underlying Model | Typical Deployment Name | Duration Options |
+|---|---|---|
+| Sora 2 | `sora-2` (user-defined) | 4s, 8s, 12s |
+
+### Image
+
+Same DALL-E and GPT Image models as the [OpenAI provider](openai.md#supported-models), accessed via Azure deployments.
+
 ## Capabilities
 
 | Feature | Supported |
@@ -19,7 +33,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig
 
 config = VideoGenerationConfig(
     provider="azure_openai",
-    model="sora-2",             # Deployment name, not model name
+    model="sora-2",             # Your deployment name in Azure
     api_key="...",              # Azure API key or AD token
     base_url="https://my-resource.openai.azure.com/",  # Required
     api_version="2024-05-01-preview",                  # Required
@@ -28,27 +42,6 @@ config = VideoGenerationConfig(
     poll_interval=5,
 )
 ```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `str` | — | Azure API key or Azure AD token |
-| `base_url` | `str` | — | **Required.** Azure OpenAI endpoint URL |
-| `api_version` | `str` | `"2024-05-01-preview"` | Azure API version |
-| `timeout` | `int` | `600` | Request timeout in seconds |
-| `max_poll_attempts` | `int` | `120` | Max polling iterations |
-| `poll_interval` | `int` | `5` | Seconds between status checks |
-
-## Video Models
-
-Azure OpenAI uses **deployment names** rather than model names. The deployment name is whatever name you gave your deployment in the Azure portal.
-
-| Underlying Model | Typical Deployment Name | Duration Options |
-|---|---|---|
-| Sora 2 | `sora-2` (user-defined) | 4s, 8s, 12s |
-
-## Image Models
-
-Same DALL-E and GPT Image models as the [OpenAI provider](openai.md#image-models), accessed via Azure deployments.
 
 ## Quick Example
 
@@ -80,7 +73,7 @@ Same as the [OpenAI provider](openai.md#supported-request-parameters). All Sora 
 
 ## Provider-Specific Notes
 
-**`base_url` is required.** Unlike the standard OpenAI provider, Azure requires an explicit endpoint. The URL should be your Azure OpenAI resource endpoint:
+**`base_url` is required.** Unlike the standard OpenAI provider, Azure requires an explicit endpoint:
 
 ```
 https://<resource-name>.openai.azure.com/

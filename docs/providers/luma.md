@@ -87,8 +87,8 @@ request = VideoGenerationRequest(
     prompt="The door slowly swings open to reveal sunlight",
     duration_seconds=5,
     image_list=[
-        ImageType(url="https://example.com/door-closed.jpg", type="first_frame"),
-        ImageType(url="https://example.com/door-open.jpg", type="last_frame"),
+        ImageType(image="https://example.com/door-closed.jpg", type="first_frame"),
+        ImageType(image="https://example.com/door-open.jpg", type="last_frame"),
     ],
 )
 ```
@@ -124,15 +124,6 @@ request = VideoGenerationRequest(
 | `loop` | `bool` | Generate a seamlessly looping video |
 
 ## Provider-Specific Notes
-
-**Status mapping:** Luma uses different status names than Tarash's standard set. Tarash maps them automatically:
-
-| Luma status | Tarash status |
-|---|---|
-| `queued` | `queued` |
-| `dreaming` | `processing` |
-| `completed` | `completed` |
-| `failed` | `failed` |
 
 **Keyframe mapping:** Tarash maps `first_frame` → Luma `frame0` and `last_frame` → Luma `frame1`. Luma's keyframe API accepts image URLs directly.
 

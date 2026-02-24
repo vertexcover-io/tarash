@@ -2,8 +2,6 @@
 
 Public API entry points. Import from `tarash.tarash_gateway`.
 
-## Function signatures
-
 ```python
 from tarash.tarash_gateway import (
     generate_video,
@@ -16,17 +14,17 @@ from tarash.tarash_gateway import (
 )
 ```
 
-| Function | Sync/Async | Returns |
-|---|---|---|
-| `generate_video(config, request, on_progress=None)` | Sync | `VideoGenerationResponse` |
-| `generate_video_async(config, request, on_progress=None)` | Async | `VideoGenerationResponse` |
-| `generate_image(config, request, on_progress=None)` | Sync | `ImageGenerationResponse` |
-| `generate_image_async(config, request, on_progress=None)` | Async | `ImageGenerationResponse` |
-| `register_provider(name, handler)` | — | `None` |
-| `register_provider_field_mapping(provider, model_mappings)` | — | `None` |
-| `get_provider_field_mapping(provider)` | — | `dict \| None` |
+| Function | Sync/Async | `on_progress` receives | Returns |
+|---|---|---|---|
+| `generate_video(config, request, on_progress=None)` | Sync | `VideoGenerationUpdate` | `VideoGenerationResponse` |
+| `generate_video_async(config, request, on_progress=None)` | Async | `VideoGenerationUpdate` | `VideoGenerationResponse` |
+| `generate_image(config, request, on_progress=None)` | Sync | `ImageGenerationUpdate` | `ImageGenerationResponse` |
+| `generate_image_async(config, request, on_progress=None)` | Async | `ImageGenerationUpdate` | `ImageGenerationResponse` |
+| `register_provider(name, handler)` | — | — | `None` |
+| `register_provider_field_mapping(provider, model_mappings)` | — | — | `None` |
+| `get_provider_field_mapping(provider)` | — | — | `dict \| None` |
 
-See the [Custom Providers guide](../guides/custom-providers.md) for registration usage.
+`on_progress` accepts both sync and async callables. See the [Custom Providers guide](../guides/custom-providers.md) for registration usage.
 
 ---
 
