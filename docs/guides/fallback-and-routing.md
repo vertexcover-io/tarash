@@ -29,6 +29,8 @@ response = generate_video(config, request)
 # If Fal fails with a retryable error, Replicate is tried automatically
 ```
 
+---
+
 ## Chaining multiple fallbacks
 
 `fallback_configs` is a list — chain as many providers as you need:
@@ -46,6 +48,8 @@ config = VideoGenerationConfig(
 
 The providers are tried in order: Fal → Replicate → OpenAI. The first success wins.
 
+---
+
 ## What triggers a fallback
 
 Not all errors trigger fallbacks. Tarash classifies errors into two categories:
@@ -61,6 +65,8 @@ Not all errors trigger fallbacks. Tarash classifies errors into two categories:
 | `HTTPError` (400, 401, 403, 404) | ❌ | Auth or request error — fix the config |
 
 **Non-retryable errors propagate immediately** regardless of how many fallbacks are configured.
+
+---
 
 ## Inspecting which provider was used
 
@@ -86,6 +92,8 @@ for attempt in meta.attempts:
     print(attempt.elapsed_seconds)  # time spent on this attempt
 ```
 
+---
+
 ## Example: log the winning provider
 
 ```python
@@ -98,6 +106,8 @@ if meta.fallback_triggered:
 else:
     print(f"Primary succeeded: {meta.attempts[0].provider}")
 ```
+
+---
 
 ## Fallback with different models, same provider
 
@@ -116,6 +126,8 @@ config = VideoGenerationConfig(
     ],
 )
 ```
+
+---
 
 ## Works with image generation too
 

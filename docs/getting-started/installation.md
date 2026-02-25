@@ -4,6 +4,8 @@
 
 - Python 3.12+
 
+---
+
 ## Install
 
 Install with all provider dependencies:
@@ -20,6 +22,8 @@ pip install tarash-gateway[openai]
 pip install tarash-gateway[runway]
 ```
 
+---
+
 ## Available extras
 
 | Extra | Providers included |
@@ -31,12 +35,16 @@ pip install tarash-gateway[runway]
 | `replicate` | Replicate |
 | `all` | All of the above |
 
+---
+
 ## Verify installation
 
 ```python
 import tarash.tarash_gateway
 print("tarash-gateway installed successfully")
 ```
+
+---
 
 ## Next steps
 

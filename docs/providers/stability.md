@@ -5,42 +5,6 @@ Stability AI provides image generation via Stable Diffusion 3.5 and Stable Image
 !!! info "Image only"
     Stability AI does not support video generation. Use this provider with `ImageGenerationConfig` and `generate_image()`.
 
-## Supported Models
-
-| Model ID | Quality | Speed | Notes |
-|---|---|---|---|
-| `sd3.5-large` | Highest | Slower | Stable Diffusion 3.5 Large |
-| `sd3.5-large-turbo` | High | Fast | Turbo variant |
-| `sd3.5-medium` | Good | Faster | Smaller model |
-| `stable-image-ultra` | Ultra | — | Highest quality Stable Image |
-| `stable-image-core` | Standard | Fast | Fast generation |
-| `stable-image` | Standard | Fast | Prefix match for `stable-image-*` |
-
-## Capabilities
-
-| Feature | Supported |
-|---|:---:|
-| Video generation | — |
-| Image generation | ✅ |
-| Image-to-video | — |
-| Async | ✅ |
-| Progress callbacks | — |
-
-## Configuration
-
-```python
-from tarash.tarash_gateway.models import ImageGenerationConfig
-
-config = ImageGenerationConfig(
-    provider="stability",
-    model="sd3.5-large",
-    api_key="sk-...",   # or omit — reads STABILITY_API_KEY env var
-    timeout=120,
-)
-```
-
-**API base URL:** `https://api.stability.ai` (fixed, not configurable)
-
 ## Quick Example
 
 ```python
@@ -62,26 +26,18 @@ response = generate_image(config, request)
 print(response.images[0])   # Base64 image or URL
 ```
 
-### Using the turbo model for faster output
+---
 
-```python
-config = ImageGenerationConfig(
-    provider="stability",
-    model="sd3.5-large-turbo",
-    api_key="sk-...",
-)
-```
+## Parameters
 
-## Supported Request Parameters
-
-| Parameter | Supported | Notes |
-|---|:---:|---|
-| `prompt` | ✅ | Required |
-| `aspect_ratio` | ✅ | `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`, `9:21` |
-| `negative_prompt` | ✅ | SD 3.5 only |
-| `seed` | ✅ | 0 to 4,294,967,294 |
-| `cfg_scale` | ✅ | Via `extra_params` |
-| `steps` | ✅ | Via `extra_params` |
+| Parameter | Required | Supported | Notes |
+|---|:---:|:---:|---|
+| `prompt` | ✅ | ✅ | Text description of the image |
+| `aspect_ratio` | — | ✅ | `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`, `9:21` |
+| `negative_prompt` | — | ✅ | SD 3.5 only |
+| `seed` | — | ✅ | 0 to 4,294,967,294 |
+| `cfg_scale` | — | ✅ | Via `extra_params` |
+| `steps` | — | ✅ | Via `extra_params` |
 
 Pass additional Stability API parameters via `extra_params`:
 
@@ -94,6 +50,21 @@ request = ImageGenerationRequest(
     },
 )
 ```
+
+---
+
+## Supported Models
+
+| Model ID | Quality | Speed | Notes |
+|---|---|---|---|
+| `sd3.5-large` | Highest | Slower | Stable Diffusion 3.5 Large |
+| `sd3.5-large-turbo` | High | Fast | Turbo variant |
+| `sd3.5-medium` | Good | Faster | Smaller model |
+| `stable-image-ultra` | Ultra | — | Highest quality Stable Image |
+| `stable-image-core` | Standard | Fast | Fast generation |
+| `stable-image` | Standard | Fast | Prefix match for `stable-image-*` |
+
+---
 
 ## Provider-Specific Notes
 

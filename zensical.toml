@@ -1,7 +1,7 @@
 [project]
 site_name = "Tarash Gateway"
 site_description = "Unified Python SDK for AI video and image generation"
-site_url = "https://vertexcover-io.github.io/tarash"
+site_url = "https://tarash.vertexcover.io"
 docs_dir = "docs"
 nav = [
   { "Home" = "index.md" },
@@ -10,31 +10,40 @@ nav = [
     { "Quickstart" = "getting-started/quickstart.md" },
     { "Authentication" = "getting-started/authentication.md" },
   ]},
+  { "Guides" = [
+    { "Video Generation" = "guides/video-generation.md" },
+    { "Image Generation" = "guides/image-generation.md" },
+    { "Fallback & Routing" = "guides/fallback-and-routing.md" },
+    { "Mock Provider" = "guides/mock.md" },
+    { "Custom Providers" = "guides/custom-providers.md" },
+  ]},
   { "API Reference" = [
     { "Gateway" = "api-reference/gateway.md" },
     { "Models" = "api-reference/models.md" },
     { "Exceptions" = "api-reference/exceptions.md" },
     { "Mock Provider" = "api-reference/mock.md" },
   ]},
-  { "Guides" = [
-    { "Video Generation" = "guides/video-generation.md" },
-    { "Image Generation" = "guides/image-generation.md" },
-    { "Image to Video" = "guides/image-to-video.md" },
-    { "Fallback & Routing" = "guides/fallback-and-routing.md" },
-    { "Mock Provider" = "guides/mock.md" },
-    { "Custom Providers" = "guides/custom-providers.md" },
-  ]},
   { "Providers" = [
     { "Overview" = "providers/index.md" },
     { "OpenAI" = "providers/openai.md" },
-    { "Azure OpenAI" = "providers/azure-openai.md" },
-    { "Fal.ai" = "providers/fal.md" },
+    { "Fal.ai" = [
+      { "Overview" = "providers/fal/index.md" },
+      { "Veo" = "providers/fal/veo.md" },
+      { "Kling" = "providers/fal/kling.md" },
+      { "Minimax" = "providers/fal/minimax.md" },
+      { "Wan" = "providers/fal/wan.md" },
+      { "Sora" = "providers/fal/sora.md" },
+      { "Seedance" = "providers/fal/seedance.md" },
+      { "Pixverse" = "providers/fal/pixverse.md" },
+    ]},
     { "Google" = "providers/google.md" },
     { "Runway" = "providers/runway.md" },
     { "Replicate" = "providers/replicate.md" },
     { "Stability AI" = "providers/stability.md" },
   ]},
 ]
+
+extra_css = ["stylesheets/extra.css"]
 
 [project.repo]
 url = "https://github.com/vertexcover-io/tarash"

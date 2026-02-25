@@ -108,12 +108,12 @@ response = await generate_video_async(config, request)  # async
 
 ## Providers
 
-| Provider | Video | Image | Install extra |
-|---|:---:|:---:|---|
-| [Fal.ai](providers/fal.md) | ✅ | ✅ | `fal` |
-| [OpenAI](providers/openai.md) | ✅ | ✅ | `openai` |
-| [Azure OpenAI](providers/azure-openai.md) | ✅ | ✅ | `openai` |
-| [Google](providers/google.md) | ✅ | ✅ | `veo3` |
-| [Runway](providers/runway.md) | ✅ | — | `runway` |
-| [Replicate](providers/replicate.md) | ✅ | — | `replicate` |
-| [Stability AI](providers/stability.md) | — | ✅ | — |
+| Provider | Video | Image | Models | Install |
+|---|:---:|:---:|---|---|
+| [Fal.ai](providers/fal/index.md) | ✅ | ✅ | `veo3`, `veo3.1`, `kling-v2.6`, `kling-o1`, `minimax`, `wan`, `sora-2`, `seedance`, `pixverse` | `fal` |
+| [OpenAI](providers/openai.md) | ✅ | ✅ | `sora`, `sora-mini`, `dall-e-3`, `gpt-image-1` | `openai` |
+| [Azure OpenAI](providers/openai.md#azure-openai) | ✅ | ✅ | `sora` (deployment), `dall-e-3` (deployment) | `openai` |
+| [Google](providers/google.md) | ✅ | ✅ | `veo-3.0-generate-001`, `veo-3-0-fast-generate-001`, `imagen-3.0-generate-002`, `gemini-2.0-flash-preview-image-generation` | `veo3` |
+| [Runway](providers/runway.md) | ✅ | — | `gen3a_turbo`, `gen3a`, `aleph` | `runway` |
+| [Replicate](providers/replicate.md) | ✅ | — | `google/veo-3`, `minimax/video-01`, `kwaivgi/kling`, `wan-video/` | `replicate` |
+| [Stability AI](providers/stability.md) | — | ✅ | `sd3.5-large`, `sd3.5-large-turbo`, `stable-image-core`, `stable-image-ultra` | — |

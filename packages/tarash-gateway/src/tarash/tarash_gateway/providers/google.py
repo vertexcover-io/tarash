@@ -206,7 +206,7 @@ class GoogleProviderHandler:
 
         For Vertex AI, set these in provider_config:
             project: GCP project ID (required)
-            location: GCP region (default: "us-central1")
+            location: GCP region
             credentials_path: Path to service account JSON file (optional)
 
         Args:

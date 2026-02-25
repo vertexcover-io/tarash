@@ -19,6 +19,8 @@ The orchestrator uses this table to decide whether to try the next fallback:
 
 Non-retryable errors are raised immediately regardless of fallback configuration.
 
+---
+
 ## Catching errors
 
 ```python
@@ -47,6 +49,8 @@ except GenerationFailedError as e:
 except TarashException as e:
     print(f"Other error: {e.message}")
 ```
+
+---
 
 ## Utilities
 

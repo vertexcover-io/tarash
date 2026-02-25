@@ -22,7 +22,7 @@ from tarash.tarash_gateway import (
 | `generate_image_async(config, request, on_progress=None)` | Async | `ImageGenerationUpdate` | `ImageGenerationResponse` |
 | `register_provider(name, handler)` | — | — | `None` |
 | `register_provider_field_mapping(provider, model_mappings)` | — | — | `None` |
-| `get_provider_field_mapping(provider)` | — | — | `dict \| None` |
+| `get_provider_field_mapping(provider)` | — | — | `dict | None` |
 
 `on_progress` accepts both sync and async callables. See the [Custom Providers guide](../guides/custom-providers.md) for registration usage.
 

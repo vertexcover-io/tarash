@@ -8,12 +8,14 @@ Change `provider` and `model` in your config — nothing else in your code chang
 | Provider | Video | Image | Image-to-Video | Install extra |
 |---|:---:|:---:|:---:|---|
 | [OpenAI](openai.md) | ✅ | ✅ | ✅ | `openai` |
-| [Azure OpenAI](azure-openai.md) | ✅ | ✅ | ✅ | `openai` |
+| [Azure OpenAI](openai.md#azure-openai) | ✅ | ✅ | ✅ | `openai` |
 | [Fal.ai](fal.md) | ✅ | ✅ | ✅ | `fal` |
 | [Google](google.md) | ✅ | ✅ | ✅ | `veo3` |
 | [Runway](runway.md) | ✅ | — | ✅ | `runway` |
 | [Replicate](replicate.md) | ✅ | — | ✅ | `replicate` |
 | [Stability AI](stability.md) | — | ✅ | — | — |
+
+---
 
 ## Switching providers
 

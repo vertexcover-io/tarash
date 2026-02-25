@@ -8,6 +8,8 @@ Generate your first video in under a minute.
 pip install tarash-gateway[fal]
 ```
 
+---
+
 ## 2. Generate a video
 
 ```python
@@ -16,7 +18,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="fal",
-    api_key="YOUR_FAL_API_KEY",  # or set FAL_KEY env var
+    api_key="YOUR_FAL_API_KEY",
     model="fal-ai/veo3",
 )
 
@@ -29,6 +31,8 @@ request = VideoGenerationRequest(
 response = generate_video(config, request)
 print(response.video)
 ```
+
+---
 
 ## 3. Generate asynchronously
 
@@ -47,6 +51,8 @@ async def main():
 asyncio.run(main())
 ```
 
+---
+
 ## 4. Track progress
 
 ```python
@@ -57,6 +63,8 @@ def on_progress(update: VideoGenerationUpdate) -> None:
 
 response = generate_video(config, request, on_progress=on_progress)
 ```
+
+---
 
 ## Next steps
 

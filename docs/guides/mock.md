@@ -27,11 +27,15 @@ When `mock=MockConfig(enabled=True)` is set, Tarash bypasses the real provider e
 and returns a pre-configured mock response. The `provider` and `model` values are
 recorded in the response but no real API call is made.
 
+---
+
 ## Default behavior
 
 By default, `MockConfig(enabled=True)` returns a randomly selected stock video
 from a built-in library matched to your request. The response is a valid
 `VideoGenerationResponse` with `is_mock=True`.
+
+---
 
 ## Customizing mock responses
 
@@ -54,6 +58,8 @@ config = VideoGenerationConfig(
     ),
 )
 ```
+
+---
 
 ## Injecting errors for testing
 
@@ -80,6 +86,8 @@ except GenerationFailedError as e:
     print(f"Caught: {e}")  # → "Caught: Simulated failure"
 ```
 
+---
+
 ## Weighted responses
 
 Simulate flaky providers by mixing success and error responses with weights:
@@ -93,6 +101,8 @@ mock = MockConfig(
     ],
 )
 ```
+
+---
 
 ## Mock + fallback chains
 
@@ -119,6 +129,8 @@ response = generate_video(config, request)
 assert response.execution_metadata.fallback_triggered is True
 ```
 
+---
+
 ## Image generation mock
 
 `MockConfig` works the same way for image generation:
@@ -136,6 +148,8 @@ response = generate_image(config, ImageGenerationRequest(prompt="A sunset"))
 print(response.images[0])   # → URL to a stock mock image
 print(response.is_mock)     # → True
 ```
+
+---
 
 ## API reference
 

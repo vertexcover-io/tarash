@@ -1,0 +1,4 @@
+.md-typeset table th,
+.md-typeset table td {
+  white-space: nowrap;
+}

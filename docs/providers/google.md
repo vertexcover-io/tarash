@@ -2,18 +2,42 @@
 
 Google provides **Veo 3** video generation and **Imagen 3** / **Gemini** image generation via the `google-genai` SDK. Supports both the Gemini Developer API (API key) and Google Cloud Vertex AI (service account / ADC).
 
-## Supported Models
+---
 
-### Video
+## Image Generation
 
-| Model ID | Notes |
-|---|---|
-| `veo-3.0-generate-preview` | Veo 3 — standard |
-| `veo-3.5-generate-preview` | Veo 3.5 — longer sequences |
+### Quick Example
 
-**Supported resolutions:** 720p, 1080p, 4k
+```python
+from tarash.tarash_gateway import generate_image
+from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
 
-### Image
+config = ImageGenerationConfig(
+    provider="google",
+    model="imagen-3.0-generate-002",
+    api_key="AIza...",
+)
+
+request = ImageGenerationRequest(
+    prompt="A serene Japanese garden with cherry blossoms, photorealistic",
+    aspect_ratio="16:9",
+)
+
+response = generate_image(config, request)
+print(response.images[0])
+```
+
+### Parameters
+
+| Parameter | Required | Supported | Notes |
+|---|:---:|:---:|---|
+| `prompt` | ✅ | ✅ | Text description of the image |
+| `aspect_ratio` | — | ✅ | Supported by Imagen 3 and Gemini image models |
+| `n` | — | ✅ | Number of images to generate (see image count rules) |
+| `seed` | — | — | Not supported |
+| `negative_prompt` | — | — | Not supported |
+
+### Supported Models
 
 | Model ID | Notes |
 |---|---|
@@ -24,67 +48,16 @@ Google provides **Veo 3** video generation and **Imagen 3** / **Gemini** image g
 
 Imagen models use the dedicated `generate_images` API. Gemini image models (`gemini-*`) use the `generate_content` API. Tarash detects automatically based on model name prefix.
 
-## Capabilities
+---
 
-| Feature | Supported |
-|---|:---:|
-| Video generation | ✅ |
-| Image generation | ✅ |
-| Image-to-video | ✅ |
-| First/last frame (interpolation) | ✅ |
-| Async | ✅ |
-| Progress callbacks | ✅ |
+## Video Generation
 
-## Configuration
-
-### Gemini Developer API (API key)
-
-```python
-from tarash.tarash_gateway.models import VideoGenerationConfig
-
-config = VideoGenerationConfig(
-    provider="google",
-    model="veo-3.0-generate-preview",
-    api_key="AIza...",   # or omit — reads GOOGLE_API_KEY env var
-    timeout=600,
-    max_poll_attempts=120,
-    poll_interval=5,
-)
-```
-
-### Vertex AI (Google Cloud)
-
-```python
-config = VideoGenerationConfig(
-    provider="google",
-    model="veo-3.0-generate-preview",
-    api_key=None,   # No API key for Vertex AI
-    provider_config={
-        "gcp_project": "my-gcp-project",
-        "location": "us-central1",               # Optional, default us-central1
-        "credentials_path": "/path/to/key.json", # Optional, uses ADC if omitted
-    },
-    timeout=600,
-)
-```
-
-**`provider_config` keys for Vertex AI:**
-
-| Key | Required | Description |
-|---|:---:|---|
-| `gcp_project` | ✅ | Google Cloud project ID |
-| `location` | — | Region (default: `us-central1`) |
-| `credentials_path` | — | Path to service account JSON. Omit to use Application Default Credentials. |
-
-**Authentication detection:** If `api_key` is set, the Gemini Developer API is used. If `api_key` is `None`, Vertex AI mode is activated and `provider_config.gcp_project` is required (or the `GOOGLE_CLOUD_PROJECT` environment variable).
-
-## Quick Example
+### Quick Example
 
 ```python
 from tarash.tarash_gateway import generate_video
 from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
-# Text-to-video
 config = VideoGenerationConfig(
     provider="google",
     model="veo-3.0-generate-preview",
@@ -101,7 +74,33 @@ response = generate_video(config, request)
 print(response.video)
 ```
 
-### Image-to-video (first/last frame interpolation)
+### Parameters
+
+| Parameter | Required | Supported | Notes |
+|---|:---:|:---:|---|
+| `prompt` | ✅ | ✅ | Text description of the video |
+| `aspect_ratio` | — | ✅ | Passed to Veo3 |
+| `resolution` | — | ✅ | `720p`, `1080p`, `4k` |
+| `image_list` (reference/asset/style) | — | ✅ | Up to 3 reference images |
+| `image_list` (first_frame) | — | ✅ | Interpolation mode start |
+| `image_list` (last_frame) | — | ✅ | Interpolation mode end |
+| `negative_prompt` | — | ✅ | |
+| `seed` | — | ✅ | |
+| `enhance_prompt` | — | ✅ | |
+| `generate_audio` | — | ✅ | |
+
+### Supported Models
+
+| Model ID | Notes |
+|---|---|
+| `veo-3.0-generate-preview` | Veo 3 — standard |
+| `veo-3.1-generate-preview` | Veo 3.1 — longer sequences |
+
+**Supported resolutions:** 720p, 1080p, 4k
+
+### Image-to-Video
+
+Veo3 supports using reference images as start and/or end frames for interpolation. Pass images via `image_list` with `type="first_frame"` and/or `type="last_frame"`.
 
 ```python
 from tarash.tarash_gateway.models import ImageType
@@ -115,22 +114,29 @@ request = VideoGenerationRequest(
 )
 ```
 
-## Supported Request Parameters
-
-| Parameter | Supported | Notes |
-|---|:---:|---|
-| `prompt` | ✅ | Required |
-| `aspect_ratio` | ✅ | Passed to Veo3 |
-| `resolution` | ✅ | `720p`, `1080p`, `4k` |
-| `image_list` (reference/asset/style) | ✅ | Up to 3 reference images |
-| `image_list` (first_frame) | ✅ | Interpolation mode start |
-| `image_list` (last_frame) | ✅ | Interpolation mode end |
-| `negative_prompt` | ✅ | |
-| `seed` | ✅ | |
-| `enhance_prompt` | ✅ | |
-| `generate_audio` | ✅ | |
+---
 
 ## Provider-Specific Notes
+
+**Authentication:**
+
+- **Gemini Developer API:** Set `api_key` to your `AIza...` key. No `provider_config` needed.
+- **Vertex AI:** Set `api_key=None` and supply a `provider_config` dict with at minimum `gcp_project`. Optional keys: `location` (default `us-central1`) and `credentials_path` (path to a service account JSON; omit to use Application Default Credentials).
+
+```python
+# Vertex AI config
+config = VideoGenerationConfig(
+    provider="google",
+    model="veo-3.0-generate-preview",
+    api_key=None,
+    provider_config={
+        "gcp_project": "my-gcp-project",
+        "location": "us-central1",               # Optional, default us-central1
+        "credentials_path": "/path/to/key.json", # Optional, uses ADC if omitted
+    },
+    timeout=600,
+)
+```
 
 **Image count rules (Veo3):**
 

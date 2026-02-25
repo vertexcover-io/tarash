@@ -15,6 +15,8 @@ config = VideoGenerationConfig(
 !!! warning
     Never hardcode API keys in source files. Use environment variables or a secrets manager.
 
+---
+
 ## Provider API key reference
 
 | Provider | Where to get it |
@@ -24,14 +26,22 @@ config = VideoGenerationConfig(
 | Azure OpenAI | Azure Portal |
 | Runway | [app.runwayml.com](https://app.runwayml.com) |
 | Google (Gemini API) | [aistudio.google.com](https://aistudio.google.com/apikey) |
-| Google (Vertex AI) | See tip below — no API key, uses GCP project + service account |
+| Google (Vertex AI) | GCP project + service account or Application Default Credentials |
 | Replicate | [replicate.com/account](https://replicate.com/account) |
-| Luma | [lumalabs.ai](https://lumalabs.ai/dream-machine/api) |
 | Stability AI | [platform.stability.ai](https://platform.stability.ai) |
 
-!!! tip "Google video models (Veo 3) require Vertex AI — not an API key"
-    Veo 3 is only available via **Google Cloud Vertex AI**, not the Gemini Developer API.
-    Instead of `api_key`, set `provider_config` with your GCP project:
+!!! tip "Google models support two authentication modes"
+    **Gemini Developer API (API key):** Works for both video (Veo) and image (Imagen, Gemini) models. Pass your `AIza...` key directly:
+
+    ```python
+    config = VideoGenerationConfig(
+        provider="google",
+        model="veo-3.0-generate-preview",
+        api_key="AIza...",
+    )
+    ```
+
+    **Vertex AI (Google Cloud):** Use this if you're running on GCP or need enterprise controls. Set `api_key=None` and supply `provider_config`:
 
     ```python
     config = VideoGenerationConfig(
@@ -49,5 +59,3 @@ config = VideoGenerationConfig(
     Authentication is handled via a [service account JSON key](https://cloud.google.com/iam/docs/keys-create-delete)
     (`credentials_path`) or [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials)
     if `credentials_path` is omitted.
-
-    Google image models (Imagen, Gemini) work with a plain `api_key` from [aistudio.google.com](https://aistudio.google.com/apikey).
