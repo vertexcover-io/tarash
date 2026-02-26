@@ -35,6 +35,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.image_format import ImageInputFormat
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -82,6 +83,8 @@ _PROVIDER_NAME = "fal"
 
 # ==================== Model Field Mappings ====================
 
+# Fal accepts both URL and BASE64 formats for all its models
+_FAL_ACCEPTED_FORMATS = [ImageInputFormat.URL, ImageInputFormat.BASE64]
 
 # Minimax models field mappings
 MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
@@ -89,7 +92,9 @@ MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "duration": duration_field_mapper(
         field_type="str", allowed_values=["6s", "10s"], provider="fal", model="minimax"
     ),
-    "image_url": single_image_field_mapper(),
+    "image_url": single_image_field_mapper(
+        accepted_formats=_FAL_ACCEPTED_FORMATS, provider="fal"
+    ),
     "prompt_optimizer": passthrough_field_mapper("enhance_prompt"),
 }
 
@@ -98,13 +103,21 @@ MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
 KLING_VIDEO_V26_FIELD_MAPPERS: dict[str, FieldMapper] = {
     # Required for image-to-video
     "prompt": passthrough_field_mapper("prompt", required=True),
-    "image_url": single_image_field_mapper(required=True, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Optional for image-to-video
     "duration": duration_field_mapper(field_type="str", allowed_values=["5", "10"]),
     "generate_audio": passthrough_field_mapper("generate_audio"),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "tail_image_url": single_image_field_mapper(
-        required=False, image_type="last_frame"
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
     "cfg_scale": extra_params_field_mapper("cfg_scale"),
     "voice_ids": extra_params_field_mapper("voice_ids"),
@@ -134,12 +147,24 @@ KLING_O1_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
     # Image-to-video: start/end frame support
     "start_image_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Reference-to-video and video-to-video/edit: elements support (passed via extra_params)
     "elements": extra_params_field_mapper("elements"),
-    "image_urls": image_list_field_mapper(image_type="reference"),
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Optional parameters (variant-specific)
     "duration": duration_field_mapper(
         field_type="str",
@@ -179,13 +204,24 @@ VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "seed": passthrough_field_mapper("seed"),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     # Image-to-video support
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # First-last-frame-to-video support
     "first_frame_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
     "last_frame_url": single_image_field_mapper(
-        required=False, image_type="last_frame"
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
     # Video-to-video support (extend-video)
     "video_url": video_url_field_mapper(),
@@ -208,7 +244,12 @@ SORA2_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),
     "delete_video": passthrough_field_mapper("delete_video"),
     # Image-to-video support (optional - required only for image-to-video variant)
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Video-to-video/remix support (via extra_params)
     "video_id": extra_params_field_mapper("video_id"),
 }
@@ -227,7 +268,12 @@ WAN_VIDEO_GENERATION_MAPPERS: dict[str, FieldMapper] = {
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "seed": passthrough_field_mapper("seed"),
     # Image/Video inputs (optional - used by I2V and R2V variants)
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     "video_urls": extra_params_field_mapper(
         "video_urls"
     ),  # For R2V with @Video1, @Video2, @Video3
@@ -242,7 +288,12 @@ WAN_VIDEO_GENERATION_MAPPERS: dict[str, FieldMapper] = {
 WAN_ANIMATE_MAPPERS: dict[str, FieldMapper] = {
     # Required inputs
     "video_url": video_url_field_mapper(required=True),
-    "image_url": single_image_field_mapper(required=True, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Generation parameters
     "resolution": passthrough_field_mapper("resolution"),
     "seed": passthrough_field_mapper("seed"),
@@ -289,11 +340,24 @@ BYTEDANCE_SEEDANCE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     # When there's 1 reference image, both image_url and reference_image_urls work
     # When there are multiple, image_url returns None and reference_image_urls gets the list
     "image_url": single_image_field_mapper(
-        required=False, image_type="reference", strict=False
+        required=False,
+        image_type="reference",
+        strict=False,
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Reference-to-video support (v1/lite/reference-to-video)
-    "reference_image_urls": image_list_field_mapper(image_type="reference"),
+    "reference_image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
 }
 
 # Pixverse (v5 and v5.5) - Unified mapper for all variants
@@ -324,12 +388,25 @@ PIXVERSE_FIELD_MAPPERS: dict[str, FieldMapper] = {
         "generate_multi_clip_switch"
     ),
     # Image-to-video / transition / effects / swap support
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Transition support (first and end frames)
     "first_image_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Effects variant
     "effect": extra_params_field_mapper("effect"),
     # Swap variant
@@ -430,7 +507,9 @@ FLUX2_PRO_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "size": passthrough_field_mapper("size"),
     "n": passthrough_field_mapper("n"),
     "reference_images": image_list_field_mapper(
-        image_type="reference"
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),  # Multi-reference support
     "guidance_scale": extra_params_field_mapper("guidance_scale"),  # Range: 1.0-20.0
     "num_inference_steps": extra_params_field_mapper(

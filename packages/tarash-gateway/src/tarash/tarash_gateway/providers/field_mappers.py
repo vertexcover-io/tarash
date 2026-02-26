@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Callable, Literal, TypedDict, Union, cast
 
+from tarash.tarash_gateway.image_format import ImageInputFormat, ensure_image_format
 from tarash.tarash_gateway.models import (
     ImageGenerationRequest,
     MediaContent,
@@ -166,6 +167,8 @@ def single_image_field_mapper(
         "reference", "first_frame", "last_frame", "asset", "style"
     ] = "reference",
     strict: bool = True,
+    accepted_formats: list[ImageInputFormat] | None = None,
+    provider: str = "unknown",
 ) -> FieldMapper:
     """Create a FieldMapper for extracting single image from image_list.
 
@@ -176,6 +179,10 @@ def single_image_field_mapper(
         image_type: Type of image to extract (default: "reference")
         strict: If True, raises error when multiple images of type are found.
                 If False, returns None when multiple images are found (default: True)
+        accepted_formats: Optional list of accepted image formats. When set,
+            images are validated and converted via ensure_image_format().
+            When None, current behavior is preserved (bytes→base64, URL→as-is).
+        provider: Provider name for error messages (default: "unknown")
 
     Returns:
         FieldMapper for image_list -> image_url (single string)
@@ -220,13 +227,18 @@ def single_image_field_mapper(
         target_image = filtered_images[0]
         if "image" in target_image:
             media = target_image["image"]
-            # Check if media is MediaContent (dict with 'content' and 'content_type')
+
+            # Use format validation if accepted_formats is set
+            if accepted_formats is not None:
+                converted = ensure_image_format(media, accepted_formats, provider)
+                return str(converted)
+
+            # Legacy behavior: bytes → base64, everything else → str
             if (
                 isinstance(media, dict)
                 and "content" in media
                 and "content_type" in media
             ):
-                # Type narrowing: we know media is a dict with required keys
                 media_content: MediaContent = {
                     "content": media["content"],
                     "content_type": media["content_type"],
@@ -243,12 +255,18 @@ def single_image_field_mapper(
 def image_list_field_mapper(
     image_type: Literal["reference", "first_frame", "last_frame", "asset", "style"]
     | None = None,
+    accepted_formats: list[ImageInputFormat] | None = None,
+    provider: str = "unknown",
 ) -> FieldMapper:
     """Create a FieldMapper for converting image_list to list of URLs.
 
     Args:
         image_type: Optional filter to only include images of this type.
                     If None, includes all images.
+        accepted_formats: Optional list of accepted image formats. When set,
+            images are validated and converted via ensure_image_format().
+            When None, current behavior is preserved (bytes→base64, URL→as-is).
+        provider: Provider name for error messages (default: "unknown")
 
     Returns:
         FieldMapper for image_list -> image_urls (list of strings)
@@ -274,13 +292,19 @@ def image_list_field_mapper(
         for item in filtered_items:
             if "image" in item:
                 media = item["image"]
-                # Check if media is MediaContent (dict with 'content' and 'content_type')
+
+                # Use format validation if accepted_formats is set
+                if accepted_formats is not None:
+                    converted = ensure_image_format(media, accepted_formats, provider)
+                    urls.append(str(converted))
+                    continue
+
+                # Legacy behavior: bytes → base64, everything else → str
                 if (
                     isinstance(media, dict)
                     and "content" in media
                     and "content_type" in media
                 ):
-                    # Type narrowing: we know media is a dict with required keys
                     media_content: MediaContent = {
                         "content": media["content"],
                         "content_type": media["content_type"],
@@ -544,6 +568,8 @@ def n_images_field_mapper(
 
 def image_input_field_mapper(
     required: bool = False,
+    accepted_formats: list[ImageInputFormat] | None = None,
+    provider: str = "unknown",
 ) -> FieldMapper:
     """Create a FieldMapper for image input (img2img, inpainting).
 
@@ -551,6 +577,10 @@ def image_input_field_mapper(
 
     Args:
         required: Whether this field is required
+        accepted_formats: Optional list of accepted image formats. When set,
+            images are validated and converted via ensure_image_format().
+            When None, current behavior is preserved (bytes→base64, URL→as-is).
+        provider: Provider name for error messages (default: "unknown")
 
     Returns:
         FieldMapper for image input
@@ -569,6 +599,13 @@ def image_input_field_mapper(
         first_image = image_list[0]
         if "image" in first_image:
             media = first_image["image"]
+
+            # Use format validation if accepted_formats is set
+            if accepted_formats is not None:
+                converted = ensure_image_format(media, accepted_formats, provider)
+                return str(converted)
+
+            # Legacy behavior
             if (
                 isinstance(media, dict)
                 and "content" in media
@@ -587,8 +624,17 @@ def image_input_field_mapper(
     )
 
 
-def mask_image_field_mapper() -> FieldMapper:
+def mask_image_field_mapper(
+    accepted_formats: list[ImageInputFormat] | None = None,
+    provider: str = "unknown",
+) -> FieldMapper:
     """Create a FieldMapper for mask image (inpainting).
+
+    Args:
+        accepted_formats: Optional list of accepted image formats. When set,
+            images are validated and converted via ensure_image_format().
+            When None, current behavior is preserved (bytes→base64, URL→as-is).
+        provider: Provider name for error messages (default: "unknown")
 
     Returns:
         FieldMapper for mask_image field
@@ -598,6 +644,12 @@ def mask_image_field_mapper() -> FieldMapper:
         if value is None:
             return None
 
+        # Use format validation if accepted_formats is set
+        if accepted_formats is not None:
+            converted = ensure_image_format(value, accepted_formats, provider)
+            return str(converted)
+
+        # Legacy behavior
         if isinstance(value, dict) and "content" in value and "content_type" in value:
             media_content: MediaContent = {
                 "content": value["content"],

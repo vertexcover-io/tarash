@@ -70,7 +70,14 @@ def convert_to_data_url(media_content: MediaContent) -> str:
     return f"data:{media_content['content_type']};base64,{img_base64}"
 
 
-def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes, str]:
+_DEFAULT_HEADERS: dict[str, str] = {"User-Agent": "TarashGateway/1.0"}
+
+
+def download_media_from_url(
+    url: str,
+    provider: str = "unknown",
+    headers: dict[str, str] | None = None,
+) -> tuple[bytes, str]:
     """
     Download media (image/video) from URL and return bytes with content type.
 
@@ -89,9 +96,10 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
         context={"provider": provider, "url": url},
         logger_name="tarash.tarash_gateway.utils",
     )
+    request_headers = {**_DEFAULT_HEADERS, **(headers or {})}
     try:
         with httpx.Client(timeout=30.0) as client:
-            response = client.get(url)
+            response = client.get(url, headers=request_headers)
             response = response.raise_for_status()
 
             content_type: str = cast(
@@ -140,7 +148,9 @@ def download_media_from_url(url: str, provider: str = "unknown") -> tuple[bytes,
 
 
 async def download_media_from_url_async(
-    url: str, provider: str = "unknown"
+    url: str,
+    provider: str = "unknown",
+    headers: dict[str, str] | None = None,
 ) -> tuple[bytes, str]:
     """
     Download media (image/video) from URL asynchronously and return bytes with content type.
@@ -161,9 +171,10 @@ async def download_media_from_url_async(
         context={"provider": provider, "url": url},
         logger_name="tarash.tarash_gateway.utils",
     )
+    request_headers = {**_DEFAULT_HEADERS, **(headers or {})}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url)
+            response = await client.get(url, headers=request_headers)
             response = response.raise_for_status()
 
             content_type: str = cast(
