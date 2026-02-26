@@ -34,7 +34,30 @@ print(response.video)
 
 ---
 
-## 3. Generate asynchronously
+## 3. Generate an image
+
+```python
+from tarash.tarash_gateway import generate_image
+from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
+
+config = ImageGenerationConfig(
+    provider="fal",
+    api_key="YOUR_FAL_API_KEY",
+    model="fal-ai/flux/dev",
+)
+
+request = ImageGenerationRequest(
+    prompt="A futuristic cityscape at dawn, neon lights reflecting on wet streets",
+    size="1024x1024",
+)
+
+response = generate_image(config, request)
+print(response.images)
+```
+
+---
+
+## 4. Generate asynchronously
 
 ```python
 import asyncio
@@ -53,7 +76,7 @@ asyncio.run(main())
 
 ---
 
-## 4. Track progress
+## 5. Track progress
 
 ```python
 from tarash.tarash_gateway.models import VideoGenerationUpdate

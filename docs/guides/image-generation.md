@@ -15,7 +15,7 @@ from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationR
 
 config = ImageGenerationConfig(
     provider="fal",
-    model="fal-ai/flux-pro",
+    model="fal-ai/flux/dev",
     api_key="YOUR_FAL_KEY",
 )
 request = ImageGenerationRequest(

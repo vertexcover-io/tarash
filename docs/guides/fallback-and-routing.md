@@ -141,7 +141,7 @@ config = ImageGenerationConfig(
     provider="openai",
     model="dall-e-3",
     fallback_configs=[
-        ImageGenerationConfig(provider="fal", model="fal-ai/flux-pro"),
+        ImageGenerationConfig(provider="fal", model="fal-ai/flux/dev"),
     ],
 )
 ```

@@ -96,7 +96,7 @@ Passed to the `on_progress` callback on each polling cycle during video generati
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
 | `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"` |
-| `model` | `str` | ✅ | — | Model ID, e.g. `"dall-e-3"`, `"fal-ai/flux-pro"` |
+| `model` | `str` | ✅ | — | Model ID, e.g. `"dall-e-3"`, `"fal-ai/flux/dev"` |
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override base URL |
 | `api_version` | `str | None` | — | `None` | API version |
