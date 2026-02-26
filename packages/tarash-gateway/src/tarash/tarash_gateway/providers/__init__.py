@@ -22,6 +22,8 @@ from tarash.tarash_gateway.providers.fal import (
     KLING_VIDEO_V26_FIELD_MAPPERS,
     WAN_VIDEO_GENERATION_MAPPERS,
     WAN_ANIMATE_MAPPERS,
+    KLING_O3_FIELD_MAPPERS,
+    WAN_V22_A14B_FIELD_MAPPERS,
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     GENERIC_FIELD_MAPPERS,
     parse_fal_status,
@@ -64,6 +66,10 @@ from tarash.tarash_gateway.providers.google import (
     GOOGLE_IMAGE_MODEL_REGISTRY,
     get_google_image_field_mappers,
 )
+from tarash.tarash_gateway.providers.xai import (
+    XaiProviderHandler,
+    parse_xai_video_status,
+)
 
 # Backwards compatibility alias
 Veo3ProviderHandler = GoogleProviderHandler
@@ -86,6 +92,8 @@ __all__ = [
     "KLING_VIDEO_V26_FIELD_MAPPERS",
     "WAN_VIDEO_GENERATION_MAPPERS",
     "WAN_ANIMATE_MAPPERS",
+    "KLING_O3_FIELD_MAPPERS",
+    "WAN_V22_A14B_FIELD_MAPPERS",
     "BYTEDANCE_SEEDANCE_FIELD_MAPPERS",
     "GENERIC_FIELD_MAPPERS",
     "parse_fal_status",
@@ -124,4 +132,7 @@ __all__ = [
     "IMAGEN3_FIELD_MAPPERS",
     "GOOGLE_IMAGE_MODEL_REGISTRY",
     "get_google_image_field_mappers",
+    # xAI
+    "XaiProviderHandler",
+    "parse_xai_video_status",
 ]

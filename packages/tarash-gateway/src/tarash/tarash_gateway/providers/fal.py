@@ -285,6 +285,76 @@ KLING_V3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "elements": extra_params_field_mapper("elements"),
 }
 
+# Kling Video O3 - Unified mapper for all variants
+# Supports: text-to-video, image-to-video, reference-to-video (Pro and Standard tiers)
+# Duration: 3-15 seconds (string format without "s" suffix)
+#
+# Image type conventions (controls which API field is used):
+#   - image_type="reference" -> image_url (for I2V)
+#   - image_type="first_frame" -> start_image_url (for R2V first frame)
+#   - image_type="last_frame" -> end_image_url (for I2V/R2V end frame)
+#
+# Reference-to-video usage:
+#   Pass elements via extra_params in Fal's expected format:
+#   extra_params={
+#       "elements": [
+#           {
+#               "frontal_image_url": "url",
+#               "reference_image_urls": ["url1", "url2"]  # Optional, 1-3 additional angles
+#           }
+#       ]
+#   }
+KLING_O3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core required (all variants)
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Image-to-video: uses image_url (user provides image_type="reference")
+    # strict=False allows R2V to use multiple reference images without error
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        strict=False,
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Reference-to-video: uses start_image_url (user provides image_type="first_frame")
+    "start_image_url": single_image_field_mapper(
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # End frame support (both I2V and R2V)
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Reference-to-video: style/appearance references (max 4 total with elements)
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Reference-to-video: character/object definitions (passed via extra_params)
+    "elements": extra_params_field_mapper("elements"),
+    # Common optional parameters
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=[str(i) for i in range(3, 16)],  # "3", "4", ..., "15"
+        provider="fal",
+        model="kling-o3",
+        add_suffix=False,
+    ),
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    # Text-to-video: voice support (max 2, reference as <<<voice_1>>> in prompt)
+    "voice_ids": extra_params_field_mapper("voice_ids"),
+    # Multi-shot support (all variants)
+    "multi_prompt": extra_params_field_mapper("multi_prompt"),
+    "shot_type": extra_params_field_mapper("shot_type"),
+}
+
 # Veo 3 and Veo 3.1 models field mappings
 # Supports text-to-video, image-to-video, first-last-frame-to-video, and video-to-video (extend-video)
 #
@@ -412,6 +482,63 @@ WAN_ANIMATE_MAPPERS: dict[str, FieldMapper] = {
     "video_write_mode": extra_params_field_mapper("video_write_mode"),
     "use_turbo": extra_params_field_mapper("use_turbo"),
     "return_frames_zip": extra_params_field_mapper("return_frames_zip"),
+    # Safety
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+    "enable_output_safety_checker": extra_params_field_mapper(
+        "enable_output_safety_checker"
+    ),
+}
+
+# Wan v2.2-a14b - Unified mapper for all v2.2-a14b endpoints
+# Supports: text-to-video/lora, image-to-video, image-to-video/lora, video-to-video
+# Uses num_frames instead of duration; has LoRA, interpolation, and acceleration support
+WAN_V22_A14B_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core parameters (all variants)
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "seed": passthrough_field_mapper("seed"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "enable_prompt_expansion": passthrough_field_mapper("enhance_prompt"),
+    # Image inputs (optional - used by I2V variants)
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Video input (optional - used by V2V variant)
+    "video_url": video_url_field_mapper(required=False),
+    # Frame control (via extra_params)
+    "num_frames": extra_params_field_mapper("num_frames"),
+    "frames_per_second": extra_params_field_mapper("frames_per_second"),
+    # Generation parameters (via extra_params)
+    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
+    "guidance_scale": extra_params_field_mapper("guidance_scale"),
+    "guidance_scale_2": extra_params_field_mapper("guidance_scale_2"),
+    "shift": extra_params_field_mapper("shift"),
+    "acceleration": extra_params_field_mapper("acceleration"),
+    # Interpolation (via extra_params)
+    "interpolator_model": extra_params_field_mapper("interpolator_model"),
+    "num_interpolated_frames": extra_params_field_mapper("num_interpolated_frames"),
+    "adjust_fps_for_interpolation": extra_params_field_mapper(
+        "adjust_fps_for_interpolation"
+    ),
+    # Quality/output parameters (via extra_params)
+    "video_quality": extra_params_field_mapper("video_quality"),
+    "video_write_mode": extra_params_field_mapper("video_write_mode"),
+    # LoRA support (via extra_params)
+    "loras": extra_params_field_mapper("loras"),
+    # Video-to-video specific (via extra_params)
+    "reverse_video": extra_params_field_mapper("reverse_video"),
+    "strength": extra_params_field_mapper("strength"),
+    "resample_fps": extra_params_field_mapper("resample_fps"),
     # Safety
     "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
     "enable_output_safety_checker": extra_params_field_mapper(
@@ -562,8 +689,12 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "wan/v2.6/": WAN_VIDEO_GENERATION_MAPPERS,
     # Wan v2.5 - Uses same unified mapper as v2.6
     "fal-ai/wan-25-preview/": WAN_VIDEO_GENERATION_MAPPERS,
+    # Kling Video O3 - Pro and Standard tiers for text-to-video, image-to-video, reference-to-video
+    "fal-ai/kling-video/o3/": KLING_O3_FIELD_MAPPERS,
     # Wan v2.2-14b Animate
     "fal-ai/wan/v2.2-14b/animate/": WAN_ANIMATE_MAPPERS,
+    # Wan v2.2-a14b - All variants (text-to-video/lora, image-to-video, image-to-video/lora, video-to-video)
+    "fal-ai/wan/v2.2-a14b/": WAN_V22_A14B_FIELD_MAPPERS,
     # ByteDance Seedance - Unified mapper for all versions (v1, v1.5) and variants (text-to-video, image-to-video, reference-to-video)
     "fal-ai/bytedance/seedance": BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     # Pixverse - All variants (text-to-video, image-to-video, transition, effects, swap) use unified mapper
@@ -629,30 +760,6 @@ FLUX2_PRO_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
 
 
 # Custom converter for aspect_ratio with extra_params fallback
-def _aspect_ratio_with_extra_params_converter(
-    request: ImageGenerationRequest, value: object
-) -> str | None:
-    """Convert aspect_ratio field, preferring extra_params if present."""
-    # First check extra_params for override
-    if request.extra_params and "aspect_ratio" in request.extra_params:
-        return str(request.extra_params["aspect_ratio"])
-    # Fall back to request.aspect_ratio
-    return str(value) if value is not None else None
-
-
-# Flux 1.1 Pro Ultra/Raw field mappings
-FLUX_PRO_ULTRA_FIELD_MAPPERS: dict[str, FieldMapper] = {
-    "prompt": passthrough_field_mapper("prompt", required=True),
-    "seed": passthrough_field_mapper("seed"),
-    "aspect_ratio": FieldMapper(
-        source_field="aspect_ratio",
-        converter=_aspect_ratio_with_extra_params_converter,
-    ),  # Supports 21:9, 16:9, 4:3, 1:1, 3:4, 9:16, 9:21
-    "raw": extra_params_field_mapper("raw"),  # Boolean for natural aesthetic
-    "safety_tolerance": extra_params_field_mapper("safety_tolerance"),  # Range: 1-6
-    "output_format": extra_params_field_mapper("output_format"),  # jpeg or png
-}
-
 # Z-Image-Turbo field mappings (distilled model optimized for speed)
 ZIMAGE_TURBO_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -677,13 +784,9 @@ GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Image model registry for Fal
 FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # FLUX models
-    # "fal-ai/flux-pro": FLUX_IMAGE_FIELD_MAPPERS, # Depricated by fal
     "fal-ai/flux": FLUX_IMAGE_FIELD_MAPPERS,  # Prefix match for all flux variants
     # FLUX.2 models (newer generation with multi-reference support)
     "fal-ai/flux-2": FLUX2_PRO_IMAGE_FIELD_MAPPERS,
-    # Flux 1.1 Pro Ultra/Raw (ultra high quality with extended aspect ratios)
-    "fal-ai/flux-pro/v1.1-ultra": FLUX_PRO_ULTRA_FIELD_MAPPERS,
-    "fal-ai/flux-pro/v1.1-raw": FLUX_PRO_ULTRA_FIELD_MAPPERS,
     # Z-Image-Turbo (distilled model optimized for speed)
     "fal-ai/z-image-turbo": ZIMAGE_TURBO_FIELD_MAPPERS,
     # Recraft
