@@ -132,15 +132,6 @@ print(response.video)
 
 ## Provider-Specific Notes
 
-**Endpoint auto-selection:** The endpoint is chosen at request time:
-- Model name contains `"aleph"` → `video_to_video` (requires `video` input)
-- Model name contains `"turbo"` (non-VEO) → `image_to_video` (requires image)
-- Model name contains `"gen4"` (non-aleph) → `image_to_video` if image provided, else `text_to_video`
-- VEO models → `image_to_video` if image provided, else `text_to_video`
-- Everything else → `image_to_video` if image provided, else `text_to_video`
-
-**Task polling:** Runway uses a task-based API. Tarash polls until the task reaches a terminal state: `SUCCEEDED`, `FAILED`, or `CANCELLED`.
-
-**Video download:** Tarash downloads the video content after the task completes, so the response includes the video bytes (not just a URL).
-
-**No client caching:** Runway clients are created fresh per request. Runway's SDK handles connection management internally.
+- **Endpoint auto-selection:** Aleph models → `video_to_video`. All others → `image_to_video` if an image is provided, otherwise `text_to_video`. `gen3a_turbo` always requires an image.
+- **Task polling:** Tarash polls until the task reaches `SUCCEEDED`, `FAILED`, or `CANCELLED`.
+- **Video download:** The response includes video bytes directly, not just a URL.

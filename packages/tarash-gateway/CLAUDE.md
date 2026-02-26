@@ -76,9 +76,7 @@ class ProviderHandler(Protocol):
 **Key Responsibilities:**
 
 1. **Client Management** (`_get_client`):
-   - Create and cache HTTP clients
-   - Handle different caching strategies for sync vs async
-   - Use cache key: `f"{config.api_key}:{config.base_url or 'default'}"`
+   - Create HTTP clients for sync and async usage
 
 2. **Request Conversion** (`_convert_request`):
    - Get model-specific field mappers from registry
@@ -103,61 +101,6 @@ See [fal.py:236-503](src/tarash/tarash_gateway/video/providers/fal.py#L236-L503)
 ---
 
 ## Sync/Async Support
-
-### Client Caching Strategies
-
-Different providers use different caching strategies based on their underlying clients:
-
-#### Strategy 1: Sync Cached, Async Fresh (Fal)
-
-**Location:** [fal.py:236-307](src/tarash/tarash_gateway/video/providers/fal.py#L236-L307)
-
-```python
-def __init__(self):
-    self._sync_client_cache: dict[str, Any] = {}
-    # AsyncClient is NOT cached to avoid "Event Loop closed" errors
-
-def _get_client(self, config, client_type):
-    cache_key = f"{config.api_key}:{config.base_url or 'default'}"
-
-    if client_type == "async":
-        # Create new instance each time
-        return fal_client.AsyncClient(
-            key=config.api_key,
-            base_url=config.base_url
-        )
-    else:  # sync
-        if cache_key not in self._sync_client_cache:
-            self._sync_client_cache[cache_key] = fal_client.SyncClient(
-                key=config.api_key,
-                base_url=config.base_url
-            )
-        return self._sync_client_cache[cache_key]
-```
-
-**Rationale:** Fal's `AsyncClient` cannot be safely reused across event loops. Creating fresh instances prevents "Event Loop closed" errors.
-
-#### Strategy 2: Both Cached (OpenAI)
-
-**Location:** [openai.py:107-157](src/tarash/tarash_gateway/video/providers/openai.py#L107-L157)
-
-```python
-def __init__(self):
-    self._client_cache: dict[str, Any] = {}
-
-def _get_client(self, config, client_type):
-    cache_key = f"{config.api_key}:{config.base_url or 'default'}:{client_type}"
-
-    if cache_key not in self._client_cache:
-        if client_type == "async":
-            self._client_cache[cache_key] = AsyncOpenAI(...)
-        else:
-            self._client_cache[cache_key] = OpenAI(...)
-
-    return self._client_cache[cache_key]
-```
-
-**Rationale:** OpenAI's clients are designed to be reused across calls. Both sync and async clients can be safely cached.
 
 ### Progress Callback Pattern
 
@@ -707,8 +650,8 @@ VEO31_FIELD_MAPPERS = {
 #### Key Principles
 
 1. **Mock all external dependencies** (HTTP clients, API calls)
-2. **Test in isolation** (clear caches between tests)
-3. **Validate behavior** (cache hits, error mapping, field conversion)
+2. **Test in isolation**
+3. **Validate behavior** (error mapping, field conversion)
 4. **Use fixtures** for common setup
 
 #### Test Organization
@@ -746,42 +689,6 @@ def base_config():
 def base_request():
     """Create test request."""
     return VideoGenerationRequest(prompt="Test prompt")
-```
-
-#### Testing Client Caching
-
-**Example:** [test_fal.py:81-150](tests/unit/video/providers/test_fal.py#L81-L150)
-
-```python
-def test_get_client_creates_and_caches_sync_client(handler, base_config, mock_sync_client):
-    """Test that sync clients are cached."""
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-
-def test_get_client_creates_new_async_client_each_time(handler, base_config):
-    """Test that async clients are NOT cached."""
-    with patch("...fal_client.AsyncClient") as mock_constructor:
-        mock_constructor.side_effect = [AsyncMock(), AsyncMock()]
-
-        client1 = handler._get_client(base_config, "async")
-        client2 = handler._get_client(base_config, "async")
-
-        assert client1 is not client2  # Different instances
-
-def test_get_client_different_api_keys_use_different_cache(handler, base_config):
-    """Test that different API keys create separate cache entries."""
-    handler._sync_client_cache.clear()
-
-    config2 = base_config.model_copy(update={"api_key": "different-key"})
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(config2, "sync")
-
-    assert client1 is not client2  # Different cache entries
 ```
 
 #### Testing Field Mappers
@@ -1131,7 +1038,6 @@ def _get_handler(provider: str) -> ProviderHandler:
 ```
 
 **Benefits:**
-- Client caching works across calls
 - Reduced memory usage
 - Consistent state management
 
@@ -1139,13 +1045,7 @@ def _get_handler(provider: str) -> ProviderHandler:
 
 ## Common Pitfalls
 
-### 1. Event Loop Errors with Async Clients
-
-**Problem:** Reusing async clients across different event loops causes "Event loop closed" errors.
-
-**Solution:** Don't cache async clients if provider doesn't support it (see Fal pattern).
-
-### 2. Missing Required Fields
+### 1. Missing Required Fields
 
 **Problem:** Field mapper validation fails if required field is None after conversion.
 
@@ -1161,7 +1061,7 @@ if mapper.required and converted_value is None:
     raise ValueError(f"Required field '{api_field_name}' cannot be None")
 ```
 
-### 3. Infinite Polling
+### 2. Infinite Polling
 
 **Problem:** Polling loop never terminates if status check is incorrect.
 
@@ -1182,7 +1082,7 @@ for _ in range(config.max_poll_attempts):
 raise GenerationFailedError("Max poll attempts exceeded")
 ```
 
-### 4. Not Handling Both Sync and Async Callbacks
+### 3. Not Handling Both Sync and Async Callbacks
 
 **Problem:** Progress callback only works in one mode.
 
@@ -1195,7 +1095,7 @@ if on_progress:
         await result  # Handle async callback
 ```
 
-### 5. Missing Error Context
+### 4. Missing Error Context
 
 **Problem:** Exceptions lack debugging information.
 
@@ -1245,7 +1145,6 @@ raise GenerationFailedError(
    ```
 
 5. **Write unit tests:**
-   - Client caching
    - Field mapping
    - Error handling
    - Request/response conversion
@@ -1314,7 +1213,6 @@ When working on this codebase:
 - ✅ Use field mappers for parameter conversion
 - ✅ Always include error context (provider, model, request_id, raw_response)
 - ✅ Support both sync and async in all provider methods
-- ✅ Test client caching strategy for your provider
 - ✅ Write both unit and e2e tests
 - ✅ Follow existing patterns for consistency
 
