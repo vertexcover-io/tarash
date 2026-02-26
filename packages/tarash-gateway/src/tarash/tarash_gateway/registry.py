@@ -15,6 +15,7 @@ from tarash.tarash_gateway.providers import (
     ReplicateProviderHandler,
     RunwayProviderHandler,
     StabilityProviderHandler,
+    XaiProviderHandler,
 )
 
 # Singleton instances of handlers (stateless)
@@ -74,6 +75,8 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, GoogleProviderHandler()
             )
+        elif provider == "xai":
+            _HANDLER_INSTANCES[provider] = cast(ProviderHandler, XaiProviderHandler())
         else:
             log_error(
                 "Unsupported provider",

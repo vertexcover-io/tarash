@@ -1282,9 +1282,8 @@ def test_handle_error_with_aiohttp_timeout():
         handler = GoogleProviderHandler()
         result = handler._handle_error(
             config,
-            VideoGenerationRequest(),
             "req-1",
-            ClientTimeout("Request timed out"),
+            ClientTimeout(total=5.0),
         )
 
     assert isinstance(result, TimeoutError)
@@ -1310,13 +1309,14 @@ def test_handle_error_with_aiohttp_connection_error():
 
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = GoogleProviderHandler()
-        # Create a real ClientConnectorError with a real connection error
-        try:
-            raise ClientConnectorError(None, None)
-        except ClientConnectorError as ex:
-            result = handler._handle_error(
-                config, VideoGenerationRequest(), "req-1", ex
-            )
+        # Use __new__ to create instance without triggering __init__ validation
+        ex = ClientConnectorError.__new__(ClientConnectorError)
+        ex._conn_key = MagicMock()
+        ex._os_error = OSError("Connection refused")
+        ex.args = (0, "Connection refused")
+        ex.strerror = "Connection refused"
+        ex.errno = 0
+        result = handler._handle_error(config, "req-1", ex)
 
     assert isinstance(result, HTTPConnectionError)
 

@@ -25,6 +25,7 @@ from tarash.tarash_gateway.providers.fal import (
     get_image_field_mappers,
     WAN_VIDEO_GENERATION_MAPPERS,
     WAN_ANIMATE_MAPPERS,
+    WAN_V22_A14B_FIELD_MAPPERS,
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     PIXVERSE_FIELD_MAPPERS,
     parse_fal_status,
@@ -1312,6 +1313,162 @@ def test_wan_v22_animate_move_conversion(handler):
     assert result["use_turbo"] is True
     assert result["video_quality"] == "high"
     assert result["video_write_mode"] == "balanced"
+
+
+# ==================== Wan v2.2-a14b Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_wan_v22_a14b_all_variants():
+    """Test unified mapper for all Wan v2.2-a14b variants via prefix matching."""
+    variants = [
+        "fal-ai/wan/v2.2-a14b/image-to-video",
+        "fal-ai/wan/v2.2-a14b/image-to-video/lora",
+        "fal-ai/wan/v2.2-a14b/text-to-video/lora",
+        "fal-ai/wan/v2.2-a14b/video-to-video",
+    ]
+    for variant in variants:
+        mappers = get_field_mappers(variant)
+        assert mappers is WAN_V22_A14B_FIELD_MAPPERS, (
+            f"Expected WAN_V22_A14B_FIELD_MAPPERS for {variant}"
+        )
+
+
+# ==================== Wan v2.2-a14b Request Conversion Tests ====================
+
+
+def test_wan_v22_a14b_text_to_video_lora_conversion(handler):
+    """Test Wan v2.2-a14b text-to-video/lora request conversion with LoRA and generation params."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/text-to-video/lora",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A cyberpunk cat walking through neon streets",
+        aspect_ratio="16:9",
+        resolution="720p",
+        seed=42,
+        negative_prompt="low quality, blurry",
+        enhance_prompt=True,
+        extra_params={
+            "num_frames": 81,
+            "frames_per_second": 16,
+            "guidance_scale": 3.5,
+            "guidance_scale_2": 4.0,
+            "shift": 5.0,
+            "num_inference_steps": 27,
+            "acceleration": "regular",
+            "loras": [{"path": "https://example.com/lora.safetensors", "scale": 0.8}],
+            "reverse_video": True,
+            "video_quality": "high",
+            "video_write_mode": "balanced",
+            "interpolator_model": "film",
+            "num_interpolated_frames": 1,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A cyberpunk cat walking through neon streets"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+    assert result["seed"] == 42
+    assert result["negative_prompt"] == "low quality, blurry"
+    assert result["enable_prompt_expansion"] is True
+    assert result["num_frames"] == 81
+    assert result["frames_per_second"] == 16
+    assert result["guidance_scale"] == 3.5
+    assert result["guidance_scale_2"] == 4.0
+    assert result["shift"] == 5.0
+    assert result["num_inference_steps"] == 27
+    assert result["acceleration"] == "regular"
+    assert result["loras"] == [
+        {"path": "https://example.com/lora.safetensors", "scale": 0.8}
+    ]
+    assert result["reverse_video"] is True
+    assert result["video_quality"] == "high"
+    assert result["video_write_mode"] == "balanced"
+    assert result["interpolator_model"] == "film"
+    assert result["num_interpolated_frames"] == 1
+    # Should not have image/video fields
+    assert "image_url" not in result
+    assert "video_url" not in result
+    assert "end_image_url" not in result
+
+
+def test_wan_v22_a14b_image_to_video_lora_conversion(handler):
+    """Test Wan v2.2-a14b image-to-video/lora conversion with image and end_image."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/image-to-video/lora",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Camera slowly orbiting around the subject",
+        image_list=[
+            {"image": "https://example.com/start.jpg", "type": "reference"},
+            {"image": "https://example.com/end.jpg", "type": "last_frame"},
+        ],
+        seed=123,
+        extra_params={
+            "guidance_scale": 3.5,
+            "loras": [{"path": "https://example.com/lora.safetensors", "scale": 1.0}],
+            "enable_safety_checker": True,
+            "enable_output_safety_checker": True,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Camera slowly orbiting around the subject"
+    assert result["image_url"] == "https://example.com/start.jpg"
+    assert result["end_image_url"] == "https://example.com/end.jpg"
+    assert result["seed"] == 123
+    assert result["guidance_scale"] == 3.5
+    assert result["loras"] == [
+        {"path": "https://example.com/lora.safetensors", "scale": 1.0}
+    ]
+    assert result["enable_safety_checker"] is True
+    assert result["enable_output_safety_checker"] is True
+    # Should not have video fields
+    assert "video_url" not in result
+
+
+def test_wan_v22_a14b_video_to_video_conversion(handler):
+    """Test Wan v2.2-a14b video-to-video conversion with video input and strength."""
+    config = VideoGenerationConfig(
+        model="fal-ai/wan/v2.2-a14b/video-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Transform the scene into anime style",
+        video="https://example.com/input-video.mp4",
+        resolution="720p",
+        aspect_ratio="16:9",
+        seed=42,
+        extra_params={
+            "strength": 0.9,
+            "resample_fps": True,
+            "guidance_scale": 3.5,
+            "num_frames": 81,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Transform the scene into anime style"
+    assert result["video_url"] == "https://example.com/input-video.mp4"
+    assert result["resolution"] == "720p"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["seed"] == 42
+    assert result["strength"] == 0.9
+    assert result["resample_fps"] is True
+    assert result["guidance_scale"] == 3.5
+    assert result["num_frames"] == 81
+    # Should not have image fields
+    assert "image_url" not in result
+    assert "end_image_url" not in result
 
 
 # ==================== ByteDance Seedance Field Mapper Selection Tests ====================
@@ -2655,140 +2812,6 @@ def test_flux2_pro_all_parameters():
     ]
     assert result["guidance_scale"] == 5.0
     assert result["num_inference_steps"] == 25
-
-
-def test_get_image_field_mappers_flux_pro_ultra():
-    """Test that Flux 1.1 Pro Ultra models use correct field mappers."""
-    from tarash.tarash_gateway.providers.fal import (
-        FLUX_PRO_ULTRA_FIELD_MAPPERS,
-    )
-
-    # Test both Ultra and Raw variants
-    assert (
-        get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-        is FLUX_PRO_ULTRA_FIELD_MAPPERS
-    )
-    assert (
-        get_image_field_mappers("fal-ai/flux-pro/v1.1-raw")
-        is FLUX_PRO_ULTRA_FIELD_MAPPERS
-    )
-
-
-def test_flux_pro_ultra_aspect_ratio():
-    """Test Flux Pro Ultra with aspect_ratio field."""
-    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-
-    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-
-    # Test with standard aspect ratio from ImageGenerationRequest
-    request = ImageGenerationRequest(
-        prompt="A beautiful landscape",
-        aspect_ratio="16:9",
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["prompt"] == "A beautiful landscape"
-    assert result["aspect_ratio"] == "16:9"
-
-
-def test_flux_pro_ultra_extended_aspect_ratios():
-    """Test Flux Pro Ultra supports extended aspect ratios (21:9, 9:21)."""
-    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-
-    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-
-    # Test with ultra-wide aspect ratio via extra_params
-    request = ImageGenerationRequest(
-        prompt="Cinematic wide shot",
-        extra_params={"aspect_ratio": "21:9"},
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["aspect_ratio"] == "21:9"
-
-
-def test_flux_pro_ultra_raw_mode():
-    """Test Flux Pro Ultra with raw mode (boolean for natural aesthetic)."""
-    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-
-    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-
-    request = ImageGenerationRequest(
-        prompt="Natural portrait",
-        extra_params={"raw": True},
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["raw"] is True
-
-
-def test_flux_pro_ultra_safety_tolerance():
-    """Test Flux Pro Ultra with safety_tolerance field (1-6)."""
-    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-
-    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-
-    request = ImageGenerationRequest(
-        prompt="Artistic image",
-        extra_params={"safety_tolerance": 3},
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["safety_tolerance"] == 3
-
-
-def test_flux_pro_ultra_output_format():
-    """Test Flux Pro Ultra with output_format field (jpeg, png)."""
-    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-
-    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-
-    # Test with PNG format
-    request = ImageGenerationRequest(
-        prompt="High quality image",
-        extra_params={"output_format": "png"},
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["output_format"] == "png"
-
-
-def test_flux_pro_ultra_all_parameters():
-    """Test Flux Pro Ultra with all parameters combined."""
-    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
-    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
-
-    mappers = get_image_field_mappers("fal-ai/flux-pro/v1.1-ultra")
-
-    request = ImageGenerationRequest(
-        prompt="Ultra high quality cinematic shot",
-        seed=99999,
-        aspect_ratio="21:9",
-        extra_params={
-            "raw": False,
-            "safety_tolerance": 4,
-            "output_format": "jpeg",
-        },
-    )
-
-    result = apply_field_mappers(mappers, request)
-
-    assert result["prompt"] == "Ultra high quality cinematic shot"
-    assert result["seed"] == 99999
-    assert result["aspect_ratio"] == "21:9"
-    assert result["raw"] is False
-    assert result["safety_tolerance"] == 4
-    assert result["output_format"] == "jpeg"
 
 
 def test_get_image_field_mappers_zimage_turbo():

@@ -135,7 +135,7 @@ response = await generate_video_async(config, request)  # async
 | **GPT Image** | `gpt-image-1.5` | [OpenAI](providers/openai.md) |
 | **Imagen 3** | `imagen-3.0-generate-001`<br>`imagen-3.0-generate-002`<br>`imagen-3.0-fast-generate-001` | [Google](providers/google.md) |
 | **Gemini Image** | `gemini-2.5-flash-image-preview`<br>`gemini-3-pro-image-preview` | [Google](providers/google.md) |
-| **Flux** | `fal-ai/flux/dev`<br>`fal-ai/flux/schnell`<br>`fal-ai/flux-2`<br>`fal-ai/flux-2/pro`<br>`fal-ai/flux-2/dev`<br>`fal-ai/flux-2/flex`<br>`fal-ai/flux-pro/v1.1-ultra`<br>`fal-ai/flux-pro/v1.1-raw` | [Fal.ai](providers/fal/index.md) |
+| **Flux** | `fal-ai/flux/dev`<br>`fal-ai/flux/schnell`<br>`fal-ai/flux-2`<br>`fal-ai/flux-2/pro`<br>`fal-ai/flux-2/dev`<br>`fal-ai/flux-2/flex` | [Fal.ai](providers/fal/index.md) |
 | **Stable Diffusion** | `sd3.5-large`<br>`sd3.5-medium`<br>`sd3.5-large-turbo` | [Stability AI](providers/stability.md) |
 | **Stable Image** | `stable-image-ultra`<br>`stable-image-core` | [Stability AI](providers/stability.md) |
 | **Recraft** | `fal-ai/recraft-v3`<br>`fal-ai/recraft` | [Fal.ai](providers/fal/index.md) |

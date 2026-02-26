@@ -25,7 +25,7 @@ from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationR
 
 config = ImageGenerationConfig(
     provider="fal",
-    model="fal-ai/flux-pro",
+    model="fal-ai/flux/dev",
     api_key="YOUR_FAL_KEY",
 )
 
@@ -54,7 +54,6 @@ Fal hosts many Flux-family image models. Use any Fal image model path as the `mo
 
 | Model ID (prefix) | Notes |
 |---|---|
-| `fal-ai/flux-pro` | Flux Pro |
 | `fal-ai/flux/dev` | Flux Dev |
 | `fal-ai/flux-realism` | Photorealism LoRA |
 

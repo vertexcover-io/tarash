@@ -333,7 +333,7 @@ class ImageGenerationConfig(BaseModel):
     """Configuration for an image generation request."""
 
     model: str = Field(
-        description="Model identifier, e.g. 'dall-e-3', 'fal-ai/flux-pro'."
+        description="Model identifier, e.g. 'dall-e-3', 'fal-ai/flux/dev'."
     )
     provider: str = Field(
         description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability', 'luma'."
