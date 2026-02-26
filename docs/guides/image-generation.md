@@ -1,6 +1,11 @@
 # Image Generation
 
-Tarash Gateway provides a unified interface for generating images across multiple providers. Pass a provider-specific `ImageGenerationConfig` and an `ImageGenerationRequest` to `generate_image()` (or `generate_image_async()` for async workflows); the response is always a normalized `ImageGenerationResponse` regardless of which provider handled the request.
+Tarash Gateway provides a unified interface for generating images across multiple providers. Pass a
+[`ImageGenerationConfig`](../api-reference/models.md#imagegenerationconfig) and an
+[`ImageGenerationRequest`](../api-reference/models.md#imagegenerationrequest) to
+[`generate_image()`](../api-reference/gateway.md) (or `generate_image_async()` for async
+workflows); the response is always a normalized `ImageGenerationResponse` regardless of which
+provider handled the request.
 
 ## Text to Image
 
@@ -19,6 +24,8 @@ request = ImageGenerationRequest(
 response = generate_image(config, request)
 print(response.images[0])
 ```
+
+[Fal.ai image models →](../providers/fal/index.md)
 
 ---
 
@@ -44,3 +51,5 @@ request = ImageGenerationRequest(
 response = generate_image(config, request)
 print(response.images[0])
 ```
+
+[OpenAI image models →](../providers/openai.md)

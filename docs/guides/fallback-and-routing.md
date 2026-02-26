@@ -11,11 +11,11 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     fallback_configs=[
         VideoGenerationConfig(
             provider="replicate",
-            model="google/veo-3",
+            model="google/veo-3.1",
         ),
     ],
 )
@@ -38,9 +38,9 @@ response = generate_video(config, request)
 ```python
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     fallback_configs=[
-        VideoGenerationConfig(provider="replicate", model="google/veo-3"),
+        VideoGenerationConfig(provider="replicate", model="google/veo-3.1"),
         VideoGenerationConfig(provider="openai", model="openai/sora-2"),
     ],
 )
@@ -145,3 +145,5 @@ config = ImageGenerationConfig(
     ],
 )
 ```
+
+For all available model IDs, see the [Providers](../providers/index.md) page.

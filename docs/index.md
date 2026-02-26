@@ -6,7 +6,7 @@
 from tarash.tarash_gateway import generate_video
 from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
-config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3")
+config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3.1/fast")
 request = VideoGenerationRequest(prompt="A cat playing piano, cinematic lighting")
 response = generate_video(config, request)
 print(response.video)  # → URL to generated video
@@ -15,7 +15,7 @@ print(response.video)  # → URL to generated video
 Switch providers by changing two words:
 
 ```python
-config = VideoGenerationConfig(provider="runway", model="gen3a_turbo")
+config = VideoGenerationConfig(provider="runway", model="gen4_turbo")
 ```
 
 ```bash
@@ -43,9 +43,9 @@ If a provider fails or rate-limits, Tarash Gateway automatically tries the next 
 ```python
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     fallback_configs=[
-        VideoGenerationConfig(provider="replicate", model="google/veo-3"),
+        VideoGenerationConfig(provider="replicate", model="google/veo-3.1"),
         VideoGenerationConfig(provider="openai", model="openai/sora-2"),
     ],
 )
@@ -64,7 +64,7 @@ from tarash.tarash_gateway.mock import MockConfig
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     mock=MockConfig(enabled=True),
 )
 response = generate_video(config, request)
@@ -108,12 +108,38 @@ response = await generate_video_async(config, request)  # async
 
 ## Providers
 
-| Provider | Video | Image | Models | Install |
-|---|:---:|:---:|---|---|
-| [Fal.ai](providers/fal/index.md) | ✅ | ✅ | `veo3`, `veo3.1`, `kling-v2.6`, `kling-o1`, `minimax`, `wan`, `sora-2`, `seedance`, `pixverse` | `fal` |
-| [OpenAI](providers/openai.md) | ✅ | ✅ | `sora`, `sora-mini`, `dall-e-3`, `gpt-image-1` | `openai` |
-| [Azure OpenAI](providers/openai.md#azure-openai) | ✅ | ✅ | `sora` (deployment), `dall-e-3` (deployment) | `openai` |
-| [Google](providers/google.md) | ✅ | ✅ | `veo-3.0-generate-001`, `veo-3-0-fast-generate-001`, `imagen-3.0-generate-002`, `gemini-2.0-flash-preview-image-generation` | `veo3` |
-| [Runway](providers/runway.md) | ✅ | — | `gen3a_turbo`, `gen3a`, `aleph` | `runway` |
-| [Replicate](providers/replicate.md) | ✅ | — | `google/veo-3`, `minimax/video-01`, `kwaivgi/kling`, `wan-video/` | `replicate` |
-| [Stability AI](providers/stability.md) | — | ✅ | `sd3.5-large`, `sd3.5-large-turbo`, `stable-image-core`, `stable-image-ultra` | — |
+### Video Generation
+
+<div class="provider-table" markdown="1">
+
+| Model | Variants | Provider(s) |
+|---|---|---|
+| **Veo 3** | `fal-ai/veo3`<br>`fal-ai/veo3.1/fast`<br>`fal-ai/veo3.1/fast/image-to-video`<br>`fal-ai/veo3.1/fast/first-last-frame-to-video`<br>`fal-ai/veo3.1/fast/extend-video`<br>`veo-3.0-generate-001` (Google)<br>`veo-3.0-generate-preview` (Google)<br>`google/veo-3` (Replicate)<br>`google/veo-3.1` (Replicate) | [Fal.ai](providers/fal/index.md) · [Google](providers/google.md) · [Replicate](providers/replicate.md) |
+| **Kling** | `fal-ai/kling-video/v2.6`<br>`fal-ai/kling-video/v2.6/standard/motion-control`<br>`fal-ai/kling-video/v3/pro/text-to-video`<br>`fal-ai/kling-video/v3/pro/image-to-video`<br>`fal-ai/kling-video/v3/standard/text-to-video`<br>`fal-ai/kling-video/v3/standard/image-to-video`<br>`fal-ai/kling-video/o1/image-to-video`<br>`fal-ai/kling-video/o1/standard/reference-to-video`<br>`fal-ai/kling-video/o1/standard/video-to-video/edit`<br>`fal-ai/kling-video/o1/standard/video-to-video/reference`<br>`fal-ai/kling-video/o3/pro/text-to-video`<br>`fal-ai/kling-video/o3/pro/image-to-video`<br>`fal-ai/kling-video/o3/standard/reference-to-video`<br>`kwaivgi/kling-v2.1` (Replicate) | [Fal.ai](providers/fal/index.md) · [Replicate](providers/replicate.md) |
+| **Sora** | `sora`<br>`fal-ai/sora-2/text-to-video`<br>`fal-ai/sora-2/image-to-video` | [OpenAI](providers/openai.md) · [Fal.ai](providers/fal/index.md) |
+| **Minimax** | `fal-ai/minimax/video-01`<br>`fal-ai/minimax/hailuo-02-fast/image-to-video`<br>`minimax/video-01` (Replicate) | [Fal.ai](providers/fal/index.md) · [Replicate](providers/replicate.md) |
+| **WAN** | `fal-ai/wan-25-preview/text-to-video`<br>`fal-ai/wan-25-preview/image-to-video`<br>`fal-ai/wan/v2.2-14b/animate/move`<br>`fal-ai/wan/v2.2-a14b/image-to-video`<br>`fal-ai/wan/v2.2-a14b/image-to-video/lora`<br>`fal-ai/wan/v2.2-a14b/text-to-video/lora`<br>`fal-ai/wan/v2.2-a14b/video-to-video`<br>| [Fal.ai](providers/fal/index.md) · [Replicate](providers/replicate.md) |
+| **Seedance** | `fal-ai/bytedance/seedance/v1.5/pro/text-to-video`<br>`fal-ai/bytedance/seedance/v1/pro/image-to-video`<br>`fal-ai/bytedance/seedance/v1/lite/reference-to-video` | [Fal.ai](providers/fal/index.md) |
+| **Pixverse** | `fal-ai/pixverse/v5.5/text-to-video`<br>`fal-ai/pixverse/v5.5/image-to-video`<br>`fal-ai/pixverse/v5/text-to-video` | [Fal.ai](providers/fal/index.md) |
+| **Runway** | `gen4_turbo`<br>`gen4_aleph`<br>`veo3.1`<br>`veo3.1_fast` | [Runway](providers/runway.md) |
+
+</div>
+
+### Image Generation
+
+<div class="provider-table" markdown="1">
+
+| Model | Variants | Provider(s) |
+|---|---|---|
+| **DALL-E** | `dall-e-3`<br>`dall-e-2` | [OpenAI](providers/openai.md) |
+| **GPT Image** | `gpt-image-1.5` | [OpenAI](providers/openai.md) |
+| **Imagen 3** | `imagen-3.0-generate-001`<br>`imagen-3.0-generate-002`<br>`imagen-3.0-fast-generate-001` | [Google](providers/google.md) |
+| **Gemini Image** | `gemini-2.5-flash-image-preview`<br>`gemini-3-pro-image-preview` | [Google](providers/google.md) |
+| **Flux** | `fal-ai/flux/dev`<br>`fal-ai/flux/schnell`<br>`fal-ai/flux-2`<br>`fal-ai/flux-2/pro`<br>`fal-ai/flux-2/dev`<br>`fal-ai/flux-2/flex`<br>`fal-ai/flux-pro/v1.1-ultra`<br>`fal-ai/flux-pro/v1.1-raw` | [Fal.ai](providers/fal/index.md) |
+| **Stable Diffusion** | `sd3.5-large`<br>`sd3.5-medium`<br>`sd3.5-large-turbo` | [Stability AI](providers/stability.md) |
+| **Stable Image** | `stable-image-ultra`<br>`stable-image-core` | [Stability AI](providers/stability.md) |
+| **Recraft** | `fal-ai/recraft-v3`<br>`fal-ai/recraft` | [Fal.ai](providers/fal/index.md) |
+| **Ideogram** | `fal-ai/ideogram` | [Fal.ai](providers/fal/index.md) |
+| **Z-Image Turbo** | `fal-ai/z-image/turbo` | [Fal.ai](providers/fal/index.md) |
+
+</div>

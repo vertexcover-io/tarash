@@ -31,7 +31,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     api_key="YOUR_FAL_KEY",
 )
 
@@ -65,7 +65,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     api_key="...",
     timeout=600,
     max_poll_attempts=120,

@@ -12,7 +12,7 @@ from tarash.tarash_gateway.mock import MockConfig
 
 config = VideoGenerationConfig(
     provider="fal",        # provider field still required
-    model="fal-ai/veo3",   # model still required
+    model="fal-ai/veo3.1/fast",   # model still required
     mock=MockConfig(enabled=True),
 )
 
@@ -46,7 +46,7 @@ from tarash.tarash_gateway.mock import MockConfig, MockResponse
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     mock=MockConfig(
         enabled=True,
         responses=[
@@ -71,7 +71,7 @@ from tarash.tarash_gateway.mock import MockConfig, MockResponse
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     mock=MockConfig(
         enabled=True,
         responses=[
@@ -111,7 +111,7 @@ Combine mock with fallback to test your fallback logic without hitting any real 
 ```python
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     mock=MockConfig(
         enabled=True,
         responses=[MockResponse(weight=1.0, error=GenerationFailedError("forced fail"))],
@@ -119,7 +119,7 @@ config = VideoGenerationConfig(
     fallback_configs=[
         VideoGenerationConfig(
             provider="replicate",
-            model="google/veo-3",
+            model="google/veo-3.1",
             mock=MockConfig(enabled=True),  # fallback mock succeeds
         ),
     ],

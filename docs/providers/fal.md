@@ -72,7 +72,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     api_key="YOUR_FAL_KEY",
 )
 
@@ -111,19 +111,19 @@ Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/
 
 | Model prefix | Duration | Image-to-Video | Notes |
 |---|---|:---:|---|
-| `fal-ai/veo3` | 4s, 6s, 8s | ✅ | Audio; first/last frame; extend-video |
-| `fal-ai/veo3.1` | 4s, 6s, 7s, 8s | ✅ | Latest Veo; fast variant via `/fast`; extend-video via `/fast/extend-video` |
-| `fal-ai/minimax` | 6s, 10s | ✅ | Hailuo series; prompt optimizer support |
-| `fal-ai/kling-video/v2.6` | 5s, 10s | ✅ | Motion control, cfg_scale, last-frame pinning |
-| `fal-ai/kling-video/o1` | 5s, 10s | ✅ | Reference-to-video, video edit, start/end frame |
-| `fal-ai/sora-2` | 4s, 8s, 12s | ✅ | Sora via Fal; remix via `/video-to-video/remix` |
-| `wan/v2.6/` | configurable | ✅ | Wan v2.6; text, image, reference-to-video |
-| `fal-ai/wan-25-preview/` | configurable | ✅ | Wan v2.5 preview |
-| `fal-ai/wan/v2.2-14b/animate/` | — | ✅ | Wan animate: video+image motion control |
-| `fal-ai/bytedance/seedance` | 2s–12s | ✅ | ByteDance Seedance v1/v1.5; reference-to-video |
-| `fal-ai/pixverse/v5` | 5s, 8s, 10s | ✅ | Pixverse v5; transition, effects, swap |
-| `fal-ai/pixverse/v5.5` | 5s, 8s, 10s | ✅ | Pixverse v5.5; same API as v5 |
-| `fal-ai/pixverse/swap` | — | ✅ | Pixverse swap variant |
+| [`fal-ai/veo3`](fal/veo.md) | 4s, 6s, 8s | ✅ | Audio; first/last frame; extend-video |
+| [`fal-ai/veo3.1`](fal/veo.md) | 4s, 6s, 7s, 8s | ✅ | Latest Veo; fast variant via `/fast`; extend-video via `/fast/extend-video` |
+| [`fal-ai/minimax`](fal/minimax.md) | 6s, 10s | ✅ | Hailuo series; prompt optimizer support |
+| [`fal-ai/kling-video/v2.6`](fal/kling.md) | 5s, 10s | ✅ | Motion control, cfg_scale, last-frame pinning |
+| [`fal-ai/kling-video/o1`](fal/kling.md) | 5s, 10s | ✅ | Reference-to-video, video edit, start/end frame |
+| [`fal-ai/sora-2`](fal/sora.md) | 4s, 8s, 12s | ✅ | Sora via Fal; remix via `/video-to-video/remix` |
+| [`wan/v2.6/`](fal/wan.md) | configurable | ✅ | Wan v2.6; text, image, reference-to-video |
+| [`fal-ai/wan-25-preview/`](fal/wan.md) | configurable | ✅ | Wan v2.5 preview |
+| [`fal-ai/wan/v2.2-14b/animate/`](fal/wan.md) | — | ✅ | Wan animate: video+image motion control |
+| [`fal-ai/bytedance/seedance`](fal/seedance.md) | 2s–12s | ✅ | ByteDance Seedance v1/v1.5; reference-to-video |
+| [`fal-ai/pixverse/v5`](fal/pixverse.md) | 5s, 8s, 10s | ✅ | Pixverse v5; transition, effects, swap |
+| [`fal-ai/pixverse/v5.5`](fal/pixverse.md) | 5s, 8s, 10s | ✅ | Pixverse v5.5; same API as v5 |
+| [`fal-ai/pixverse/swap`](fal/pixverse.md) | — | ✅ | Pixverse swap variant |
 | Any other `fal-ai/*` | — | ✅ | Generic field mappers (prompt, seed, aspect_ratio) |
 
 Any Fal model not in this table gets **generic mappers** (prompt passthrough + common fields). For full support with model-specific parameters, use `/add-fal-model` in Claude Code.
