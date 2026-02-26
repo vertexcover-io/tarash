@@ -30,12 +30,14 @@ request = VideoGenerationRequest(
 )
 
 # Use Fal.ai
-config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3", api_key="YOUR_FAL_KEY")
+config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3.1/fast", api_key="YOUR_FAL_KEY")
 response = generate_video(config, request)
 
 # Switch to Runway — same request, one line change
-config = VideoGenerationConfig(provider="runway", model="gen-3-alpha", api_key="YOUR_RUNWAY_KEY")
+config = VideoGenerationConfig(provider="runway", model="gen4_turbo", api_key="YOUR_RUNWAY_KEY")
 response = generate_video(config, request)
 ```
+
+For the full list of model IDs per provider, click any provider name in the table above.
 
 For automatic failover between providers, see the [Fallback & Routing guide](../guides/fallback-and-routing.md).

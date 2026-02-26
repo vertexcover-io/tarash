@@ -7,7 +7,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
     api_key="fal-xxxxxxxxxxxxxxxx",
 )
 ```

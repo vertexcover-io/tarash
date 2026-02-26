@@ -4,6 +4,10 @@ Tarash Gateway provides a unified interface for text-to-video, image-to-video, a
 generation across Fal.ai, OpenAI, Google, Runway, Replicate, and Azure OpenAI — using a
 single `generate_video` call regardless of provider.
 
+Pass a [`VideoGenerationConfig`](../api-reference/models.md#videogenerationconfig) and a
+[`VideoGenerationRequest`](../api-reference/models.md#videogenerationrequest) to
+[`generate_video()`](../api-reference/gateway.md).
+
 ## Text to Video
 
 Pass a prompt and config to generate a video from text.
@@ -25,6 +29,8 @@ request = VideoGenerationRequest(
 response = generate_video(config, request)
 print(response.video)
 ```
+
+[Fal.ai Veo models →](../providers/fal/veo.md)
 
 ---
 
@@ -51,6 +57,8 @@ response = generate_video(config, request)
 print(response.video)
 ```
 
+[Fal.ai Kling models →](../providers/fal/kling.md)
+
 ---
 
 ## Video to Video
@@ -73,3 +81,5 @@ request = VideoGenerationRequest(
 response = generate_video(config, request)
 print(response.video)
 ```
+
+[Runway models →](../providers/runway.md)

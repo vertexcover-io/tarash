@@ -2,3 +2,25 @@
 .md-typeset table td {
   white-space: nowrap;
 }
+
+/* Provider tables: fixed layout with explicit column widths so both tables are identical width */
+.provider-table table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.provider-table th:nth-child(1),
+.provider-table td:nth-child(1) {
+  width: 14%;
+}
+
+.provider-table th:nth-child(2),
+.provider-table td:nth-child(2) {
+  width: 66%;
+  white-space: normal;
+}
+
+.provider-table th:nth-child(3),
+.provider-table td:nth-child(3) {
+  width: 20%;
+}

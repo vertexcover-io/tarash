@@ -1,6 +1,6 @@
 # Runway
 
-Runway provides video generation (Gen-3, Aleph) via the `runwayml` Python SDK. It supports text-to-video, image-to-video, and video-to-video editing.
+Runway provides video generation (Gen-4, Gen-3, Aleph) via the `runwayml` Python SDK. It supports text-to-video, image-to-video, and video-to-video editing.
 
 ## Quick Example
 
@@ -10,7 +10,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="runway",
-    model="gen-3-alpha",
+    model="gen4_turbo",
     api_key="YOUR_RUNWAY_KEY",
 )
 
@@ -59,9 +59,13 @@ Tarash automatically selects the correct Runway endpoint (`text_to_video`, `imag
 
 | Model | Notes |
 |---|---|
-| `gen3a_turbo` | Requires image input |
-| `gen-3-alpha` | Auto-selected based on input (text or image) |
-| `aleph` | Requires video input; editing/extending |
+| `gen4_turbo` | Gen-4 Turbo; auto-selected based on input (text or image) |
+| `gen4_aleph` | Gen-4 Aleph; requires video input; editing/extending |
+| `veo3.1` | Veo 3.1 via Runway; auto-selected based on input |
+| `veo3.1_fast` | Veo 3.1 Fast via Runway; auto-selected based on input |
+| `gen3a_turbo` | Gen-3 Turbo; requires image input |
+| `gen-3-alpha` | Gen-3 Alpha; auto-selected based on input (text or image) |
+| `aleph` | Gen-3 Aleph; requires video input; editing/extending |
 | `VEO-prefixed models` | Auto-selected based on input |
 
 **Aspect ratio support:** Runway uses pixel dimensions instead of ratio strings. Tarash converts automatically.
@@ -131,6 +135,7 @@ print(response.video)
 **Endpoint auto-selection:** The endpoint is chosen at request time:
 - Model name contains `"aleph"` → `video_to_video` (requires `video` input)
 - Model name contains `"turbo"` (non-VEO) → `image_to_video` (requires image)
+- Model name contains `"gen4"` (non-aleph) → `image_to_video` if image provided, else `text_to_video`
 - VEO models → `image_to_video` if image provided, else `text_to_video`
 - Everything else → `image_to_video` if image provided, else `text_to_video`
 

@@ -19,7 +19,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 config = VideoGenerationConfig(
     provider="fal",
     api_key="YOUR_FAL_API_KEY",
-    model="fal-ai/veo3",
+    model="fal-ai/veo3.1/fast",
 )
 
 request = VideoGenerationRequest(
@@ -70,4 +70,6 @@ response = generate_video(config, request, on_progress=on_progress)
 
 - [Authentication](authentication.md) — managing API keys securely
 - [Video Generation Guide](../guides/video-generation.md) — full parameter reference
+- [Fal.ai Veo models](../providers/fal/veo.md) — variants, durations, and capabilities for `fal-ai/veo3.1`
+- [All providers](../providers/index.md) — browse every supported model and provider
 - [API Reference](../api-reference/gateway.md) — full function signatures
