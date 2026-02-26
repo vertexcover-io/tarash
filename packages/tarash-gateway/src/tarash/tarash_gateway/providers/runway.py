@@ -233,7 +233,17 @@ def parse_runway_task_status(
 
 
 class RunwayProviderHandler:
-    """Handler for Runway ML video generation."""
+    """Provider handler for Runway Gen-3 video generation.
+
+    Supports text-to-video and image-to-video workflows via the Runway API.
+    Handles endpoint selection automatically based on model name and input type.
+
+    Install the required extra before use:
+
+    ```bash
+    pip install tarash-gateway[runway]
+    ```
+    """
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
@@ -242,8 +252,6 @@ class RunwayProviderHandler:
                 "runwayml is required for Runway provider. "
                 "Install with: pip install tarash-gateway[runway]"
             )
-        self._sync_client_cache: dict[str, "RunwayML"] = {}
-        self._async_client_cache: dict[str, "AsyncRunwayML"] = {}
 
     @overload
     def _get_client(
@@ -258,32 +266,18 @@ class RunwayProviderHandler:
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["sync", "async"]
     ) -> "RunwayML | AsyncRunwayML":
-        """Get or create Runway client for the given config."""
+        """Create Runway client for the given config."""
         if not has_runwayml:
             raise ImportError(
                 "runwayml is required for Runway provider. "
                 "Install with: pip install tarash-gateway[runway]"
             )
-        cache_key = f"{config.api_key}:{client_type}"
-        cache = (
-            self._async_client_cache
-            if client_type == "async"
-            else self._sync_client_cache
-        )
-
-        if cache_key not in cache:
-            logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
-            logger.debug(f"Creating new {client_type} Runway client")
-            if client_type == "async":
-                async_client: "AsyncRunwayML" = AsyncRunwayML(api_key=config.api_key)
-                self._async_client_cache[cache_key] = async_client
-                return async_client
-            else:
-                sync_client: "RunwayML" = RunwayML(api_key=config.api_key)
-                self._sync_client_cache[cache_key] = sync_client
-                return sync_client
-
-        return cache[cache_key]
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.debug(f"Creating new {client_type} Runway client")
+        if client_type == "async":
+            return AsyncRunwayML(api_key=config.api_key)
+        else:
+            return RunwayML(api_key=config.api_key)
 
     def _validate_params(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest

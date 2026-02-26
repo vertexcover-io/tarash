@@ -692,7 +692,7 @@ async def test_veo31_fast_extend_video(fal_api_key):
         print(f"  Progress: {update.status}")
 
     request = VideoGenerationRequest(
-        prompt="Continue the scene naturally, maintaining the same style and motion",
+        prompt="A person walking through a park on a sunny day, gentle breeze moving the leaves",
         video="https://v3b.fal.media/files/b/0a8670fe/pY8UGl4_C452wOm9XUBYO_9ae04df8771c4f3f979fa5cabeca6ada.mp4",
         aspect_ratio="16:9",
         duration_seconds=7,

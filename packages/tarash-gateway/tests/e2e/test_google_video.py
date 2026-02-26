@@ -165,7 +165,7 @@ async def test_comprehensive_async_video_generation(google_video_config):
 
 
 @pytest.mark.e2e
-def test_sync_video_generation_with_all_image_types(google_video_config):
+def test_sync_video_generation_with_all_image_types(vertex_ai_provider_config):
     """
     Sync test for Google Veo 3 interpolation mode using Vertex AI:
     - Basic sync generation
@@ -178,6 +178,15 @@ def test_sync_video_generation_with_all_image_types(google_video_config):
     Note: Cannot combine interpolation (first/last frames) with reference images (asset/style).
     These are mutually exclusive modes in Veo 3.1.
     """
+    config = VideoGenerationConfig(
+        model="veo-3.1-generate-preview",  # Veo 3.1 supports interpolation
+        provider="google",
+        api_key=None,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+        provider_config=vertex_ai_provider_config,
+    )
     sample_image_urls = [
         "https://picsum.photos/1280/720?random=1",  # 16:9 aspect ratio
         "https://picsum.photos/1280/720?random=2",  # 16:9 aspect ratio
@@ -218,7 +227,7 @@ def test_sync_video_generation_with_all_image_types(google_video_config):
     )
 
     # Generate video using API (sync) with Vertex AI
-    response = api.generate_video(google_video_config, request)
+    response = api.generate_video(config, request)
 
     # Validate response
     assert isinstance(response, VideoGenerationResponse)

@@ -62,42 +62,7 @@ def base_request():
     return VideoGenerationRequest(prompt="Test prompt")
 
 
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches."""
-    assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
-
-
 # ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_sync_client(
-    handler, base_config, mock_sync_client
-):
-    """Test sync client creation and caching."""
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_sync_client
-
-
-def test_get_client_creates_and_caches_async_client(
-    handler, base_config, mock_async_client
-):
-    """Test async client creation and caching."""
-    handler._async_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "async")
-    client2 = handler._get_client(base_config, "async")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_async_client
 
 
 @pytest.mark.parametrize(
@@ -113,8 +78,6 @@ def test_get_client_creates_different_clients_for_different_configs(
     handler, api_key, base_url
 ):
     """Test different clients for different API keys and base_urls."""
-    handler._sync_client_cache.clear()
-
     mock_client1 = MagicMock()
     mock_client2 = MagicMock()
 
@@ -513,7 +476,6 @@ async def test_generate_video_async_success_with_progress_callbacks(
     )
 
     # Clear cache and patch
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
@@ -548,7 +510,6 @@ async def test_generate_video_async_success_with_progress_callbacks(
         async def async_callback(update):
             async_progress_calls.append(update)
 
-        handler._async_client_cache.clear()
         mock_video_processing.status = "in_progress"
 
         with patch(
@@ -585,7 +546,6 @@ async def test_generate_video_async_handles_timeout(handler, base_config, base_r
         poll_interval=1,
     )
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
@@ -604,7 +564,6 @@ async def test_generate_video_async_wraps_unknown_exceptions(
         side_effect=RuntimeError("Unexpected error")
     )
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
@@ -655,7 +614,6 @@ def test_generate_video_success_with_progress_callback(
     def progress_callback(update):
         progress_calls.append(update)
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,
@@ -682,7 +640,6 @@ def test_generate_video_handles_exceptions(handler, base_config, base_request):
     mock_sync_client = MagicMock()
     mock_sync_client.videos.create.side_effect = RuntimeError("Server error")
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,
@@ -713,7 +670,6 @@ def test_generate_video_handles_timeout(handler, base_config, base_request):
         poll_interval=1,
     )
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,
@@ -941,7 +897,6 @@ async def test_generate_image_async_dalle3_success(handler):
     mock_async_client = AsyncMock()
     mock_async_client.images.generate = AsyncMock(return_value=mock_response)
 
-    handler._async_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
         return_value=mock_async_client,
@@ -996,7 +951,6 @@ def test_generate_image_sync_gpt_image_15_success(handler):
     mock_sync_client = MagicMock()
     mock_sync_client.images.generate.return_value = mock_response
 
-    handler._sync_client_cache.clear()
     with patch(
         "tarash.tarash_gateway.providers.openai.OpenAI",
         return_value=mock_sync_client,

@@ -7,6 +7,7 @@ from fal_client.client import FalClientHTTPError
 # from pydantic import ValidationError as Pydantic ValidationError  # Not used with FieldMapper approach
 
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPError,
     TarashException,
@@ -84,32 +85,7 @@ def base_request():
     return VideoGenerationRequest(prompt="Test prompt")
 
 
-# ==================== Initialization Tests ====================
-
-
-def test_init_creates_empty_caches(handler):
-    """Test that handler initializes with empty client caches.
-
-    Note: AsyncClient is not cached, only SyncClient is cached.
-    """
-    assert handler._sync_client_cache == {}
-
-
 # ==================== Client Management Tests ====================
-
-
-def test_get_client_creates_and_caches_sync_client(
-    handler, base_config, mock_sync_client
-):
-    """Test sync client creation and caching."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
-    client1 = handler._get_client(base_config, "sync")
-    client2 = handler._get_client(base_config, "sync")
-
-    assert client1 is client2  # Same instance (cached)
-    assert client1 is mock_sync_client
 
 
 def test_get_client_creates_new_async_client_each_time(handler, base_config):
@@ -147,9 +123,6 @@ def test_get_client_creates_different_clients_for_different_configs(
     handler, api_key, base_url
 ):
     """Test different clients for different API keys and base_urls."""
-    # Clear cache first
-    handler._sync_client_cache.clear()
-
     mock_client1 = MagicMock()
     mock_client2 = MagicMock()
 
@@ -753,6 +726,46 @@ def test_handle_error_with_fal_client_http_error(handler, base_config, base_requ
     }
 
 
+def test_handle_error_content_policy_violation(handler, base_config, base_request):
+    """Test 422 with content_policy_violation is mapped to ContentModerationError."""
+    mock_response = MagicMock()
+    mock_response.content = b"Content policy violation"
+
+    http_error = FalClientHTTPError(
+        status_code=422,
+        message="[{'type': 'content_policy_violation', 'msg': 'flagged by content checker'}]",
+        response_headers={"Content-Type": "application/json"},
+        response=mock_response,
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-cp", http_error)
+
+    assert isinstance(result, ContentModerationError)
+    assert result.provider == "fal"
+    assert result.raw_response["status_code"] == 422
+
+
+def test_handle_error_422_validation_not_content_policy(
+    handler, base_config, base_request
+):
+    """Test 422 without content_policy_violation is still mapped to ValidationError."""
+    mock_response = MagicMock()
+    mock_response.content = b"Validation error"
+
+    http_error = FalClientHTTPError(
+        status_code=422,
+        message="[{'type': 'value_error', 'msg': 'Field required'}]",
+        response_headers={"Content-Type": "application/json"},
+        response=mock_response,
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-val", http_error)
+
+    assert isinstance(result, ValidationError)
+    assert result.provider == "fal"
+    assert result.raw_response["status_code"] == 422
+
+
 def test_handle_error_with_unknown_exception(handler, base_config, base_request):
     """Test unknown exception is converted to GenerationFailedError."""
     unknown_error = ValueError("Something went wrong")
@@ -1084,7 +1097,6 @@ def test_generate_video_success_with_progress_callback(
         progress_calls.append(update)
 
     # Clear cache and patch
-    handler._sync_client_cache.clear()
     mock_sync_client.submit.return_value = mock_handler
     with (
         patch("tarash.tarash_gateway.providers.fal.Queued", MockQueued),
@@ -1120,7 +1132,6 @@ def test_generate_video_handles_exceptions(
 
     mock_sync_client.submit.side_effect = http_error
 
-    handler._sync_client_cache.clear()
     with pytest.raises(TarashException, match="Unknown error"):
         handler.generate_video(base_config, base_request)
 
@@ -2406,6 +2417,268 @@ def test_kling_o1_no_elements_in_extra_params(handler):
         "https://example.com/ref1.jpg",
         "https://example.com/ref2.jpg",
     ]
+
+
+# ==================== Kling V3 Request Conversion Tests ====================
+
+
+def test_kling_v3_text_to_video_basic(handler):
+    """Test Kling V3 text-to-video basic request conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A serene lake at sunset with mountains",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A serene lake at sunset with mountains"
+    assert result["duration"] == "5"  # No "s" suffix
+    assert result["aspect_ratio"] == "16:9"
+
+
+def test_kling_v3_text_to_video_with_audio(handler):
+    """Test Kling V3 text-to-video with audio generation and voice IDs."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Two people having a conversation",
+        duration_seconds=10,
+        generate_audio=True,
+        extra_params={
+            "voice_ids": ["voice_abc123", "voice_def456"],
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Two people having a conversation"
+    assert result["duration"] == "10"
+    assert result["generate_audio"] is True
+    assert result["voice_ids"] == ["voice_abc123", "voice_def456"]
+
+
+def test_kling_v3_text_to_video_with_shot_type(handler):
+    """Test Kling V3 text-to-video with shot_type parameter."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/standard/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A fast-paced action sequence",
+        duration_seconds=8,
+        extra_params={
+            "shot_type": "intelligent",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A fast-paced action sequence"
+    assert result["duration"] == "8"
+    assert result["shot_type"] == "intelligent"
+
+
+def test_kling_v3_text_to_video_with_multi_prompt(handler, caplog):
+    """Test Kling V3 text-to-video with multi_prompt for multi-shot videos.
+
+    When both prompt and multi_prompt are provided:
+    - prompt should be excluded from the API request
+    - A warning should be logged about the mutual exclusivity
+    - Only multi_prompt should be sent to the API
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Multi-shot video",
+        extra_params={
+            "multi_prompt": [
+                {"prompt": "Scene 1: A sunrise over the ocean", "duration": "5"},
+                {"prompt": "Scene 2: Waves crashing on the shore", "duration": "5"},
+            ],
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    # prompt should be excluded when multi_prompt is present
+    assert "prompt" not in result
+    # multi_prompt should be included
+    assert "multi_prompt" in result
+    assert len(result["multi_prompt"]) == 2
+    assert result["multi_prompt"][0]["prompt"] == "Scene 1: A sunrise over the ocean"
+    assert result["multi_prompt"][1]["duration"] == "5"
+    # Warning should be logged about mutual exclusivity
+    assert any(
+        "prompt" in record.message and "multi_prompt" in record.message
+        for record in caplog.records
+        if record.levelname == "WARNING"
+    )
+
+
+def test_kling_v3_image_to_video_conversion(handler):
+    """Test Kling V3 image-to-video request conversion."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Animate this winter scene with gentle snowfall",
+        duration_seconds=8,
+        image_list=[
+            {"image": "https://example.com/winter-scene.jpg", "type": "first_frame"},
+        ],
+        aspect_ratio="16:9",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Animate this winter scene with gentle snowfall"
+    assert result["start_image_url"] == "https://example.com/winter-scene.jpg"
+    assert result["duration"] == "8"
+    assert result["aspect_ratio"] == "16:9"
+
+
+def test_kling_v3_image_to_video_with_end_frame(handler):
+    """Test Kling V3 image-to-video with both start and end frames."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/standard/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Transition from day to night",
+        duration_seconds=12,
+        image_list=[
+            {"image": "https://example.com/day.jpg", "type": "first_frame"},
+            {"image": "https://example.com/night.jpg", "type": "last_frame"},
+        ],
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Transition from day to night"
+    assert result["start_image_url"] == "https://example.com/day.jpg"
+    assert result["end_image_url"] == "https://example.com/night.jpg"
+    assert result["duration"] == "12"
+
+
+def test_kling_v3_image_to_video_with_elements(handler):
+    """Test Kling V3 image-to-video with custom elements."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Show @Element1 walking through the scene",
+        duration_seconds=10,
+        image_list=[
+            {"image": "https://example.com/scene.jpg", "type": "first_frame"},
+        ],
+        extra_params={
+            "elements": [
+                {
+                    "frontal_image_url": "https://example.com/char-front.jpg",
+                    "reference_image_urls": [
+                        "https://example.com/char-side.jpg",
+                    ],
+                }
+            ],
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert "elements" in result
+    assert len(result["elements"]) == 1
+    assert (
+        result["elements"][0]["frontal_image_url"]
+        == "https://example.com/char-front.jpg"
+    )
+    assert len(result["elements"][0]["reference_image_urls"]) == 1
+
+
+def test_kling_v3_duration_extended_range(handler):
+    """Test Kling V3 supports extended duration range (3-15 seconds)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test 3 seconds (minimum for V3)
+    request_3s = VideoGenerationRequest(prompt="Short video", duration_seconds=3)
+    result = handler._convert_request(config, request_3s)
+    assert result["duration"] == "3"
+
+    # Test 15 seconds (maximum for V3)
+    request_15s = VideoGenerationRequest(prompt="Long video", duration_seconds=15)
+    result = handler._convert_request(config, request_15s)
+    assert result["duration"] == "15"
+
+    # Test intermediate values (7, 11, 13 - not available in O1)
+    for duration in [7, 11, 13]:
+        request = VideoGenerationRequest(prompt="Video", duration_seconds=duration)
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(duration)
+
+
+def test_kling_v3_duration_invalid(handler):
+    """Test Kling V3 duration validation rejects invalid values."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Test invalid duration (2 seconds - below minimum)
+    request_2s = VideoGenerationRequest(prompt="Too short", duration_seconds=2)
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(config, request_2s)
+    assert "Invalid duration" in str(exc_info.value)
+
+    # Test invalid duration (20 seconds - above maximum)
+    request_20s = VideoGenerationRequest(prompt="Too long", duration_seconds=20)
+    with pytest.raises(ValidationError) as exc_info:
+        handler._convert_request(config, request_20s)
+    assert "Invalid duration" in str(exc_info.value)
+
+
+def test_kling_v3_negative_prompt_and_cfg_scale(handler):
+    """Test Kling V3 with negative_prompt and cfg_scale parameters."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A beautiful sunset",
+        duration_seconds=5,
+        negative_prompt="blur, distorted, low quality",
+        extra_params={
+            "cfg_scale": 0.7,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A beautiful sunset"
+    assert result["negative_prompt"] == "blur, distorted, low quality"
+    assert result["cfg_scale"] == 0.7
 
 
 # ==================== Image Generation Field Mapper Tests ====================

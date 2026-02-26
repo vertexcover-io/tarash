@@ -178,28 +178,6 @@ class GoogleProviderHandler:
                 + "Install with: pip install tarash-gateway[google]"
             )
 
-        self._sync_client_cache: dict[str, Client] = {}
-        self._async_client_cache: dict[str, AsyncClient] = {}
-
-    def _get_cache_key(
-        self, config: VideoGenerationConfig | ImageGenerationConfig, client_type: str
-    ) -> str:
-        """Generate cache key for client caching.
-
-        For Gemini API mode (with api_key), uses api_key.
-        For Vertex AI mode (without api_key), uses provider_config values.
-        """
-        if config.api_key:
-            return f"{config.api_key}:{client_type}"
-
-        # Vertex AI mode - include provider_config in cache key
-        pc = config.provider_config or {}
-        project = pc.get("project", "")
-        location = pc.get("location")
-        creds_path = pc.get("credentials_path", "")
-
-        return f"vertex:{project}:{location}:{creds_path}:{client_type}"
-
     @overload
     def _get_client(
         self,
@@ -220,7 +198,7 @@ class GoogleProviderHandler:
         client_type: Literal["sync", "async"],
     ) -> AsyncClient | Client:
         """
-        Get or create google-genai client for the given config.
+        Create google-genai client for the given config.
 
         Supports two modes:
         1. Gemini Developer API: When api_key is provided in config
@@ -228,7 +206,7 @@ class GoogleProviderHandler:
 
         For Vertex AI, set these in provider_config:
             project: GCP project ID (required)
-            location: GCP region (default: "us-central1")
+            location: GCP region
             credentials_path: Path to service account JSON file (optional)
 
         Args:
@@ -244,18 +222,11 @@ class GoogleProviderHandler:
                 + "Install with: pip install tarash-gateway[google]"
             )
 
-        # Generate cache key based on api_key or provider_config
-        cache_key = self._get_cache_key(config, client_type)
-
+        client = self._create_client(config)
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                client = self._create_client(config)
-                self._async_client_cache[cache_key] = client.aio
-            return self._async_client_cache[cache_key]
+            return client.aio
         else:  # sync
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = self._create_client(config)
-            return self._sync_client_cache[cache_key]
+            return client
 
     def _create_client(
         self, config: VideoGenerationConfig | ImageGenerationConfig

@@ -8,6 +8,8 @@ except importlib.metadata.PackageNotFoundError:
     __version__ = "0.1.0"
 
 from .api import (
+    generate_image,
+    generate_image_async,
     generate_video,
     generate_video_async,
     get_provider_field_mapping,
@@ -25,6 +27,9 @@ from .exceptions import (
 )
 from .models import (
     AspectRatio,
+    ImageGenerationConfig,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
     ImageType,
     Resolution,
     VideoGenerationConfig,
@@ -37,6 +42,8 @@ __all__ = [
     # API functions
     "generate_video",
     "generate_video_async",
+    "generate_image",
+    "generate_image_async",
     "register_provider",
     "register_provider_field_mapping",
     "get_provider_field_mapping",
@@ -45,6 +52,9 @@ __all__ = [
     "VideoGenerationRequest",
     "VideoGenerationResponse",
     "VideoGenerationUpdate",
+    "ImageGenerationConfig",
+    "ImageGenerationRequest",
+    "ImageGenerationResponse",
     # Types
     "Resolution",
     "AspectRatio",

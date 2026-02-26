@@ -223,7 +223,17 @@ def parse_openai_video_status(video: Video) -> VideoGenerationUpdate:
 
 
 class OpenAIProviderHandler:
-    """Handler for OpenAI Sora video generation."""
+    """Provider handler for OpenAI Sora video and DALL-E image generation.
+
+    Supports both the OpenAI API and Azure OpenAI endpoints. Azure is selected
+    automatically when ``config.api_version`` is set on the config.
+
+    Install the required extra before use:
+
+    ```bash
+    pip install tarash-gateway[openai]
+    ```
+    """
 
     def __init__(self):
         """Initialize handler (stateless, no config stored)."""
@@ -231,9 +241,6 @@ class OpenAIProviderHandler:
             raise ImportError(
                 "openai is required for OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
-
-        self._sync_client_cache: dict[str, "OpenAI | AzureOpenAI"] = {}
-        self._async_client_cache: dict[str, "AsyncOpenAI | AsyncAzureOpenAI"] = {}
 
     @overload
     def _get_client(
@@ -249,7 +256,7 @@ class OpenAIProviderHandler:
         self, config: VideoGenerationConfig, client_type: str
     ) -> "AsyncOpenAI | AsyncAzureOpenAI | OpenAI | AzureOpenAI":
         """
-        Get or create OpenAI client for the given config.
+        Create OpenAI client for the given config.
 
         Args:
             config: Provider configuration
@@ -259,54 +266,26 @@ class OpenAIProviderHandler:
             OpenAI (sync) or AsyncOpenAI (async) client instance
         """
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
-        # Use API key + base_url as cache key
-        cache_key = f"{config.api_key}:{config.base_url or 'default'}:{client_type}"
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                logger.debug(
-                    "Creating new async OpenAI client",
-                    {"base_url": config.base_url or "default"},
-                )
-                client_kwargs = {
-                    "api_key": config.api_key,
-                    "timeout": config.timeout,
-                }
-                if config.base_url:
-                    client_kwargs["base_url"] = config.base_url
-
-                self._async_client_cache[cache_key] = AsyncOpenAI(
-                    api_key=str(client_kwargs["api_key"]),
-                    timeout=float(client_kwargs["timeout"])
-                    if client_kwargs["timeout"]
-                    else None,
-                    base_url=str(client_kwargs.get("base_url"))
-                    if client_kwargs.get("base_url")
-                    else None,
-                )
-            return self._async_client_cache[cache_key]
+            logger.debug(
+                "Creating new async OpenAI client",
+                {"base_url": config.base_url or "default"},
+            )
+            return AsyncOpenAI(
+                api_key=config.api_key,
+                timeout=float(config.timeout) if config.timeout else None,
+                base_url=config.base_url if config.base_url else None,
+            )
         else:  # sync
-            if cache_key not in self._sync_client_cache:
-                logger.debug(
-                    "Creating new sync OpenAI client",
-                    {"base_url": config.base_url or "default"},
-                )
-                client_kwargs = {
-                    "api_key": config.api_key,
-                    "timeout": config.timeout,
-                }
-                if config.base_url:
-                    client_kwargs["base_url"] = config.base_url
-
-                self._sync_client_cache[cache_key] = OpenAI(
-                    api_key=str(client_kwargs["api_key"]),
-                    timeout=float(client_kwargs["timeout"])
-                    if client_kwargs["timeout"]
-                    else None,
-                    base_url=str(client_kwargs.get("base_url"))
-                    if client_kwargs.get("base_url")
-                    else None,
-                )
-            return self._sync_client_cache[cache_key]
+            logger.debug(
+                "Creating new sync OpenAI client",
+                {"base_url": config.base_url or "default"},
+            )
+            return OpenAI(
+                api_key=config.api_key,
+                timeout=float(config.timeout) if config.timeout else None,
+                base_url=config.base_url if config.base_url else None,
+            )
 
     def _validate_params(
         self, config: VideoGenerationConfig, request: VideoGenerationRequest

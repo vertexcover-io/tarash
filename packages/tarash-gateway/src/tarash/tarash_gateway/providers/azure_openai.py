@@ -46,9 +46,7 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
                 "azure-openai is required for Azure OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
 
-        # Use parent class union types for compatibility
         super().__init__()
-        # Caches are already initialized by parent with correct union types
 
     def _parse_azure_config(self, config: VideoGenerationConfig) -> dict[str, Any]:
         """Parse Azure-specific configuration from VideoGenerationConfig.
@@ -117,7 +115,7 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
         self, config: VideoGenerationConfig, client_type: str
     ) -> "AsyncAzureOpenAI | AzureOpenAI":
         """
-        Get or create Azure OpenAI client for the given config.
+        Create Azure OpenAI client for the given config.
 
         Args:
             config: Provider configuration
@@ -131,17 +129,9 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
                 "azure-openai is required for Azure OpenAI provider. Install with: pip install tarash-gateway[openai]"
             )
 
-        # Use API key + base_url + api_version as cache key
-        api_version = config.api_version or self.DEFAULT_API_VERSION
-        cache_key = f"{config.api_key}:{config.base_url or 'default'}:{api_version}:{client_type}"
-
         azure_kwargs = self._parse_azure_config(config)
 
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                self._async_client_cache[cache_key] = AsyncAzureOpenAI(**azure_kwargs)
-            return self._async_client_cache[cache_key]  # pyright: ignore[reportReturnType]
+            return AsyncAzureOpenAI(**azure_kwargs)  # pyright: ignore[reportReturnType]
         else:  # sync
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = AzureOpenAI(**azure_kwargs)
-            return self._sync_client_cache[cache_key]  # pyright: ignore[reportReturnType]
+            return AzureOpenAI(**azure_kwargs)  # pyright: ignore[reportReturnType]

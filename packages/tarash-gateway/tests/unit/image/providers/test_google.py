@@ -66,13 +66,10 @@ def base_request():
 def test_google_handler_init_requires_sdk(handler):
     """Handler requires google-genai SDK."""
     assert handler is not None
-    assert hasattr(handler, "_sync_client_cache")
 
 
 def test_get_client_creates_sync_client_first_time(handler, base_config):
     """Sync client is created on first call."""
-    handler._sync_client_cache.clear()
-
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_cls:
         mock_instance = MagicMock()
         mock_client_cls.return_value = mock_instance
@@ -83,43 +80,8 @@ def test_get_client_creates_sync_client_first_time(handler, base_config):
         mock_client_cls.assert_called_once()
 
 
-def test_get_client_caches_sync_client(handler, base_config):
-    """Sync clients are cached by API key."""
-    handler._sync_client_cache.clear()
-
-    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_cls:
-        mock_instance = MagicMock()
-        mock_client_cls.return_value = mock_instance
-
-        client1 = handler._get_client(base_config, "sync")
-        client2 = handler._get_client(base_config, "sync")
-
-        assert client1 is client2
-        assert mock_client_cls.call_count == 1
-
-
-def test_get_client_different_api_keys_use_different_cache(handler, base_config):
-    """Different API keys create separate sync client cache entries."""
-    handler._sync_client_cache.clear()
-
-    config2 = base_config.model_copy(update={"api_key": "different-key"})
-
-    with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_cls:
-        mock_instance1 = MagicMock()
-        mock_instance2 = MagicMock()
-        mock_client_cls.side_effect = [mock_instance1, mock_instance2]
-
-        client1 = handler._get_client(base_config, "sync")
-        client2 = handler._get_client(config2, "sync")
-
-        assert client1 is not client2
-        assert mock_client_cls.call_count == 2
-
-
 def test_get_client_creates_new_async_client_each_time(handler, base_config):
     """Async clients are created fresh each time."""
-    handler._async_client_cache.clear()
-
     with patch("tarash.tarash_gateway.providers.google.Client") as mock_client_cls:
         mock_instance1 = MagicMock()
         mock_instance1.aio = AsyncMock()

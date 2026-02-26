@@ -9,8 +9,9 @@ from fal_client import AsyncRequestHandle, SyncRequestHandle
 from fal_client.client import FalClientHTTPError
 
 import httpx
-from tarash.tarash_gateway.logging import ProviderLogger, log_error
+from tarash.tarash_gateway.logging import ProviderLogger, log_error, log_warning
 from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
     GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
@@ -34,6 +35,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.image_format import ImageInputFormat
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -81,6 +83,8 @@ _PROVIDER_NAME = "fal"
 
 # ==================== Model Field Mappings ====================
 
+# Fal accepts both URL and BASE64 formats for all its models
+_FAL_ACCEPTED_FORMATS = [ImageInputFormat.URL, ImageInputFormat.BASE64]
 
 # Minimax models field mappings
 MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
@@ -88,7 +92,9 @@ MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "duration": duration_field_mapper(
         field_type="str", allowed_values=["6s", "10s"], provider="fal", model="minimax"
     ),
-    "image_url": single_image_field_mapper(),
+    "image_url": single_image_field_mapper(
+        accepted_formats=_FAL_ACCEPTED_FORMATS, provider="fal"
+    ),
     "prompt_optimizer": passthrough_field_mapper("enhance_prompt"),
 }
 
@@ -97,13 +103,21 @@ MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
 KLING_VIDEO_V26_FIELD_MAPPERS: dict[str, FieldMapper] = {
     # Required for image-to-video
     "prompt": passthrough_field_mapper("prompt", required=True),
-    "image_url": single_image_field_mapper(required=True, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Optional for image-to-video
     "duration": duration_field_mapper(field_type="str", allowed_values=["5", "10"]),
     "generate_audio": passthrough_field_mapper("generate_audio"),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "tail_image_url": single_image_field_mapper(
-        required=False, image_type="last_frame"
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
     "cfg_scale": extra_params_field_mapper("cfg_scale"),
     "voice_ids": extra_params_field_mapper("voice_ids"),
@@ -133,12 +147,24 @@ KLING_O1_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
     # Image-to-video: start/end frame support
     "start_image_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Reference-to-video and video-to-video/edit: elements support (passed via extra_params)
     "elements": extra_params_field_mapper("elements"),
-    "image_urls": image_list_field_mapper(image_type="reference"),
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Optional parameters (variant-specific)
     "duration": duration_field_mapper(
         field_type="str",
@@ -164,6 +190,25 @@ KLING_O1_FIELD_MAPPERS: dict[str, FieldMapper] = {
 #
 # Reference-to-video usage:
 #   Pass elements via extra_params in Fal's expected format:
+# Kling Video V3 - Unified mapper for all V3 variants (Pro and Standard tiers)
+# Supports: text-to-video, image-to-video
+# Reference: https://fal.ai/models/fal-ai/kling-video/v3/*
+#
+# Key differences from O1:
+# - Duration supports "3" to "15" seconds (vs O1's "5", "10")
+# - Multi-prompt support for multi-shot videos (pass via extra_params)
+# - Shot type control: "customize" or "intelligent"
+# - Voice IDs for audio control (max 2 voices, reference as <<<voice_1>>>, <<<voice_2>>>)
+#
+# Usage for multi_prompt (multi-shot videos):
+#   extra_params={
+#       "multi_prompt": [
+#           {"prompt": "Scene 1 description", "duration": "5"},
+#           {"prompt": "Scene 2 description", "duration": "5"}
+#       ]
+#   }
+#
+# Usage for elements (character/object references):
 #   extra_params={
 #       "elements": [
 #           {
@@ -205,6 +250,87 @@ KLING_O3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     # Multi-shot support (all variants)
     "multi_prompt": extra_params_field_mapper("multi_prompt"),
     "shot_type": extra_params_field_mapper("shot_type"),
+#               "reference_image_urls": ["url1", "url2"],  # Optional
+#               "video_url": "url"  # Optional, for motion reference
+#           }
+#       ]
+#   }
+#   Reference in prompt as @Element1, @Element2, etc.
+
+
+def _kling_v3_prompt_converter(
+    request: VideoGenerationRequest, val: object
+) -> str | None:
+    """Convert prompt for Kling V3, excluding it when multi_prompt is used.
+
+    Kling V3 API requires either prompt OR multi_prompt, not both.
+    Returns None (excluded from API request) when multi_prompt is present.
+    Logs a warning if prompt is excluded.
+    """
+    has_multi_prompt = request.extra_params.get("multi_prompt") is not None
+    has_prompt = isinstance(val, str) and val
+
+    if has_multi_prompt and has_prompt:
+        log_warning(
+            "Kling V3: 'prompt' excluded because 'multi_prompt' is present. "
+            "These parameters are mutually exclusive.",
+            context={"provider": "fal", "model": "kling-v3"},
+        )
+        return None
+
+    if has_prompt:
+        return str(val)
+    return None
+
+
+KLING_V3_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core field (text-to-video)
+    # Either prompt or multi_prompt is required (mutually exclusive)
+    # Uses custom converter to exclude prompt when multi_prompt is present
+    "prompt": FieldMapper(
+        source_field="prompt",
+        converter=_kling_v3_prompt_converter,
+        required=False,
+    ),
+    # Duration: V3 supports 3-15 seconds (more granular than O1)
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=[
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+        ],
+        provider="fal",
+        model="kling-v3",
+        add_suffix=False,  # V3 uses "5", "10" without "s" suffix
+    ),
+    # Video configuration
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "negative_prompt": passthrough_field_mapper("negative_prompt"),
+    "cfg_scale": extra_params_field_mapper("cfg_scale"),
+    # Audio generation
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    "voice_ids": extra_params_field_mapper("voice_ids"),
+    # Multi-shot and shot control
+    "multi_prompt": extra_params_field_mapper("multi_prompt"),
+    "shot_type": extra_params_field_mapper("shot_type"),
+    # Image-to-video: start/end frame support
+    "start_image_url": single_image_field_mapper(
+        required=False, image_type="first_frame"
+    ),
+    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    # Elements support for character/object references (passed via extra_params)
+    "elements": extra_params_field_mapper("elements"),
 }
 
 # Veo 3 and Veo 3.1 models field mappings
@@ -232,13 +358,24 @@ VEO3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "seed": passthrough_field_mapper("seed"),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     # Image-to-video support
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # First-last-frame-to-video support
     "first_frame_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
     "last_frame_url": single_image_field_mapper(
-        required=False, image_type="last_frame"
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
     # Video-to-video support (extend-video)
     "video_url": video_url_field_mapper(),
@@ -261,7 +398,12 @@ SORA2_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),
     "delete_video": passthrough_field_mapper("delete_video"),
     # Image-to-video support (optional - required only for image-to-video variant)
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Video-to-video/remix support (via extra_params)
     "video_id": extra_params_field_mapper("video_id"),
 }
@@ -280,7 +422,12 @@ WAN_VIDEO_GENERATION_MAPPERS: dict[str, FieldMapper] = {
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "seed": passthrough_field_mapper("seed"),
     # Image/Video inputs (optional - used by I2V and R2V variants)
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     "video_urls": extra_params_field_mapper(
         "video_urls"
     ),  # For R2V with @Video1, @Video2, @Video3
@@ -295,7 +442,12 @@ WAN_VIDEO_GENERATION_MAPPERS: dict[str, FieldMapper] = {
 WAN_ANIMATE_MAPPERS: dict[str, FieldMapper] = {
     # Required inputs
     "video_url": video_url_field_mapper(required=True),
-    "image_url": single_image_field_mapper(required=True, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Generation parameters
     "resolution": passthrough_field_mapper("resolution"),
     "seed": passthrough_field_mapper("seed"),
@@ -386,11 +538,24 @@ BYTEDANCE_SEEDANCE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     # When there's 1 reference image, both image_url and reference_image_urls work
     # When there are multiple, image_url returns None and reference_image_urls gets the list
     "image_url": single_image_field_mapper(
-        required=False, image_type="reference", strict=False
+        required=False,
+        image_type="reference",
+        strict=False,
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Reference-to-video support (v1/lite/reference-to-video)
-    "reference_image_urls": image_list_field_mapper(image_type="reference"),
+    "reference_image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
 }
 
 # Pixverse (v5 and v5.5) - Unified mapper for all variants
@@ -421,12 +586,25 @@ PIXVERSE_FIELD_MAPPERS: dict[str, FieldMapper] = {
         "generate_multi_clip_switch"
     ),
     # Image-to-video / transition / effects / swap support
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Transition support (first and end frames)
     "first_image_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
     # Effects variant
     "effect": extra_params_field_mapper("effect"),
     # Swap variant
@@ -463,6 +641,10 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/kling-video/o3/": KLING_O3_FIELD_MAPPERS,
     # Kling Video v2.6 - supports both image-to-video and motion-control
     "fal-ai/kling-video/v2.6": KLING_VIDEO_V26_FIELD_MAPPERS,
+    # Kling Video V3 - Pro and Standard tiers for text-to-video and image-to-video
+    # Supports: fal-ai/kling-video/v3/pro/text-to-video, fal-ai/kling-video/v3/pro/image-to-video
+    #           fal-ai/kling-video/v3/standard/text-to-video, fal-ai/kling-video/v3/standard/image-to-video
+    "fal-ai/kling-video/v3": KLING_V3_FIELD_MAPPERS,
     # Veo 3.1 - prefix must be registered before veo3 for longest-match precedence
     # Supports all variants: text-to-video, image-to-video, first-last-frame-to-video, extend-video
     "fal-ai/veo3.1": VEO3_FIELD_MAPPERS,
@@ -531,7 +713,9 @@ FLUX2_PRO_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "size": passthrough_field_mapper("size"),
     "n": passthrough_field_mapper("n"),
     "reference_images": image_list_field_mapper(
-        image_type="reference"
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
     ),  # Multi-reference support
     "guidance_scale": extra_params_field_mapper("guidance_scale"),  # Range: 1.0-20.0
     "num_inference_steps": extra_params_field_mapper(
@@ -620,7 +804,19 @@ def get_image_field_mappers(model_name: str) -> dict[str, FieldMapper]:
 
 
 def parse_fal_image_status(request_id: str, status: Status) -> ImageGenerationUpdate:
-    """Parse Fal status update into ImageGenerationUpdate."""
+    """Convert a Fal polling status event into an ``ImageGenerationUpdate``.
+
+    Args:
+        request_id: Tarash request ID for correlation.
+        status: Fal status object (``Queued``, ``InProgress``, or ``Completed``).
+
+    Returns:
+        Normalised ``ImageGenerationUpdate`` with status, progress, and raw
+        event payload.
+
+    Raises:
+        ValueError: If ``status`` is an unrecognised type.
+    """
     if isinstance(status, Completed):
         return ImageGenerationUpdate(
             request_id=request_id,
@@ -687,7 +883,19 @@ def get_field_mappers(model_name: str) -> dict[str, FieldMapper]:
 
 
 def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
-    """Parse Fal status update into VideoGenerationUpdate."""
+    """Convert a Fal polling status event into a ``VideoGenerationUpdate``.
+
+    Args:
+        request_id: Tarash request ID for correlation.
+        status: Fal status object (``Queued``, ``InProgress``, or ``Completed``).
+
+    Returns:
+        Normalised ``VideoGenerationUpdate`` with status, progress, and raw
+        event payload.
+
+    Raises:
+        ValueError: If ``status`` is an unrecognised type.
+    """
     if isinstance(status, Completed):
         return VideoGenerationUpdate(
             request_id=request_id,
@@ -720,20 +928,30 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
 
 
 class FalProviderHandler:
-    """Handler for Fal.ai provider."""
+    """Provider handler for the Fal.ai platform.
+
+    Supports text-to-video, image-to-video, and image generation across all
+    Fal-hosted models (Veo3, Kling, MiniMax, Sora, Flux, and more).
+    Uses model-specific field mappers for parameter translation.
+
+    Install the required extra before use:
+
+    ```bash
+    pip install tarash-gateway[fal]
+    ```
+    """
 
     def __init__(self):
-        """Initialize handler (stateless, no config stored)."""
+        """Initialise the Fal provider handler.
+
+        Raises:
+            ImportError: If ``fal-client`` is not installed.
+        """
         if not has_fal_client:
             raise ImportError(
                 "fal-client is required for Fal provider. "
                 + "Install with: pip install tarash-gateway[fal]"
             )
-
-        self._sync_client_cache: dict[str, SyncClient] = {}
-        self._async_client_cache: dict[str, AsyncClient] = {}
-        # Note: AsyncClient is NOT cached to avoid "Event Loop closed" errors
-        # Each async request creates a new client to ensure proper cleanup
 
     @overload
     def _get_client(
@@ -749,7 +967,7 @@ class FalProviderHandler:
         self, config: VideoGenerationConfig, client_type: Literal["sync", "async"]
     ) -> AsyncClient | SyncClient:
         """
-        Get or create Fal client for the given config.
+        Create Fal client for the given config.
 
         Args:
             config: Provider configuration
@@ -757,11 +975,6 @@ class FalProviderHandler:
 
         Returns:
             fal_client.SyncClient or fal_client.AsyncClient instance
-
-        Note:
-            AsyncClient instances are created fresh for each request to avoid
-            "Event Loop closed" errors that occur when cached clients outlive
-            the event loop they were created in.
         """
         if not has_fal_client:
             raise ImportError(
@@ -769,14 +982,9 @@ class FalProviderHandler:
                 + "Install with: pip install tarash-gateway[fal]"
             )
 
-        # Use API key + base_url as cache key
-        cache_key = f"{config.api_key}:{config.base_url or 'default'}"
-
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
 
         if client_type == "async":
-            # Don't cache AsyncClient - create new instance for each request
-            # This prevents "Event Loop closed" errors
             logger.debug(
                 "Creating new async Fal client",
                 {"base_url": config.base_url or "default"},
@@ -786,16 +994,14 @@ class FalProviderHandler:
                 default_timeout=config.timeout,
             )
         else:  # sync
-            if cache_key not in self._sync_client_cache:
-                logger.debug(
-                    "Creating new sync Fal client",
-                    {"base_url": config.base_url or "default"},
-                )
-                self._sync_client_cache[cache_key] = fal_client.SyncClient(
-                    key=config.api_key,
-                    default_timeout=config.timeout,
-                )
-            return self._sync_client_cache[cache_key]
+            logger.debug(
+                "Creating new sync Fal client",
+                {"base_url": config.base_url or "default"},
+            )
+            return fal_client.SyncClient(
+                key=config.api_key,
+                default_timeout=config.timeout,
+            )
 
     def _convert_request(
         self,
@@ -937,6 +1143,16 @@ class FalProviderHandler:
                 "response_headers": ex.response_headers,
                 "response": ex.response.content,
             }
+
+            # Content policy violation (422 with content_policy_violation type)
+            if ex.status_code == 422 and "content_policy_violation" in ex.message:
+                return ContentModerationError(
+                    ex.message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
 
             # Validation errors (400, 422)
             if ex.status_code in (400, 422):

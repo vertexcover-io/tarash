@@ -41,74 +41,8 @@ def base_request():
     )
 
 
-# ==================== Client Caching Tests ====================
-
-
-def test_handler_initialization(handler):
-    """Test handler initialization creates empty caches."""
-    assert handler._sync_client_cache == {}
-    assert handler._async_client_cache == {}
-
-
-def test_get_client_creates_and_caches_sync_client(handler, base_config):
-    """Test that sync clients are cached."""
-    handler._sync_client_cache.clear()
-
-    with patch("tarash.tarash_gateway.providers.openai.OpenAI") as mock_client_class:
-        mock_instance = MagicMock()
-        mock_client_class.return_value = mock_instance
-
-        client1 = handler._get_client(base_config, "sync")
-        client2 = handler._get_client(base_config, "sync")
-
-        # Should be same instance (cached)
-        assert client1 is client2
-        # Should only create once
-        assert mock_client_class.call_count == 1
-
-
-def test_get_client_creates_and_caches_async_client(handler, base_config):
-    """Test that async clients are cached (unlike Fal, OpenAI clients are safe to cache)."""
-    handler._async_client_cache.clear()
-
-    with patch(
-        "tarash.tarash_gateway.providers.openai.AsyncOpenAI"
-    ) as mock_client_class:
-        mock_instance = AsyncMock()
-        mock_client_class.return_value = mock_instance
-
-        client1 = handler._get_client(base_config, "async")
-        client2 = handler._get_client(base_config, "async")
-
-        # Should be same instance (cached)
-        assert client1 is client2
-        # Should only create once
-        assert mock_client_class.call_count == 1
-
-
-def test_get_client_different_api_keys_use_different_cache(handler, base_config):
-    """Test that different API keys create separate cache entries."""
-    handler._sync_client_cache.clear()
-
-    config2 = base_config.model_copy(update={"api_key": "different-key"})
-
-    with patch("tarash.tarash_gateway.providers.openai.OpenAI") as mock_client_class:
-        mock_instance1 = MagicMock()
-        mock_instance2 = MagicMock()
-        mock_client_class.side_effect = [mock_instance1, mock_instance2]
-
-        client1 = handler._get_client(base_config, "sync")
-        client2 = handler._get_client(config2, "sync")
-
-        # Should be different instances (different cache keys)
-        assert client1 is not client2
-        assert mock_client_class.call_count == 2
-
-
 def test_get_client_uses_api_key_from_config(handler, base_config):
     """Test that client is created with API key from config."""
-    handler._sync_client_cache.clear()
-
     with patch("tarash.tarash_gateway.providers.openai.OpenAI") as mock_client_class:
         handler._get_client(base_config, "sync")
 
@@ -353,9 +287,6 @@ async def test_generate_image_async_with_mocked_client(
 def test_generate_image_sync_with_mocked_client(handler, base_config, base_request):
     """Test sync image generation with mocked OpenAI client."""
     from tarash.tarash_gateway.models import ImageGenerationResponse
-
-    # Clear cache to ensure fresh client
-    handler._sync_client_cache.clear()
 
     # Mock the sync client
     with patch("tarash.tarash_gateway.providers.openai.OpenAI") as mock_client_class:

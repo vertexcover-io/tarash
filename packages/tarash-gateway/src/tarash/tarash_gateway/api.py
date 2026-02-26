@@ -36,22 +36,36 @@ def register_provider(
 ) -> None:
     """Register a custom provider handler.
 
-    This allows extending the video generation API with custom providers
-    without modifying the core library code.
+    Extends the SDK with a new provider at runtime without modifying library
+    code. The registered handler will be used for all subsequent calls that
+    specify this provider name in their config.
 
     Args:
-        provider: Provider name (e.g., "custom-provider")
-        handler: Instance of ProviderHandler implementing the provider logic
+        provider: Unique provider identifier (e.g. ``"my-provider"``). Must
+            match the ``provider`` field passed in [VideoGenerationConfig][].
+        handler: Instantiated handler implementing the [ProviderHandler][]
+            protocol.
 
-    Examples:
-        >>> class MyCustomHandler(ProviderHandler):
-        ...     async def generate_video_async(self, config, request, on_progress=None):
-        ...         # Custom implementation
-        ...         pass
-        ...     def generate_video(self, config, request, on_progress=None):
-        ...         # Custom implementation
-        ...         pass
-        >>> register_provider("my-provider", MyCustomHandler())
+    Example:
+        ```python
+        from tarash.tarash_gateway import register_provider
+        from tarash.tarash_gateway.models import (
+            ProviderHandler,
+            VideoGenerationConfig,
+            VideoGenerationRequest,
+            VideoGenerationResponse,
+        )
+
+        class MyHandler:
+            def generate_video(self, config, request, on_progress=None):
+                ...
+            async def generate_video_async(self, config, request, on_progress=None):
+                ...
+
+        register_provider("my-provider", MyHandler())
+
+        config = VideoGenerationConfig(provider="my-provider", model="my-model", api_key="...")
+        ```
     """
     _register_provider(provider, handler)
 
@@ -62,27 +76,31 @@ def register_provider_field_mapping(
 ) -> None:
     """Register field mappings for a provider's models.
 
-    This allows configuring how VideoGenerationRequest fields are mapped
-    to provider-specific API formats for different models.
+    Configures how [VideoGenerationRequest][] fields are translated to the
+    provider's own API parameter names and formats. Supports prefix-based
+    lookup so a single mapping can cover a family of model variants.
 
     Args:
-        provider: Provider name (e.g., "fal", "replicate", "custom-provider")
-        model_mappings: Dict mapping model names/prefixes to their field mappers
+        provider: Provider identifier (e.g. ``"fal"``, ``"my-provider"``).
+        model_mappings: Mapping from model name (or prefix) to a dict of
+            ``{api_param_name: FieldMapper}``. Prefix matching is supported —
+            the longest registered prefix wins.
 
-    Examples:
-        >>> from tarash.tarash_gateway.providers.field_mappers import (
-        ...     passthrough_field_mapper,
-        ...     duration_field_mapper,
-        ... )
-        >>> register_provider_field_mapping("my-provider", {
-        ...     "my-provider/model-1": {
-        ...         "prompt": passthrough_field_mapper("prompt", required=True),
-        ...         "duration": duration_field_mapper(field_type="int"),
-        ...     },
-        ...     "my-provider/model-2": {
-        ...         "prompt": passthrough_field_mapper("prompt", required=True),
-        ...     },
-        ... })
+    Example:
+        ```python
+        from tarash.tarash_gateway import register_provider_field_mapping
+        from tarash.tarash_gateway.providers.field_mappers import (
+            duration_field_mapper,
+            passthrough_field_mapper,
+        )
+
+        register_provider_field_mapping("my-provider", {
+            "my-provider/model-v1": {
+                "prompt": passthrough_field_mapper("prompt", required=True),
+                "num_seconds": duration_field_mapper(field_type="int"),
+            },
+        })
+        ```
     """
     _FIELD_MAPPER_REGISTRIES[provider] = model_mappings
     log_debug(
@@ -98,18 +116,23 @@ def register_provider_field_mapping(
 def get_provider_field_mapping(
     provider: str,
 ) -> dict[str, dict[str, FieldMapper]] | None:
-    """Get the field mapper registry for a provider.
+    """Return the field mapper registry for a provider.
 
     Args:
-        provider: Provider name (e.g., "fal", "replicate")
+        provider: Provider identifier (e.g. ``"fal"``, ``"replicate"``).
 
     Returns:
-        Dict mapping model names to field mappers, or None if not registered
+        A mapping of model name/prefix → field mapper dict, or ``None`` if
+        no mapping has been registered for the provider.
 
-    Examples:
-        >>> registry = get_provider_field_mapping("fal")
-        >>> if registry:
-        ...     model_mappers = registry.get("fal-ai/minimax")
+    Example:
+        ```python
+        from tarash.tarash_gateway import get_provider_field_mapping
+
+        registry = get_provider_field_mapping("fal")
+        if registry:
+            mappers = registry.get("fal-ai/minimax")
+        ```
     """
     return _FIELD_MAPPER_REGISTRIES.get(provider)
 
@@ -122,22 +145,59 @@ async def generate_video_async(
     request: VideoGenerationRequest,
     on_progress: ProgressCallback | None = None,
 ) -> VideoGenerationResponse:
-    """
-    Generate video asynchronously with progress callback (sync or async).
+    """Generate a video asynchronously using the configured provider.
 
-    Supports automatic fallback to alternative providers if configured.
-    Supports mock mode for testing and development.
+    Runs the full orchestration pipeline: applies field mappings, submits the
+    request to the provider, polls for completion, and returns a unified
+    response. Automatically falls back to ``config.fallback_configs`` on
+    retryable errors.
 
     Args:
-        config: Provider configuration (may include fallback_configs and mock config)
-        request: Video generation request
-        on_progress: Optional callback (sync or async) for progress updates
+        config: Provider configuration including API key, model, timeout, and
+            optional fallback chain.
+        request: Video generation parameters (prompt, duration, aspect ratio,
+            etc.). Unknown fields are captured into ``extra_params``.
+        on_progress: Optional callback invoked on each polling cycle with a
+            [VideoGenerationUpdate][]. Accepts both sync and async callables.
 
     Returns:
-        Final VideoGenerationResponse when complete (includes execution_metadata)
+        [VideoGenerationResponse][] with the video URL, status, and full
+        ``execution_metadata`` including timing and fallback attempts.
 
     Raises:
-        TarashException: If generation fails on all providers in fallback chain
+        TarashException: If generation fails on all providers in the fallback
+            chain.
+
+    Example:
+        ```python
+        import asyncio
+        from tarash.tarash_gateway import generate_video_async
+        from tarash.tarash_gateway.models import (
+            VideoGenerationConfig,
+            VideoGenerationRequest,
+            VideoGenerationUpdate,
+        )
+
+        async def main():
+            config = VideoGenerationConfig(
+                provider="fal",
+                model="fal-ai/veo3",
+                api_key="FAL_KEY",
+            )
+            request = VideoGenerationRequest(
+                prompt="A cat playing piano, cinematic lighting",
+                duration_seconds=4,
+                aspect_ratio="16:9",
+            )
+
+            def on_progress(update: VideoGenerationUpdate) -> None:
+                print(f"{update.status} — {update.progress_percent}%")
+
+            response = await generate_video_async(config, request, on_progress)
+            print(response.video)
+
+        asyncio.run(main())
+        ```
     """
     log_info(
         "Video generation request received (async)",
@@ -158,22 +218,46 @@ def generate_video(
     request: VideoGenerationRequest,
     on_progress: ProgressCallback | None = None,
 ) -> VideoGenerationResponse:
-    """
-    Generate video synchronously (blocking) with progress callback.
+    """Generate a video synchronously using the configured provider.
 
-    Supports automatic fallback to alternative providers if configured.
-    Supports mock mode for testing and development.
+    Blocking version of [generate_video_async][]. Runs the full orchestration
+    pipeline and returns only when generation is complete. Automatically falls
+    back to ``config.fallback_configs`` on retryable errors.
 
     Args:
-        config: Provider configuration (may include fallback_configs and mock config)
-        request: Video generation request
-        on_progress: Optional callback (sync or async) for progress updates
+        config: Provider configuration including API key, model, timeout, and
+            optional fallback chain.
+        request: Video generation parameters (prompt, duration, aspect ratio,
+            etc.). Unknown fields are captured into ``extra_params``.
+        on_progress: Optional callback invoked on each polling cycle with a
+            [VideoGenerationUpdate][]. Accepts both sync and async callables.
 
     Returns:
-        Final VideoGenerationResponse when complete (includes execution_metadata)
+        [VideoGenerationResponse][] with the video URL, status, and full
+        ``execution_metadata`` including timing and fallback attempts.
 
     Raises:
-        TarashException: If generation fails on all providers in fallback chain
+        TarashException: If generation fails on all providers in the fallback
+            chain.
+
+    Example:
+        ```python
+        from tarash.tarash_gateway import generate_video
+        from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
+
+        config = VideoGenerationConfig(
+            provider="fal",
+            model="fal-ai/veo3",
+            api_key="FAL_KEY",
+        )
+        request = VideoGenerationRequest(
+            prompt="A cat playing piano, cinematic lighting",
+            duration_seconds=4,
+            aspect_ratio="16:9",
+        )
+        response = generate_video(config, request)
+        print(response.video)
+        ```
     """
     log_info(
         "Video generation request received (sync)",
@@ -197,20 +281,48 @@ async def generate_image_async(
     request: ImageGenerationRequest,
     on_progress: ImageProgressCallback | None = None,
 ) -> ImageGenerationResponse:
-    """
-    Generate image asynchronously with progress callback.
+    """Generate an image asynchronously using the configured provider.
+
+    Runs the full orchestration pipeline for image generation and returns a
+    unified response. Automatically falls back to ``config.fallback_configs``
+    on retryable errors.
 
     Args:
-        config: Provider configuration (may include fallback_configs and mock config)
-        request: Image generation request
-        on_progress: Optional callback for progress updates
+        config: Provider configuration including API key, model, timeout, and
+            optional fallback chain.
+        request: Image generation parameters (prompt, size, quality, style,
+            etc.). Unknown fields are captured into ``extra_params``.
+        on_progress: Optional callback invoked with an [ImageGenerationUpdate][]
+            during generation. Accepts both sync and async callables.
 
     Returns:
-        Final ImageGenerationResponse when complete
+        [ImageGenerationResponse][] containing a list of generated images
+        (base64 or URL), status, and ``execution_metadata``.
 
     Raises:
-        TarashException: If generation fails on all providers in fallback chain
-        NotImplementedError: If provider doesn't support image generation
+        TarashException: If generation fails on all providers in the fallback
+            chain.
+        NotImplementedError: If the configured provider does not support image
+            generation.
+
+    Example:
+        ```python
+        import asyncio
+        from tarash.tarash_gateway import generate_image_async
+        from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
+
+        async def main():
+            config = ImageGenerationConfig(provider="openai", api_key="OPENAI_KEY")
+            request = ImageGenerationRequest(
+                prompt="A futuristic cityscape at dusk, photorealistic",
+                size="1024x1024",
+                quality="hd",
+            )
+            response = await generate_image_async(config, request)
+            print(response.images[0])
+
+        asyncio.run(main())
+        ```
     """
     log_info(
         "Image generation request received (async)",
@@ -233,20 +345,44 @@ def generate_image(
     request: ImageGenerationRequest,
     on_progress: ImageProgressCallback | None = None,
 ) -> ImageGenerationResponse:
-    """
-    Generate image synchronously (blocking) with progress callback.
+    """Generate an image synchronously using the configured provider.
+
+    Blocking version of [generate_image_async][]. Runs the full orchestration
+    pipeline and returns only when generation is complete. Automatically falls
+    back to ``config.fallback_configs`` on retryable errors.
 
     Args:
-        config: Provider configuration (may include fallback_configs and mock config)
-        request: Image generation request
-        on_progress: Optional callback for progress updates
+        config: Provider configuration including API key, model, timeout, and
+            optional fallback chain.
+        request: Image generation parameters (prompt, size, quality, style,
+            etc.). Unknown fields are captured into ``extra_params``.
+        on_progress: Optional callback invoked with an [ImageGenerationUpdate][]
+            during generation. Accepts both sync and async callables.
 
     Returns:
-        Final ImageGenerationResponse when complete
+        [ImageGenerationResponse][] containing a list of generated images
+        (base64 or URL), status, and ``execution_metadata``.
 
     Raises:
-        TarashException: If generation fails on all providers in fallback chain
-        NotImplementedError: If provider doesn't support image generation
+        TarashException: If generation fails on all providers in the fallback
+            chain.
+        NotImplementedError: If the configured provider does not support image
+            generation.
+
+    Example:
+        ```python
+        from tarash.tarash_gateway import generate_image
+        from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
+
+        config = ImageGenerationConfig(provider="openai", api_key="OPENAI_KEY")
+        request = ImageGenerationRequest(
+            prompt="A futuristic cityscape at dusk, photorealistic",
+            size="1024x1024",
+            quality="hd",
+        )
+        response = generate_image(config, request)
+        print(response.images[0])
+        ```
     """
     log_info(
         "Image generation request received (sync)",

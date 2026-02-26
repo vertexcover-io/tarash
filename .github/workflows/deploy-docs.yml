@@ -1,0 +1,62 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Build docs
+        run: uv run zensical build --clean
+
+      - name: Verify build output
+        run: |
+          if [ ! -d "site" ]; then
+            echo "ERROR: site/ directory does not exist after build"
+            exit 1
+          fi
+          FILE_COUNT=$(find site/ -type f | wc -l)
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "ERROR: site/ directory is empty after build"
+            exit 1
+          fi
+          echo "Build verification passed: $FILE_COUNT files in site/"
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

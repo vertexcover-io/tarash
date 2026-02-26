@@ -151,7 +151,9 @@ class TestDownloadMediaFromUrl:
 
             assert content == test_content
             assert content_type == test_content_type
-            mock_client.get.assert_called_once_with(test_url)
+            mock_client.get.assert_called_once_with(
+                test_url, headers={"User-Agent": "TarashGateway/1.0"}
+            )
 
     def test_download_media_default_content_type(self):
         """Test download with missing content-type header."""

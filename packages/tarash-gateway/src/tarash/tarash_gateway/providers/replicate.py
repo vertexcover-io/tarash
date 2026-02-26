@@ -30,6 +30,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.image_format import ImageInputFormat
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -60,6 +61,9 @@ if TYPE_CHECKING:
     from replicate import AsyncReplicate, Replicate
     from replicate.types import Prediction
 
+_REPLICATE_ACCEPTED_FORMATS = [ImageInputFormat.URL, ImageInputFormat.BASE64]
+_REPLICATE_URL_ONLY = [ImageInputFormat.URL]
+
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.providers.replicate"
 
@@ -74,7 +78,12 @@ _PROVIDER_NAME = "replicate"
 # Note: Replicate's Kling v2.1 only supports image-to-video (start_image is required)
 KLING_V21_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
-    "start_image": single_image_field_mapper(required=True, image_type="reference"),
+    "start_image": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_REPLICATE_ACCEPTED_FORMATS,
+        provider="replicate",
+    ),
     "duration": duration_field_mapper(
         field_type="int", allowed_values=[5, 10], provider="replicate", model="kling"
     ),
@@ -95,7 +104,12 @@ MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
         provider="replicate",
         model="minimax",
     ),
-    "image_url": single_image_field_mapper(required=False, image_type="reference"),
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_REPLICATE_ACCEPTED_FORMATS,
+        provider="replicate",
+    ),
     "prompt_optimizer": passthrough_field_mapper("enhance_prompt"),
 }
 
@@ -104,9 +118,17 @@ MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
 LUMA_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
     "start_image_url": single_image_field_mapper(
-        required=False, image_type="first_frame"
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_REPLICATE_URL_ONLY,
+        provider="replicate",
     ),
-    "end_image_url": single_image_field_mapper(required=False, image_type="last_frame"),
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_REPLICATE_URL_ONLY,
+        provider="replicate",
+    ),
     "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
     "loop": extra_params_field_mapper("loop"),
 }
@@ -115,7 +137,12 @@ LUMA_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Wan (Alibaba) video models field mappings
 WAN_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
-    "image": single_image_field_mapper(required=False, image_type="reference"),
+    "image": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_REPLICATE_ACCEPTED_FORMATS,
+        provider="replicate",
+    ),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "num_frames": FieldMapper(
         source_field="duration_seconds",
@@ -176,8 +203,18 @@ VEO31_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "duration": duration_field_mapper(
         field_type="int", allowed_values=[4, 6, 8], provider="replicate", model="veo3.1"
     ),
-    "image": single_image_field_mapper(required=False, image_type="first_frame"),
-    "last_frame": single_image_field_mapper(required=False, image_type="last_frame"),
+    "image": single_image_field_mapper(
+        required=False,
+        image_type="first_frame",
+        accepted_formats=_REPLICATE_ACCEPTED_FORMATS,
+        provider="replicate",
+    ),
+    "last_frame": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_REPLICATE_ACCEPTED_FORMATS,
+        provider="replicate",
+    ),
     "reference_images": _create_reference_images_mapper(),
     "negative_prompt": passthrough_field_mapper("negative_prompt"),
     "resolution": passthrough_field_mapper("resolution"),
@@ -253,7 +290,11 @@ REPLICATE_FLUX2_PRO_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "output_format": extra_params_field_mapper("output_format"),
     "output_quality": extra_params_field_mapper("output_quality"),
     "safety_tolerance": extra_params_field_mapper("safety_tolerance"),
-    "reference_images": image_list_field_mapper(image_type="reference"),
+    "reference_images": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_REPLICATE_ACCEPTED_FORMATS,
+        provider="replicate",
+    ),
     "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
     "seed": passthrough_field_mapper("seed"),
 }
@@ -415,9 +456,6 @@ class ReplicateProviderHandler:
                 + "Install with: pip install tarash-gateway[replicate]"
             )
 
-        self._sync_client_cache: dict[str, Replicate] = {}
-        self._async_client_cache: dict[str, AsyncReplicate] = {}
-
     @overload
     def _get_client(
         self, config: VideoGenerationConfig, client_type: Literal["async"]
@@ -433,7 +471,7 @@ class ReplicateProviderHandler:
         config: VideoGenerationConfig,
         client_type: Literal["sync", "async"] = "sync",
     ) -> Replicate | AsyncReplicate:
-        """Get or create Replicate client for the given config.
+        """Create Replicate client for the given config.
 
         Args:
             config: Provider configuration
@@ -448,21 +486,10 @@ class ReplicateProviderHandler:
                 + "Install with: pip install tarash-gateway[replicate]"
             )
 
-        # Use API key as cache key
-        cache_key = config.api_key
-
         if client_type == "async":
-            if cache_key not in self._async_client_cache:
-                self._async_client_cache[cache_key] = AsyncReplicate(
-                    bearer_token=config.api_key
-                )
-            return self._async_client_cache[cache_key]
+            return AsyncReplicate(bearer_token=config.api_key)
         else:
-            if cache_key not in self._sync_client_cache:
-                self._sync_client_cache[cache_key] = Replicate(
-                    bearer_token=config.api_key
-                )
-            return self._sync_client_cache[cache_key]
+            return Replicate(bearer_token=config.api_key)
 
     def _convert_request(
         self,
