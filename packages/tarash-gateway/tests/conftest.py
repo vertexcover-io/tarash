@@ -9,11 +9,16 @@ import pytest
 # Import MockConfig to trigger model_rebuild for config models
 # This is needed because config models use MockConfig as a forward reference
 from tarash.tarash_gateway.mock import MockConfig  # noqa: F401
-from tarash.tarash_gateway.models import ImageGenerationConfig, VideoGenerationConfig
+from tarash.tarash_gateway.models import (
+    AudioGenerationConfig,
+    ImageGenerationConfig,
+    VideoGenerationConfig,
+)
 
 # Rebuild models to resolve forward references
 VideoGenerationConfig.model_rebuild()
 ImageGenerationConfig.model_rebuild()
+AudioGenerationConfig.model_rebuild()
 
 
 def pytest_addoption(parser):
@@ -48,6 +53,7 @@ def pytest_collection_modifyitems(config, items):
     fal_key_available = bool(os.getenv("FAL_KEY"))
     openai_key_available = bool(os.getenv("OPENAI_API_KEY"))
     replicate_key_available = bool(os.getenv("REPLICATE_API_KEY"))
+    elevenlabs_key_available = bool(os.getenv("ELEVENLABS_API_KEY"))
 
     # Get --e2e flag value
     run_e2e = config.getoption("--e2e")
@@ -89,6 +95,12 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(
                     pytest.mark.skip(
                         reason="REPLICATE_API_KEY environment variable not set"
+                    )
+                )
+            if "elevenlabs" in item.nodeid.lower() and not elevenlabs_key_available:
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="ELEVENLABS_API_KEY environment variable not set"
                     )
                 )
 
