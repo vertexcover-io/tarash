@@ -11,6 +11,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
 )
 from tarash.tarash_gateway.providers import (
+    CartesiaProviderHandler,
     ElevenLabsProviderHandler,
     FalProviderHandler,
     GoogleProviderHandler,
@@ -85,6 +86,10 @@ def get_handler(
         elif provider == "elevenlabs":
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, ElevenLabsProviderHandler()
+            )
+        elif provider == "cartesia":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, CartesiaProviderHandler()
             )
         else:
             log_error(

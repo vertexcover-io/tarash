@@ -21,6 +21,7 @@ google = ["google-cloud-aiplatform>=1.38.0"]
 runway = ["runwayml>=3.0.0"]
 xai = ["xai-sdk>=1.0.0"]
 elevenlabs = ["elevenlabs>=1.0.0"]
+cartesia = ["cartesia>=1.0.0"]
 all = [
     "fal-client>=0.4.0",
     "google-genai>=1.0.0",
@@ -30,6 +31,7 @@ all = [
     "runwayml>=3.0.0",
     "xai-sdk>=1.0.0",
     "elevenlabs>=1.0.0",
+    "cartesia>=1.0.0",
 ]
 dev = [
     "pytest>=7.0.0",

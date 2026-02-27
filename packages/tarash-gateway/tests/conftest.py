@@ -54,6 +54,7 @@ def pytest_collection_modifyitems(config, items):
     openai_key_available = bool(os.getenv("OPENAI_API_KEY"))
     replicate_key_available = bool(os.getenv("REPLICATE_API_KEY"))
     elevenlabs_key_available = bool(os.getenv("ELEVENLABS_API_KEY"))
+    cartesia_key_available = bool(os.getenv("CARTESIA_API_KEY"))
 
     # Get --e2e flag value
     run_e2e = config.getoption("--e2e")
@@ -101,6 +102,12 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(
                     pytest.mark.skip(
                         reason="ELEVENLABS_API_KEY environment variable not set"
+                    )
+                )
+            if "cartesia" in item.nodeid.lower() and not cartesia_key_available:
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="CARTESIA_API_KEY environment variable not set"
                     )
                 )
 
