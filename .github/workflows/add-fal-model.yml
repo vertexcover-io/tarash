@@ -46,6 +46,10 @@ jobs:
           prompt: |
             Extract the fal.ai model ID from this issue and add it to tarash-gateway.
 
+            Issue title: ${{ github.event.issue.title }}
+            Issue body:
+            ${{ github.event.issue.body }}
+
             The model ID is specified as "Model ID: `fal-ai/...`" in the body,
             or as "Add fal model: fal-ai/..." in the title.
 
