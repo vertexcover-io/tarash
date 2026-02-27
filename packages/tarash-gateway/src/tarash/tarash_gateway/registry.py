@@ -5,10 +5,14 @@ from typing import cast
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.exceptions import ValidationError
 from tarash.tarash_gateway.models import (
+    AudioGenerationConfig,
+    ImageGenerationConfig,
     ProviderHandler,
     VideoGenerationConfig,
 )
 from tarash.tarash_gateway.providers import (
+    CartesiaProviderHandler,
+    ElevenLabsProviderHandler,
     FalProviderHandler,
     GoogleProviderHandler,
     OpenAIProviderHandler,
@@ -22,11 +26,13 @@ from tarash.tarash_gateway.providers import (
 _HANDLER_INSTANCES: dict[str, ProviderHandler] = {}
 
 
-def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
+def get_handler(
+    config: VideoGenerationConfig | ImageGenerationConfig | AudioGenerationConfig,
+) -> ProviderHandler:
     """Get or create handler instance for the given config.
 
     Args:
-        config: Video generation configuration
+        config: Video, image, or audio generation configuration.
 
     Returns:
         Provider handler instance (MockProviderHandler if mock enabled, else provider handler)
@@ -77,6 +83,14 @@ def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
             )
         elif provider == "xai":
             _HANDLER_INSTANCES[provider] = cast(ProviderHandler, XaiProviderHandler())
+        elif provider == "elevenlabs":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, ElevenLabsProviderHandler()
+            )
+        elif provider == "cartesia":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, CartesiaProviderHandler()
+            )
         else:
             log_error(
                 "Unsupported provider",

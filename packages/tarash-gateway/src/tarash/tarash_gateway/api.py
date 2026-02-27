@@ -2,12 +2,19 @@
 
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.models import (
+    AudioGenerationConfig,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
     ImageProgressCallback,
     ProviderHandler,
     ProgressCallback,
+    STSProgressCallback,
+    STSRequest,
+    STSResponse,
+    TTSProgressCallback,
+    TTSRequest,
+    TTSResponse,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -396,3 +403,141 @@ def generate_image(
 
     # Delegate to orchestrator
     return _ORCHESTRATOR.execute_image_sync(config, request, on_progress=on_progress)
+
+
+# ==================== TTS Generation API ====================
+
+
+async def generate_tts_async(
+    config: AudioGenerationConfig,
+    request: TTSRequest,
+    on_progress: TTSProgressCallback | None = None,
+) -> TTSResponse:
+    """Generate speech from text asynchronously using the configured provider.
+
+    Args:
+        config: Provider configuration including API key, model, and timeout.
+        request: TTS parameters (text, voice_id, output_format, etc.).
+        on_progress: Optional callback invoked during generation.
+
+    Returns:
+        [TTSResponse][] with base64-encoded audio and metadata.
+
+    Raises:
+        TarashException: If generation fails on all providers in the fallback chain.
+        NotImplementedError: If the configured provider does not support TTS.
+    """
+    log_info(
+        "TTS generation request received (async)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    return await _ORCHESTRATOR.execute_tts_async(
+        config, request, on_progress=on_progress
+    )
+
+
+def generate_tts(
+    config: AudioGenerationConfig,
+    request: TTSRequest,
+    on_progress: TTSProgressCallback | None = None,
+) -> TTSResponse:
+    """Generate speech from text synchronously using the configured provider.
+
+    Args:
+        config: Provider configuration including API key, model, and timeout.
+        request: TTS parameters (text, voice_id, output_format, etc.).
+        on_progress: Optional callback invoked during generation.
+
+    Returns:
+        [TTSResponse][] with base64-encoded audio and metadata.
+
+    Raises:
+        TarashException: If generation fails on all providers in the fallback chain.
+        NotImplementedError: If the configured provider does not support TTS.
+    """
+    log_info(
+        "TTS generation request received (sync)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        redact=True,
+        logger_name="tarash.tarash_gateway.api",
+    )
+
+    return _ORCHESTRATOR.execute_tts_sync(config, request, on_progress=on_progress)
+
+
+# ==================== STS Generation API ====================
+
+
+async def generate_sts_async(
+    config: AudioGenerationConfig,
+    request: STSRequest,
+    on_progress: STSProgressCallback | None = None,
+) -> STSResponse:
+    """Convert speech to speech asynchronously using the configured provider.
+
+    Args:
+        config: Provider configuration including API key, model, and timeout.
+        request: STS parameters (audio, voice_id, output_format, etc.).
+        on_progress: Optional callback invoked during generation.
+
+    Returns:
+        [STSResponse][] with base64-encoded audio and metadata.
+
+    Raises:
+        TarashException: If generation fails on all providers in the fallback chain.
+        NotImplementedError: If the configured provider does not support STS.
+    """
+    log_info(
+        "STS generation request received (async)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    return await _ORCHESTRATOR.execute_sts_async(
+        config, request, on_progress=on_progress
+    )
+
+
+def generate_sts(
+    config: AudioGenerationConfig,
+    request: STSRequest,
+    on_progress: STSProgressCallback | None = None,
+) -> STSResponse:
+    """Convert speech to speech synchronously using the configured provider.
+
+    Args:
+        config: Provider configuration including API key, model, and timeout.
+        request: STS parameters (audio, voice_id, output_format, etc.).
+        on_progress: Optional callback invoked during generation.
+
+    Returns:
+        [STSResponse][] with base64-encoded audio and metadata.
+
+    Raises:
+        TarashException: If generation fails on all providers in the fallback chain.
+        NotImplementedError: If the configured provider does not support STS.
+    """
+    log_info(
+        "STS generation request received (sync)",
+        context={
+            "config": config,
+            "request": request,
+        },
+        redact=True,
+        logger_name="tarash.tarash_gateway.api",
+    )
+
+    return _ORCHESTRATOR.execute_sts_sync(config, request, on_progress=on_progress)

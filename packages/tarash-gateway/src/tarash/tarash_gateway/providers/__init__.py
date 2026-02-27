@@ -70,6 +70,12 @@ from tarash.tarash_gateway.providers.xai import (
     XaiProviderHandler,
     parse_xai_video_status,
 )
+from tarash.tarash_gateway.providers.elevenlabs import (
+    ElevenLabsProviderHandler,
+)
+from tarash.tarash_gateway.providers.cartesia import (
+    CartesiaProviderHandler,
+)
 
 # Backwards compatibility alias
 Veo3ProviderHandler = GoogleProviderHandler
@@ -135,4 +141,8 @@ __all__ = [
     # xAI
     "XaiProviderHandler",
     "parse_xai_video_status",
+    # ElevenLabs
+    "ElevenLabsProviderHandler",
+    # Cartesia
+    "CartesiaProviderHandler",
 ]
