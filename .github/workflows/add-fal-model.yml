@@ -37,7 +37,7 @@ jobs:
         env:
           FAL_KEY: ${{ secrets.FAL_KEY }}
         with:
-          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           branch_prefix: "feat/add-fal-"
           base_branch: "master"
           prompt: |
@@ -51,4 +51,4 @@ jobs:
             or as "Add fal model: fal-ai/..." in the title.
 
             Once you have the model ID, run: /add-fal-model <model-id>
-          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch --dangerouslySkipPermissions"
+          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep,WebFetch"
