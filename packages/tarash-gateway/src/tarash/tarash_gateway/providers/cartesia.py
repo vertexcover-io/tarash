@@ -84,12 +84,6 @@ def _parse_output_format(output_format: str | None) -> dict[str, Any]:
     parts = output_format.split("_")
     container = parts[0]
 
-    if container not in ("mp3", "wav", "pcm"):
-        raise ValidationError(
-            f"Unsupported output format container: '{container}'. Supported: mp3, pcm, wav",
-            provider="cartesia",
-        )
-
     sample_rate = int(parts[1]) if len(parts) >= 2 else _DEFAULT_SAMPLE_RATE
 
     if container == "mp3":
@@ -101,12 +95,15 @@ def _parse_output_format(output_format: str | None) -> dict[str, Any]:
             "encoding": _DEFAULT_ENCODING,
             "sample_rate": sample_rate,
         }
-    else:  # pcm
+    elif container == "pcm":
         return {
             "container": "raw",
             "encoding": _DEFAULT_ENCODING,
             "sample_rate": sample_rate,
         }
+    else:
+        # Unknown container — pass through as-is, let Cartesia API validate
+        return {"container": container, "sample_rate": sample_rate}
 
 
 def _output_format_to_content_type(output_format: str | None) -> str:

@@ -109,15 +109,16 @@ def test_generate_request_id_unique():
         ("pcm", {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 44100}),
         # None -> default
         (None, {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000}),
-        # Unrecognized -> default
-        (
-            "opus_48000_64",
-            {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000},
-        ),
     ],
 )
 def test_parse_output_format(format_str, expected):
     assert _parse_output_format(format_str) == expected
+
+
+def test_parse_output_format_unknown_container_passthrough():
+    """Unknown containers are passed through for Cartesia API to validate."""
+    result = _parse_output_format("opus_48000_64")
+    assert result == {"container": "opus", "sample_rate": 48000}
 
 
 # ==================== Content Type Mapping ====================
@@ -268,8 +269,8 @@ async def test_resolve_audio_bytes_async_url(handler):
 # ==================== STS Request Conversion ====================
 
 
-def test_convert_sts_request_basic(handler, base_config, sts_request):
-    kwargs = handler._convert_sts_request(base_config, sts_request)
+def test_convert_sts_request_basic(handler, sts_request):
+    kwargs = handler._convert_sts_request(sts_request)
 
     assert kwargs["voice_id"] == "test-voice-id"
     assert kwargs["output_format_container"] == "mp3"
@@ -278,13 +279,13 @@ def test_convert_sts_request_basic(handler, base_config, sts_request):
     assert "clip" not in kwargs  # Audio handled separately
 
 
-def test_convert_sts_request_wav_format(handler, base_config):
+def test_convert_sts_request_wav_format(handler):
     request = STSRequest(
         audio={"content": b"data", "content_type": "audio/wav"},
         voice_id="v1",
         output_format="wav_44100",
     )
-    kwargs = handler._convert_sts_request(base_config, request)
+    kwargs = handler._convert_sts_request(request)
 
     assert kwargs["output_format_container"] == "wav"
     assert kwargs["output_format_sample_rate"] == 44100
