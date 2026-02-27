@@ -44,7 +44,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/kling-video/v2.6",
+    model="fal-ai/kling-video/v2.6/pro/image-to-video",
     api_key="YOUR_FAL_KEY",
 )
 request = VideoGenerationRequest(

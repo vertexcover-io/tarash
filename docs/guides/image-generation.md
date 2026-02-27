@@ -38,9 +38,9 @@ from tarash.tarash_gateway import generate_image
 from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
 
 config = ImageGenerationConfig(
-    provider="openai",
-    model="gpt-image-1.5",
-    api_key="YOUR_OPENAI_KEY",
+    provider="fal",
+    model="fal-ai/flux-2-pro",
+    api_key="YOUR_FAL_KEY",
 )
 request = ImageGenerationRequest(
     prompt="Make it look like a watercolor painting",
@@ -52,4 +52,4 @@ response = generate_image(config, request)
 print(response.images[0])
 ```
 
-[OpenAI image models →](../providers/openai.md)
+[Fal.ai image models →](../providers/fal/index.md)

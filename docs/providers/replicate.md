@@ -1,6 +1,6 @@
 # Replicate
 
-Replicate is a platform for running open-source AI models. Tarash supports video generation via Kling, Minimax (Hailuo), Wan, and Google Veo 3.
+Replicate is a platform for running open-source AI models. Tarash supports video generation via Kling, Luma Dream Machine, Minimax (Hailuo), Wan, and Google Veo 3.
 
 ## Quick Example
 
@@ -57,11 +57,11 @@ response = generate_video(config, request)
 |---|:---:|:---:|---|---|
 | `prompt` | ✅ | ✅ | All | Text description of the video |
 | `duration_seconds` | — | ✅ | Kling, Minimax, Veo3 | Integer seconds |
-| `image_list` (first_frame) | — | ✅ | Kling | Start frame |
-| `image_list` (last_frame) | — | ✅ | Kling | End frame |
+| `image_list` (first_frame) | — | ✅ | Kling, Luma | Start frame |
+| `image_list` (last_frame) | — | ✅ | Luma | End frame |
 | `image_list` (reference) | — | ✅ | Minimax | Reference image |
 | `enhance_prompt` | — | ✅ | Minimax | As `prompt_optimizer` |
-| `aspect_ratio` | — | ✅ | Veo3 | Passed through |
+| `aspect_ratio` | — | ✅ | Luma, Veo3 | Passed through |
 | `seed` | — | — | — | |
 | `negative_prompt` | — | — | — | |
 | `generate_audio` | — | — | — | |
@@ -75,6 +75,7 @@ Model names on Replicate often include version hashes (e.g., `minimax/video-01:a
 | Model ID / Prefix | Duration Options | Image-to-Video | Notes |
 |---|---|:---:|---|
 | `kwaivgi/kling` | 5s, 10s | ✅ | Kling v2.1. Image input **required**. |
+| `luma/` | — | ✅ | Matches any `luma/*` model (Dream Machine) |
 | `minimax/` | 6s, 10s | ✅ | Matches any `minimax/*` model |
 | `hailuo/` | 6s, 10s | ✅ | Matches any `hailuo/*` model |
 | `wan-video/` | — | ✅ | Wan video models |

@@ -66,7 +66,6 @@ Tarash automatically selects the correct Runway endpoint (`text_to_video`, `imag
 | `gen3a_turbo` | Gen-3 Turbo; requires image input |
 | `gen-3-alpha` | Gen-3 Alpha; auto-selected based on input (text or image) |
 | `aleph` | Gen-3 Aleph; requires video input; editing/extending |
-| `VEO-prefixed models` | Auto-selected based on input |
 
 **Aspect ratio support:** Runway uses pixel dimensions instead of ratio strings. Tarash converts automatically.
 

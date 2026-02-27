@@ -123,7 +123,6 @@ Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/
 | [`fal-ai/pixverse/v5`](fal/pixverse.md) | 5s, 8s, 10s | ✅ | Pixverse v5; transition, effects, swap |
 | [`fal-ai/pixverse/v5.5`](fal/pixverse.md) | 5s, 8s, 10s | ✅ | Pixverse v5.5; same API as v5 |
 | [`fal-ai/pixverse/swap`](fal/pixverse.md) | — | ✅ | Pixverse swap variant |
-| Any other `fal-ai/*` | — | ✅ | Generic field mappers (prompt, seed, aspect_ratio) |
 
 Any Fal model not in this table gets **generic mappers** (prompt passthrough + common fields). For full support with model-specific parameters, use `/add-fal-model` in Claude Code.
 
