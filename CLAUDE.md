@@ -68,25 +68,9 @@ Updated multiple files including workspace setup
 
 ### Commit Workflow
 
-**CRITICAL: Always confirm before committing**
-
-When creating any commit, you MUST follow this process:
-
-1. **Show the user what will be committed**:
-   - List all files that will be included in the commit
-   - Display the proposed commit message
-   - Show relevant diffs if helpful for context
-   - **Do NOT include untracked files** unless user explicitly requests them
-
-2. **Wait for explicit user confirmation**:
-   - Do NOT execute `git commit` until the user approves
-   - User must explicitly confirm (e.g., "yes", "ok", "commit it")
-
-3. **Only then create the commit**:
-   - Use the approved message exactly as shown
-   - Keep commits atomic - one logical change per commit
-
-4. **Focus on impact**: What does this change accomplish, not how it was done
+- Keep commits atomic - one logical change per commit
+- Focus on impact: What does this change accomplish, not how it was done
+- **Do NOT include untracked files** unless explicitly requested
 
 ## Python Coding Guidelines
 
