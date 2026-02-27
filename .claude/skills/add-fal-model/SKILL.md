@@ -411,6 +411,27 @@ Once all tests pass:
    - Registry entries added (should be ONE prefix entry)
    - Tests written and passing
 
+### Step 11: Update Documentation
+
+Update the docs site at `docs/` (root-level, NOT `packages/tarash-gateway/docs/`).
+
+**1. Update the homepage provider tables** in `docs/index.md`:
+- If **video model**: add/update a row in the `## Providers > ### Video Generation` table
+- If **image model**: add/update a row in the `## Providers > ### Image Generation` table
+- If the model family already has a row (e.g., Veo, Kling), **append the new variants** to the existing row
+- If it's a completely new model family, **add a new row**
+- Follow the existing format: `| **Model** | \`variant-1\`<br>\`variant-2\` | [Fal.ai](providers/fal/index.md) |`
+
+**2. Update the Fal.ai supported models table** in `docs/providers/fal/index.md`:
+- Add or update the model entry in the `## Supported Models` table
+- Link to the model's dedicated page if creating one
+
+**3. Create or update a model-specific page** under `docs/providers/fal/`:
+- **New model family** → create `docs/providers/fal/<model-name>.md` following the pattern in existing pages (e.g., `pixverse.md`, `seedance.md`). Include: title, quick example, supported models table, parameters table
+- **New version of existing model** → update the existing page (e.g., add new variants to the supported models table)
+
+**Read an existing model page** (e.g., `docs/providers/fal/pixverse.md`) before writing to match the format exactly.
+
 ## Important Reminders
 
 - **Use `uv run`** for ALL Python/pytest commands
