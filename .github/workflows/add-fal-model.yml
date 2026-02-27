@@ -57,3 +57,4 @@ jobs:
             push the branch, and create a pull request linked to issue #${{ github.event.issue.number }}
             using `gh pr create`.
           show_full_output: true
+          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,mcp__github_file_ops__commit_files,mcp__github_file_ops__delete_files,mcp__github_comment__update_claude_comment"
