@@ -86,6 +86,7 @@ config = VideoGenerationConfig(
 | [Sora](sora.md) | Sora | `fal-ai/sora-2` | — |
 | [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | — |
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5` | — |
+| [Grok Imagine](grok-imagine-image.md) | Grok Imagine | — | ✅ |
 | Generic | — | Any other `fal-ai/*` | ✅ |
 
 Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry, so any sub-variant automatically inherits the right field mappers.

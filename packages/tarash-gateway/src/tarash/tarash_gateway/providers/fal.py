@@ -772,6 +772,27 @@ ZIMAGE_TURBO_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
 }
 
+# XAI Grok Imagine Image field mappings
+# Unified mapper for text-to-image and image-editing variants
+# - Text-to-image (xai/grok-imagine-image): prompt, aspect_ratio, num_images, output_format
+# - Image editing (xai/grok-imagine-image/edit): prompt, image_urls, num_images, output_format
+# Reference: https://fal.ai/models/xai/grok-imagine-image
+GROK_IMAGINE_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Text-to-image: aspect ratio (16:9, 1:1, etc.)
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    # Number of images to generate (1-4, default: 1)
+    "num_images": passthrough_field_mapper("n"),
+    # Image editing: input images (up to 3); API enforces per-variant
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Output format: jpeg, png, webp (default: jpeg)
+    "output_format": extra_params_field_mapper("output_format"),
+}
+
 # Generic image field mappings (fallback)
 GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -794,6 +815,8 @@ FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/recraft": RECRAFT_IMAGE_FIELD_MAPPERS,
     # Ideogram
     "fal-ai/ideogram": IDEOGRAM_IMAGE_FIELD_MAPPERS,
+    # XAI Grok Imagine Image - Unified mapper for text-to-image and image-editing variants
+    "xai/grok-imagine-image": GROK_IMAGINE_IMAGE_FIELD_MAPPERS,
 }
 
 

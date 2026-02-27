@@ -346,3 +346,105 @@ async def test_zimage_turbo_fast_generation(fal_api_key):
 
     print(f"✓ Generated Z-Image-Turbo image (fast): {response.request_id}")
     print(f"  Image URL: {response.images[0][:80]}...")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_grok_imagine_text_to_image_async(fal_api_key):
+    """
+    Test XAI Grok Imagine text-to-image model (async with progress tracking).
+
+    This tests:
+    - Text-to-image generation with xai/grok-imagine-image
+    - Progress tracking via async callback
+    - aspect_ratio, n, and output_format parameters
+    """
+    progress_updates = []
+
+    async def progress_callback(update: ImageGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = ImageGenerationConfig(
+        model="xai/grok-imagine-image",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A serene mountain lake at sunrise with mist, photorealistic",
+        aspect_ratio="16:9",
+        n=2,
+        extra_params={"output_format": "png"},
+    )
+
+    response = await api.generate_image_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) == 2
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http")
+
+    assert len(progress_updates) > 0
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Grok Imagine text-to-image: {response.request_id}")
+    print(f"  Images: {len(response.images)}")
+    print(f"  First image URL: {response.images[0][:80]}...")
+
+
+@pytest.mark.e2e
+def test_grok_imagine_image_editing_sync(fal_api_key):
+    """
+    Test XAI Grok Imagine image editing (sync).
+
+    This tests:
+    - Image editing with xai/grok-imagine-image/edit
+    - Reference image input via image_list
+    - Sync API path
+    """
+    config = ImageGenerationConfig(
+        model="xai/grok-imagine-image/edit",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="Make the background a snowy winter landscape",
+        image_list=[
+            {
+                "type": "reference",
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+            }
+        ],
+        extra_params={"output_format": "jpeg"},
+    )
+
+    response = api.generate_image(config, request)
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http")
+
+    print(f"✓ Generated Grok Imagine edited image (sync): {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
