@@ -5,6 +5,10 @@ labels:
   - add-fal-provider
 
 body:
+  - type: markdown
+    attributes:
+      value: "@claude"
+
   - type: input
     id: model_id
     attributes:
