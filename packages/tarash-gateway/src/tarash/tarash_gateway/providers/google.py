@@ -555,7 +555,6 @@ class GoogleProviderHandler:
             content_type=video_obj.mime_type,
             status="completed",
             raw_response=operation.model_dump(),
-            provider_metadata={},
         )
 
     def _handle_error(
@@ -762,10 +761,6 @@ class GoogleProviderHandler:
             status="completed",
             is_mock=False,
             raw_response=genai_response,
-            provider_metadata={
-                "model": config.model,
-                "provider": config.provider,
-            },
         )
 
     def _convert_gemini_image_response(
@@ -814,10 +809,6 @@ class GoogleProviderHandler:
             status="completed",
             is_mock=False,
             raw_response=raw_response,
-            provider_metadata={
-                "model": config.model,
-                "provider": config.provider,
-            },
         )
 
     # ==================== Image Generation Helpers ====================

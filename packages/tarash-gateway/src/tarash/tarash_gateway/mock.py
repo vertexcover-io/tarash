@@ -460,7 +460,6 @@ def _create_success_sync(
             status="completed",
             is_mock=True,
             raw_response={"mock": True, "output_video_provided": True},
-            provider_metadata={"mock_mode": True},
         )
 
     # Auto-match
@@ -489,7 +488,6 @@ def _create_success_sync(
                 "url": spec.url,
             },
         },
-        provider_metadata={"mock_mode": True},
     )
 
 
@@ -520,7 +518,6 @@ async def _create_success_async(
             status="completed",
             is_mock=True,
             raw_response={"mock": True, "output_video_provided": True},
-            provider_metadata={"mock_mode": True},
         )
 
     # Auto-match
@@ -549,7 +546,6 @@ async def _create_success_async(
                 "url": spec.url,
             },
         },
-        provider_metadata={"mock_mode": True},
     )
 
 

@@ -293,10 +293,6 @@ class VideoGenerationResponse(BaseModel):
     raw_response: dict[str, object] = Field(
         description="Unmodified provider response, preserved for debugging."
     )
-    provider_metadata: dict[str, object] = Field(
-        default_factory=dict,
-        description="Additional provider-specific fields not covered by the standard interface.",
-    )
     execution_metadata: ExecutionMetadata | None = Field(
         default=None,
         description="Timing and fallback attempt details captured by the orchestrator.",
@@ -461,10 +457,6 @@ class ImageGenerationResponse(BaseModel):
     )
     raw_response: dict[str, object] = Field(
         description="Unmodified provider response, preserved for debugging."
-    )
-    provider_metadata: dict[str, object] = Field(
-        default_factory=dict,
-        description="Additional provider-specific fields not covered by the standard interface.",
     )
     execution_metadata: ExecutionMetadata | None = Field(
         default=None,

@@ -198,7 +198,6 @@ class XaiProviderHandler:
                 "duration": getattr(xai_response, "duration", None),
                 "model": getattr(xai_response, "model", config.model),
             },
-            provider_metadata={},
         )
 
     def _convert_image_request(

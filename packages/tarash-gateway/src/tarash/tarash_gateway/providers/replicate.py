@@ -618,7 +618,6 @@ class ReplicateProviderHandler:
             video=video_url,
             status="completed",
             raw_response={"output": output_str},
-            provider_metadata={"replicate_prediction_id": prediction_id},
         )
 
     def _handle_error(
@@ -1014,7 +1013,6 @@ class ReplicateProviderHandler:
             images=image_urls,
             status="completed",
             raw_response={"output": output_str},
-            provider_metadata={"replicate_prediction_id": prediction_id},
         )
 
     def _handle_image_error(

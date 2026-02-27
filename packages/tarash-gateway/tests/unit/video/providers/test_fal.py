@@ -492,7 +492,6 @@ def test_convert_response_with_complete_dict_response(
     assert result.aspect_ratio == "16:9"
     assert result.status == "completed"
     assert result.raw_response == provider_response
-    assert result.provider_metadata == {}
 
 
 def test_convert_response_with_video_url_format(handler, base_config, base_request):
@@ -630,7 +629,6 @@ def test_convert_response_includes_all_optional_fields(
     assert result.aspect_ratio == "21:9"
     assert result.request_id == "req-complete"
     assert result.status == "completed"
-    assert result.provider_metadata == {}
     assert result.raw_response == provider_response
     assert result.raw_response["extra_field"] == "ignored"
 

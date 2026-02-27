@@ -336,10 +336,6 @@ class StabilityProviderHandler:
             status="completed",
             is_mock=False,
             raw_response={"content_length": len(image_bytes)},
-            provider_metadata={
-                "model": config.model,
-                "provider": config.provider,
-            },
         )
 
     def _handle_error(

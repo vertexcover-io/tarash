@@ -71,7 +71,6 @@ Parameters for a video generation request. Unknown kwargs are automatically capt
 | `audio_url` | `str | None` | Generated audio URL if requested |
 | `is_mock` | `bool` | True if produced by mock provider |
 | `raw_response` | `dict` | Unmodified provider response |
-| `provider_metadata` | `dict` | Extra provider fields not in standard interface |
 | `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---
@@ -138,7 +137,6 @@ Passed to the `on_progress` callback on each polling cycle during video generati
 | `is_mock` | `bool` | True if produced by mock provider |
 | `revised_prompt` | `str | None` | Prompt as revised by provider (OpenAI) |
 | `raw_response` | `dict` | Unmodified provider response |
-| `provider_metadata` | `dict` | Extra provider fields |
 | `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---

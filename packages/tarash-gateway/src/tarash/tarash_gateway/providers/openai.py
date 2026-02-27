@@ -488,7 +488,6 @@ class OpenAIProviderHandler:
             resolution=getattr(video, "size", None),
             status="completed",
             raw_response=video.model_dump(),
-            provider_metadata={},
         )
 
     def _handle_error(
@@ -1110,7 +1109,6 @@ class OpenAIProviderHandler:
             raw_response=provider_response.model_dump()
             if hasattr(provider_response, "model_dump")
             else {},
-            provider_metadata={},
         )
 
     async def generate_image_async(

@@ -95,6 +95,7 @@ print(response.video)
 |---|---|
 | `veo-3.0-generate-preview` | Veo 3 — standard |
 | `veo-3.1-generate-preview` | Veo 3.1 — longer sequences |
+| `veo-3.1-fast-generate-preview` | Veo 3.1 Fast — faster generation |
 
 **Supported resolutions:** 720p, 1080p, 4k
 

@@ -25,6 +25,7 @@ pip install tarash-gateway[all]     # every provider
 
 [:fontawesome-solid-rocket: Get Started](getting-started/installation.md){ .md-button .md-button--primary }
 [:fontawesome-brands-github: GitHub](https://github.com/vertexcover-io/tarash){ .md-button }
+[:fontawesome-solid-book-open: Why We Built This](https://blog.vertexcover.io/unified-ai-video-gateway){ .md-button }
 
 ---
 
@@ -91,7 +92,6 @@ Every response keeps the original provider JSON — useful for debugging or read
 ```python
 response = generate_video(config, request)
 print(response.raw_response)       # original provider JSON, unmodified
-print(response.provider_metadata)  # extra provider-specific fields
 ```
 
 ### Sync + async

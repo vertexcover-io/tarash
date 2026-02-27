@@ -470,7 +470,6 @@ class RunwayProviderHandler:
                 "status": task.status,
                 "output": str(output),
             },
-            provider_metadata={},
         )
 
     def _handle_error(

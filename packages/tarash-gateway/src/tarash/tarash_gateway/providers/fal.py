@@ -1109,7 +1109,6 @@ class FalProviderHandler:
             aspect_ratio=cast(str, provider_response.get("aspect_ratio")),
             status="completed",
             raw_response=provider_response,
-            provider_metadata={},
         )
 
     def _handle_error(
@@ -1443,10 +1442,6 @@ class FalProviderHandler:
             is_mock=False,
             revised_prompt=str(revised_prompt) if revised_prompt else None,
             raw_response=fal_result,
-            provider_metadata={
-                "model": config.model,
-                "provider": config.provider,
-            },
         )
 
     def _handle_image_error(
