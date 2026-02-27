@@ -1,0 +1,50 @@
+name: Add Fal Model
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  add-fal-model:
+    if: github.event.label.name == 'add-fal-provider'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Check sender permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PERM=$(gh api repos/${{ github.repository }}/collaborators/${{ github.event.sender.login }}/permission --jq '.permission')
+          echo "Sender '${{ github.event.sender.login }}' has permission: $PERM"
+          if [[ "$PERM" != "admin" && "$PERM" != "maintain" ]]; then
+            echo "❌ Insufficient permission. Only admin/maintain can trigger this workflow."
+            exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          branch_prefix: "feat/add-fal-"
+          base_branch: "master"
+          prompt: |
+            Extract the fal.ai model ID from this issue and add it to tarash-gateway.
+
+            Issue title: ${{ github.event.issue.title }}
+            Issue body:
+            ${{ github.event.issue.body }}
+
+            The model ID is specified as "Model ID: `fal-ai/...`" in the body,
+            or as "Add fal model: fal-ai/..." in the title.
+
+            Once you have the model ID, run: /add-fal-model <model-id>
+          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch --dangerouslySkipPermissions"

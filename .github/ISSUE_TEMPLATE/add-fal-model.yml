@@ -1,0 +1,24 @@
+name: Add Fal Model
+description: Request to add a new fal.ai model to tarash-gateway. Triggers automated implementation via Claude Code.
+title: "Add fal model: "
+labels:
+  - add-fal-provider
+
+body:
+  - type: input
+    id: model_id
+    attributes:
+      label: Model ID
+      description: The full fal.ai model identifier as it appears in the URL on fal.ai/models/...
+      placeholder: "fal-ai/kling-video/v2.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes (optional)
+      description: Any additional context — e.g. which variants to prioritise, known quirks, or relevant docs links.
+      placeholder: "Kling v2.1 adds support for 10s videos and image-to-video. Prioritise the text-to-video variant."
+    validations:
+      required: false
