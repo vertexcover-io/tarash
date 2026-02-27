@@ -1,7 +1,7 @@
 ---
 name: add-fal-model
 description: Add a new model to the Fal provider in tarash-gateway. Fetches model docs from fal.ai, generates field mappers, registers in the model registry, writes unit and e2e tests, and runs them.
-disable-model-invocation: true
+disable-model-invocation: false
 user-invokable: true
 argument-hint: "model-id"
 ---
