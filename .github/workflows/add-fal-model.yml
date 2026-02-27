@@ -51,4 +51,5 @@ jobs:
             or as "Add fal model: fal-ai/..." in the title.
 
             Once you have the model ID, run: /add-fal-model <model-id>
-          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep,WebFetch"
+          show_full_output: true
+          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch"
