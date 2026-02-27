@@ -2,11 +2,13 @@ name: Add Fal Model
 
 on:
   issues:
-    types: [labeled]
+    types: [opened, labeled]
 
 jobs:
   add-fal-model:
-    if: github.event.label.name == 'add-fal-provider'
+    if: |
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'add-fal-provider') ||
+      (github.event_name == 'issues' && github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'add-fal-provider'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -33,7 +35,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
         env:
           FAL_KEY: ${{ secrets.FAL_KEY }}
         with:
@@ -43,53 +46,9 @@ jobs:
           prompt: |
             Extract the fal.ai model ID from this issue and add it to tarash-gateway.
 
-            Issue title: ${{ github.event.issue.title }}
-            Issue body:
-            ${{ github.event.issue.body }}
-
             The model ID is specified as "Model ID: `fal-ai/...`" in the body,
             or as "Add fal model: fal-ai/..." in the title.
 
             Once you have the model ID, run: /add-fal-model <model-id>
           show_full_output: true
           claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch"
-
-      - name: Create branch and PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Check if there are any changes
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "No changes detected, skipping PR creation"
-            exit 0
-          fi
-
-          # Extract model ID from issue title for branch name
-          MODEL_SLUG=$(echo "${{ github.event.issue.title }}" | sed 's/Add fal model: //i' | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')
-          BRANCH="feat/add-fal-${MODEL_SLUG}"
-
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Create branch, commit, and push
-          git checkout -b "$BRANCH"
-          git add -A
-          git commit -m "✨ Add fal model: ${MODEL_SLUG}"
-          git push origin "$BRANCH"
-
-          # Create PR linking to the issue
-          gh pr create \
-            --title "✨ Add fal model: ${MODEL_SLUG}" \
-            --body "$(cat <<EOF
-          ## Summary
-
-          Automated implementation triggered by #${{ github.event.issue.number }}.
-
-          Adds support for the \`${MODEL_SLUG}\` model to the Fal provider in tarash-gateway.
-
-          Closes #${{ github.event.issue.number }}
-          EOF
-          )" \
-            --base master \
-            --head "$BRANCH"
