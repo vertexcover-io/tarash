@@ -2919,3 +2919,91 @@ def test_zimage_turbo_all_parameters():
     assert result["size"] == "landscape_4_3"
     assert result["num_inference_steps"] == 8
     assert result["enable_safety_checker"] is True
+
+
+# ==================== XAI Grok Imagine Image Tests ====================
+
+
+def test_get_image_field_mappers_grok_imagine_all_variants():
+    """Test unified mapper for all Grok Imagine Image variants via prefix matching."""
+    from tarash.tarash_gateway.providers.fal import GROK_IMAGINE_IMAGE_FIELD_MAPPERS
+
+    variants = [
+        "xai/grok-imagine-image",
+        "xai/grok-imagine-image/edit",
+    ]
+    for variant in variants:
+        mappers = get_image_field_mappers(variant)
+        assert mappers is GROK_IMAGINE_IMAGE_FIELD_MAPPERS, (
+            f"Expected GROK_IMAGINE_IMAGE_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_grok_imagine_text_to_image_conversion():
+    """Test Grok Imagine text-to-image conversion (prompt, aspect_ratio, n, output_format)."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("xai/grok-imagine-image")
+
+    request = ImageGenerationRequest(
+        prompt="A photorealistic sunset over the ocean",
+        aspect_ratio="16:9",
+        n=2,
+        extra_params={"output_format": "png"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A photorealistic sunset over the ocean"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["num_images"] == 2
+    assert result["output_format"] == "png"
+    assert "image_urls" not in result
+
+
+def test_grok_imagine_image_editing_conversion():
+    """Test Grok Imagine image-editing conversion with reference images."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("xai/grok-imagine-image/edit")
+
+    request = ImageGenerationRequest(
+        prompt="Add warm golden lighting to this scene",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/scene.jpg"},
+            {"type": "reference", "image": "https://example.com/style.jpg"},
+        ],
+        n=1,
+        extra_params={"output_format": "jpeg"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Add warm golden lighting to this scene"
+    assert result["image_urls"] == [
+        "https://example.com/scene.jpg",
+        "https://example.com/style.jpg",
+    ]
+    assert result["num_images"] == 1
+    assert result["output_format"] == "jpeg"
+    assert "aspect_ratio" not in result
+
+
+def test_grok_imagine_minimal_request():
+    """Test Grok Imagine with only required prompt field."""
+    from tarash.tarash_gateway.providers.fal import get_image_field_mappers
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("xai/grok-imagine-image")
+
+    request = ImageGenerationRequest(prompt="A simple red apple")
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A simple red apple"
+    assert "aspect_ratio" not in result
+    assert "num_images" not in result
+    assert "image_urls" not in result
+    assert "output_format" not in result
