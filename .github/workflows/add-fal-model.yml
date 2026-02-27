@@ -2,13 +2,11 @@ name: Add Fal Model
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 
 jobs:
   add-fal-model:
-    if: |
-      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'add-fal-provider') ||
-      (github.event_name == 'issues' && github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'add-fal-provider'))
+    if: github.event.label.name == 'add-fal-provider'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -24,8 +22,8 @@ jobs:
         run: |
           PERM=$(gh api repos/${{ github.repository }}/collaborators/${{ github.event.sender.login }}/permission --jq '.permission')
           echo "Sender '${{ github.event.sender.login }}' has permission: $PERM"
-          if [[ "$PERM" != "admin" && "$PERM" != "maintain" ]]; then
-            echo "❌ Insufficient permission. Only admin/maintain can trigger this workflow."
+          if [[ "$PERM" != "admin" && "$PERM" != "maintain" && "$PERM" != "write" ]]; then
+            echo "❌ Insufficient permission. Only admin/maintain/write can trigger this workflow."
             exit 1
           fi
 
@@ -54,5 +52,8 @@ jobs:
             or as "Add fal model: fal-ai/..." in the title.
 
             Once you have the model ID, run: /add-fal-model <model-id>
+
+            After all changes are complete and tests pass, commit your changes,
+            push the branch, and create a pull request linked to issue #${{ github.event.issue.number }}
+            using `gh pr create`.
           show_full_output: true
-          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch"
