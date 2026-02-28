@@ -772,6 +772,31 @@ ZIMAGE_TURBO_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
 }
 
+# Reve field mappings - unified mapper for all variants:
+# - fal-ai/reve/edit, fal-ai/reve/fast/edit: single image editing (image_url required by API)
+# - fal-ai/reve/remix, fal-ai/reve/fast/remix: multi-image scene reimagining (image_urls required by API)
+# - fal-ai/reve/text-to-image: text-only generation (no image input)
+REVE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Edit variants: single reference image; strict=False yields None for multiple images
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        strict=False,  # returns None when multiple images provided, letting image_urls handle them
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Remix variants: list of 1-6 reference images
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),  # remix and text-to-image
+    "num_images": passthrough_field_mapper("n"),  # n → num_images (1-4 outputs)
+    "output_format": extra_params_field_mapper("output_format"),  # "png", "jpeg", "webp"
+}
+
 # Generic image field mappings (fallback)
 GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -794,6 +819,8 @@ FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/recraft": RECRAFT_IMAGE_FIELD_MAPPERS,
     # Ideogram
     "fal-ai/ideogram": IDEOGRAM_IMAGE_FIELD_MAPPERS,
+    # Reve - Unified mapper for all variants (edit, fast/edit, remix, fast/remix, text-to-image)
+    "fal-ai/reve": REVE_FIELD_MAPPERS,
 }
 
 
