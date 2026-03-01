@@ -76,38 +76,6 @@ Switching providers requires only changing `model` and `provider` in the config.
 
 ---
 
-### `tarash-captions` — Caption Generation
-
-**Status: Implemented (OpenAI provider)**
-
-SDK for AI-powered video caption generation. Follows the same architecture as `tarash-gateway` — provider-agnostic config, unified request/response models, sync and async generation.
-
-**Implemented providers:**
-- **OpenAI** — `gpt-4o` (default), configurable model
-
-**Planned providers:**
-- Additional LLM providers following the same `CaptionProviderHandler` protocol
-
-```python
-from tarash.captions import CaptionConfig, CaptionRequest, generate_caption
-
-config = CaptionConfig(provider="openai", api_key="your-api-key", model="gpt-4o")
-request = CaptionRequest(prompt="A chef preparing pasta in a busy kitchen", language="en")
-
-response = generate_caption(config, request)
-print(response.text)
-```
-
----
-
-### `tarash-scene-detector` — Scene Detection
-
-**Status: Early stage**
-
-Scene detection for video files using [PySceneDetect](https://www.scenedetect.com/) with OpenCV. Identifies cut points and scene boundaries in video content — useful as a preprocessing step for video generation workflows.
-
----
-
 ## Architecture
 
 All packages share the same design principles:
