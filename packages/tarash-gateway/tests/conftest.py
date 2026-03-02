@@ -56,6 +56,7 @@ def pytest_collection_modifyitems(config, items):
     elevenlabs_key_available = bool(os.getenv("ELEVENLABS_API_KEY"))
     cartesia_key_available = bool(os.getenv("CARTESIA_API_KEY"))
     sarvam_key_available = bool(os.getenv("SARVAM_API_KEY"))
+    hume_key_available = bool(os.getenv("HUME_API_KEY"))
 
     # Get --e2e flag value
     run_e2e = config.getoption("--e2e")
@@ -116,6 +117,10 @@ def pytest_collection_modifyitems(config, items):
                     pytest.mark.skip(
                         reason="SARVAM_API_KEY environment variable not set"
                     )
+                )
+            if "hume" in item.nodeid.lower() and not hume_key_available:
+                item.add_marker(
+                    pytest.mark.skip(reason="HUME_API_KEY environment variable not set")
                 )
 
 

@@ -79,6 +79,9 @@ from tarash.tarash_gateway.providers.cartesia import (
 from tarash.tarash_gateway.providers.sarvam import (
     SarvamProviderHandler,
 )
+from tarash.tarash_gateway.providers.hume import (
+    HumeProviderHandler,
+)
 
 # Backwards compatibility alias
 Veo3ProviderHandler = GoogleProviderHandler
@@ -150,4 +153,6 @@ __all__ = [
     "CartesiaProviderHandler",
     # Sarvam
     "SarvamProviderHandler",
+    # Hume
+    "HumeProviderHandler",
 ]

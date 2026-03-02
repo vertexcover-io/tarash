@@ -15,6 +15,7 @@ from tarash.tarash_gateway.providers import (
     ElevenLabsProviderHandler,
     FalProviderHandler,
     GoogleProviderHandler,
+    HumeProviderHandler,
     OpenAIProviderHandler,
     ReplicateProviderHandler,
     RunwayProviderHandler,
@@ -96,6 +97,8 @@ def get_handler(
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, SarvamProviderHandler()
             )
+        elif provider == "hume":
+            _HANDLER_INSTANCES[provider] = cast(ProviderHandler, HumeProviderHandler())
         else:
             log_error(
                 "Unsupported provider",

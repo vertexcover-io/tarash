@@ -23,6 +23,7 @@ xai = ["xai-sdk>=1.0.0"]
 elevenlabs = ["elevenlabs>=1.0.0"]
 cartesia = ["cartesia>=1.0.0"]
 sarvam = ["sarvamai>=0.1.25"]
+hume = ["hume>=0.9.0"]
 all = [
     "fal-client>=0.4.0",
     "google-genai>=1.0.0",
@@ -34,6 +35,7 @@ all = [
     "elevenlabs>=1.0.0",
     "cartesia>=1.0.0",
     "sarvamai>=0.1.25",
+    "hume>=0.9.0",
 ]
 dev = [
     "pytest>=7.0.0",
