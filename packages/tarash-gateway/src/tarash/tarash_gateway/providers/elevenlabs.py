@@ -22,12 +22,14 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    AudioOutputFormat,
     STSProgressCallback,
     STSRequest,
     STSResponse,
     TTSProgressCallback,
     TTSRequest,
     TTSResponse,
+    format_to_content_type,
 )
 
 has_elevenlabs = True
@@ -45,19 +47,20 @@ def _generate_request_id() -> str:
     return uuid.uuid4().hex
 
 
-def _output_format_to_content_type(output_format: str) -> str:
-    """Map ElevenLabs output format to MIME content type."""
-    if output_format.startswith("mp3"):
-        return "audio/mpeg"
-    if output_format.startswith("pcm"):
-        return "audio/pcm"
-    if output_format.startswith("wav"):
-        return "audio/wav"
-    if output_format.startswith("opus"):
-        return "audio/opus"
-    if output_format.startswith("ulaw") or output_format.startswith("alaw"):
-        return "audio/basic"
-    return "audio/mpeg"
+def _output_format_to_elevenlabs_string(output_format: AudioOutputFormat) -> str:
+    """Convert AudioOutputFormat to ElevenLabs SDK format string.
+
+    Examples:
+        AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128) → "mp3_44100_128"
+        AudioOutputFormat(format="pcm", sample_rate=16000) → "pcm_16000"
+        AudioOutputFormat(format="mp3") → "mp3"
+    """
+    parts = [output_format.format]
+    if output_format.sample_rate is not None:
+        parts.append(str(output_format.sample_rate))
+    if output_format.bitrate is not None:
+        parts.append(str(output_format.bitrate))
+    return "_".join(parts)
 
 
 class ElevenLabsProviderHandler:
@@ -96,7 +99,9 @@ class ElevenLabsProviderHandler:
             "model_id": config.model,
         }
 
-        kwargs["output_format"] = request.output_format
+        kwargs["output_format"] = _output_format_to_elevenlabs_string(
+            request.output_format
+        )
 
         if request.voice_settings:
             kwargs["voice_settings"] = request.voice_settings
@@ -104,16 +109,6 @@ class ElevenLabsProviderHandler:
         if request.language_code:
             kwargs["language_code"] = request.language_code
 
-        if request.seed is not None:
-            kwargs["seed"] = request.seed
-
-        if request.previous_text:
-            kwargs["previous_text"] = request.previous_text
-
-        if request.next_text:
-            kwargs["next_text"] = request.next_text
-
-        # Merge extra_params
         kwargs.update(request.extra_params)
 
         return kwargs
@@ -166,18 +161,13 @@ class ElevenLabsProviderHandler:
 
         kwargs["model_id"] = config.model
 
-        kwargs["output_format"] = request.output_format
+        kwargs["output_format"] = _output_format_to_elevenlabs_string(
+            request.output_format
+        )
 
         if request.voice_settings:
             kwargs["voice_settings"] = json.dumps(request.voice_settings)
 
-        if request.seed is not None:
-            kwargs["seed"] = request.seed
-
-        if request.remove_background_noise:
-            kwargs["remove_background_noise"] = request.remove_background_noise
-
-        # Merge extra_params
         kwargs.update(request.extra_params)
 
         return kwargs
@@ -191,7 +181,7 @@ class ElevenLabsProviderHandler:
     ) -> TTSResponse:
         """Convert raw audio bytes to TTSResponse."""
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-        content_type = _output_format_to_content_type(request.output_format)
+        content_type = format_to_content_type(request.output_format.format)
 
         return TTSResponse(
             request_id=request_id,
@@ -201,7 +191,7 @@ class ElevenLabsProviderHandler:
             status="completed",
             raw_response={
                 "audio_size_bytes": len(audio_bytes),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "model": config.model,
                 "voice_id": request.voice_id,
             },
@@ -216,7 +206,7 @@ class ElevenLabsProviderHandler:
     ) -> STSResponse:
         """Convert raw audio bytes to STSResponse."""
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-        content_type = _output_format_to_content_type(request.output_format)
+        content_type = format_to_content_type(request.output_format.format)
 
         return STSResponse(
             request_id=request_id,
@@ -226,7 +216,7 @@ class ElevenLabsProviderHandler:
             status="completed",
             raw_response={
                 "audio_size_bytes": len(audio_bytes),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "model": config.model,
                 "voice_id": request.voice_id,
             },
@@ -349,7 +339,7 @@ class ElevenLabsProviderHandler:
                 "model": config.model,
                 "voice_id": request.voice_id,
                 "text_length": len(request.text),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,
@@ -393,7 +383,7 @@ class ElevenLabsProviderHandler:
                 "model": config.model,
                 "voice_id": request.voice_id,
                 "text_length": len(request.text),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,
@@ -439,7 +429,7 @@ class ElevenLabsProviderHandler:
             context={
                 "model": config.model,
                 "voice_id": request.voice_id,
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,
@@ -483,7 +473,7 @@ class ElevenLabsProviderHandler:
             context={
                 "model": config.model,
                 "voice_id": request.voice_id,
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,

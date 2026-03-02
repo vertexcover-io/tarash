@@ -5,7 +5,7 @@ import io
 import uuid
 from typing import Any, Literal
 
-from tarash.tarash_gateway.logging import log_info
+from tarash.tarash_gateway.logging import log_info, log_warning
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     download_media_from_url_async,
@@ -21,12 +21,14 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    AudioOutputFormat,
     STSProgressCallback,
     STSRequest,
     STSResponse,
     TTSProgressCallback,
     TTSRequest,
     TTSResponse,
+    format_to_content_type,
 )
 
 has_cartesia = True
@@ -59,64 +61,32 @@ _DEFAULT_BIT_RATE = 128000
 _DEFAULT_ENCODING = "pcm_s16le"
 
 
-def _parse_output_format(output_format: str | None) -> dict[str, Any]:
-    """Parse output format string to Cartesia structured dict.
+def _output_format_to_cartesia_dict(output_format: AudioOutputFormat) -> dict[str, Any]:
+    """Convert AudioOutputFormat to Cartesia structured dict.
 
-    Handles full, partial, or bare container strings — missing parts get defaults.
-
-    Examples:
-        "mp3_44100_128" -> {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000}
-        "mp3_22050"     -> {"container": "mp3", "sample_rate": 22050, "bit_rate": 128000}
-        "mp3"           -> {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000}
-        "wav_16000"     -> {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 16000}
-        "wav"           -> {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100}
-        "pcm_16000"     -> {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 16000}
-        "pcm"           -> {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 44100}
-        None            -> {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000} (default)
+    Maps format -> container (with pcm -> raw), adds encoding for wav/pcm,
+    and converts bitrate kbps -> bit_rate bps. Logs warning if bitrate
+    is set for wav/pcm (unsupported by Cartesia).
     """
-    if not output_format:
-        return {
-            "container": "mp3",
-            "sample_rate": _DEFAULT_SAMPLE_RATE,
-            "bit_rate": _DEFAULT_BIT_RATE,
-        }
+    fmt = output_format.format
+    container = "raw" if fmt == "pcm" else fmt
+    sample_rate = output_format.sample_rate or _DEFAULT_SAMPLE_RATE
 
-    parts = output_format.split("_")
-    container = parts[0]
+    result: dict[str, Any] = {"container": container, "sample_rate": sample_rate}
 
-    sample_rate = int(parts[1]) if len(parts) >= 2 else _DEFAULT_SAMPLE_RATE
-
-    if container == "mp3":
-        bit_rate = int(parts[2]) * 1000 if len(parts) >= 3 else _DEFAULT_BIT_RATE
-        return {"container": "mp3", "sample_rate": sample_rate, "bit_rate": bit_rate}
-    elif container == "wav":
-        return {
-            "container": "wav",
-            "encoding": _DEFAULT_ENCODING,
-            "sample_rate": sample_rate,
-        }
-    elif container == "pcm":
-        return {
-            "container": "raw",
-            "encoding": _DEFAULT_ENCODING,
-            "sample_rate": sample_rate,
-        }
+    if fmt in ("wav", "pcm"):
+        result["encoding"] = _DEFAULT_ENCODING
+        if output_format.bitrate is not None:
+            log_warning(
+                f"Cartesia: bitrate is not supported for '{fmt}' format, ignoring",
+                logger_name=_LOGGER_NAME,
+            )
+    elif output_format.bitrate is not None:
+        result["bit_rate"] = output_format.bitrate * 1000
     else:
-        # Unknown container — pass through as-is, let Cartesia API validate
-        return {"container": container, "sample_rate": sample_rate}
+        result["bit_rate"] = _DEFAULT_BIT_RATE
 
-
-def _output_format_to_content_type(output_format: str | None) -> str:
-    """Map output format string to MIME content type."""
-    if not output_format:
-        return "audio/mpeg"
-    if output_format.startswith("mp3"):
-        return "audio/mpeg"
-    if output_format.startswith("wav"):
-        return "audio/wav"
-    if output_format.startswith("pcm"):
-        return "audio/pcm"
-    return "audio/mpeg"
+    return result
 
 
 class CartesiaProviderHandler:
@@ -153,7 +123,7 @@ class CartesiaProviderHandler:
             "transcript": request.text,
             "voice": {"mode": "id", "id": request.voice_id},
             "model_id": config.model,
-            "output_format": _parse_output_format(request.output_format),
+            "output_format": _output_format_to_cartesia_dict(request.output_format),
         }
 
         if request.language_code:
@@ -173,7 +143,7 @@ class CartesiaProviderHandler:
     ) -> TTSResponse:
         """Convert raw audio bytes to TTSResponse."""
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-        content_type = _output_format_to_content_type(request.output_format)
+        content_type = format_to_content_type(request.output_format.format)
 
         return TTSResponse(
             request_id=request_id,
@@ -183,7 +153,7 @@ class CartesiaProviderHandler:
             status="completed",
             raw_response={
                 "audio_size_bytes": len(audio_bytes),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "model": config.model,
                 "voice_id": request.voice_id,
             },
@@ -225,7 +195,7 @@ class CartesiaProviderHandler:
         Clip (audio) is resolved separately via _resolve_audio_bytes / _resolve_audio_bytes_async.
         Voice Changer uses flat parameters, not nested output_format dict.
         """
-        parsed_format = _parse_output_format(request.output_format)
+        parsed_format = _output_format_to_cartesia_dict(request.output_format)
 
         kwargs: dict[str, Any] = {
             "voice_id": request.voice_id,
@@ -251,7 +221,7 @@ class CartesiaProviderHandler:
     ) -> STSResponse:
         """Convert raw audio bytes to STSResponse."""
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-        content_type = _output_format_to_content_type(request.output_format)
+        content_type = format_to_content_type(request.output_format.format)
 
         return STSResponse(
             request_id=request_id,
@@ -261,7 +231,7 @@ class CartesiaProviderHandler:
             status="completed",
             raw_response={
                 "audio_size_bytes": len(audio_bytes),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "model": config.model,
                 "voice_id": request.voice_id,
             },
@@ -384,7 +354,7 @@ class CartesiaProviderHandler:
                 "model": config.model,
                 "voice_id": request.voice_id,
                 "text_length": len(request.text),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,
@@ -428,7 +398,7 @@ class CartesiaProviderHandler:
                 "model": config.model,
                 "voice_id": request.voice_id,
                 "text_length": len(request.text),
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,
@@ -474,7 +444,7 @@ class CartesiaProviderHandler:
             context={
                 "model": config.model,
                 "voice_id": request.voice_id,
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,
@@ -518,7 +488,7 @@ class CartesiaProviderHandler:
             context={
                 "model": config.model,
                 "voice_id": request.voice_id,
-                "output_format": request.output_format,
+                "output_format": request.output_format.model_dump(),
                 "request_id": request_id,
             },
             logger_name=_LOGGER_NAME,

@@ -14,15 +14,17 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    AudioOutputFormat,
     STSRequest,
     STSResponse,
     TTSRequest,
     TTSResponse,
+    format_to_content_type,
 )
 from tarash.tarash_gateway.providers.elevenlabs import (
     ElevenLabsProviderHandler,
     _generate_request_id,
-    _output_format_to_content_type,
+    _output_format_to_elevenlabs_string,
 )
 
 
@@ -77,26 +79,49 @@ def test_generate_request_id_unique():
 
 
 @pytest.mark.parametrize(
-    ("output_format", "expected_content_type"),
+    ("fmt", "expected_content_type"),
     [
-        ("mp3_22050_32", "audio/mpeg"),
-        ("mp3_44100_128", "audio/mpeg"),
-        ("mp3_44100_192", "audio/mpeg"),
-        ("pcm_16000", "audio/pcm"),
-        ("pcm_22050", "audio/pcm"),
-        ("pcm_24000", "audio/pcm"),
-        ("pcm_44100", "audio/pcm"),
-        ("wav_44100", "audio/wav"),
-        ("opus_48000_64", "audio/opus"),
-        ("opus_48000_128", "audio/opus"),
-        ("ulaw_8000", "audio/basic"),
-        ("alaw_8000", "audio/basic"),
-        ("unknown_format", "audio/mpeg"),
+        ("mp3", "audio/mpeg"),
+        ("pcm", "audio/pcm"),
+        ("wav", "audio/wav"),
+        ("opus", "audio/opus"),
+        ("ulaw", "audio/basic"),
+        ("alaw", "audio/basic"),
+        ("flac", "audio/flac"),
+        ("unknown", "audio/mpeg"),
     ],
 )
-def test_output_format_to_content_type(output_format, expected_content_type):
-    """Output format strings map to correct MIME types."""
-    assert _output_format_to_content_type(output_format) == expected_content_type
+def test_format_to_content_type(fmt, expected_content_type):
+    """Format strings map to correct MIME types."""
+    assert format_to_content_type(fmt) == expected_content_type
+
+
+# ==================== ElevenLabs String Conversion ====================
+
+
+@pytest.mark.parametrize(
+    ("output_format", "expected_string"),
+    [
+        (
+            AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
+            "mp3_44100_128",
+        ),
+        (
+            AudioOutputFormat(format="mp3", sample_rate=22050, bitrate=32),
+            "mp3_22050_32",
+        ),
+        (AudioOutputFormat(format="pcm", sample_rate=16000), "pcm_16000"),
+        (AudioOutputFormat(format="wav", sample_rate=44100), "wav_44100"),
+        (
+            AudioOutputFormat(format="opus", sample_rate=48000, bitrate=64),
+            "opus_48000_64",
+        ),
+        (AudioOutputFormat(format="mp3"), "mp3"),
+    ],
+)
+def test_output_format_to_elevenlabs_string(output_format, expected_string):
+    """AudioOutputFormat converts to ElevenLabs SDK format string."""
+    assert _output_format_to_elevenlabs_string(output_format) == expected_string
 
 
 # ==================== TTS Request Conversion ====================
@@ -117,12 +142,14 @@ def test_convert_tts_request_full(handler, base_config):
     request = TTSRequest(
         text="Hello world",
         voice_id="test-voice-id",
-        output_format="wav_44100",
+        output_format=AudioOutputFormat(format="wav", sample_rate=44100),
         language_code="en",
         voice_settings={"stability": 0.5, "similarity_boost": 0.8},
-        seed=42,
-        previous_text="Before",
-        next_text="After",
+        extra_params={
+            "seed": 42,
+            "previous_text": "Before",
+            "next_text": "After",
+        },
     )
     kwargs = handler._convert_tts_request(base_config, request)
 
@@ -242,7 +269,7 @@ def test_convert_sts_request_remove_background_noise(handler, base_config):
     request = STSRequest(
         audio={"content": b"data", "content_type": "audio/wav"},
         voice_id="v1",
-        remove_background_noise=True,
+        extra_params={"remove_background_noise": True},
     )
     kwargs = handler._convert_sts_request(base_config, request)
     assert kwargs["remove_background_noise"] is True
@@ -269,7 +296,11 @@ def test_convert_tts_response(handler, base_config, tts_request):
 
 def test_convert_tts_response_wav_format(handler, base_config):
     """TTS response derives correct content_type for wav format."""
-    request = TTSRequest(text="Hi", voice_id="v1", output_format="wav_44100")
+    request = TTSRequest(
+        text="Hi",
+        voice_id="v1",
+        output_format=AudioOutputFormat(format="wav", sample_rate=44100),
+    )
     response = handler._convert_tts_response(base_config, request, "req-1", b"wav-data")
     assert response.content_type == "audio/wav"
 

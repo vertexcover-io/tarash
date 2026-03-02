@@ -16,6 +16,7 @@ from tarash.tarash_gateway.api import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    AudioOutputFormat,
     STSRequest,
     TTSRequest,
     TTSResponse,
@@ -52,7 +53,7 @@ async def test_tts_async_sonic3_with_generation_config(cartesia_api_key):
     request = TTSRequest(
         text="Hello, this is a test of the Cartesia TTS integration with emotion control.",
         voice_id=BARBERSHOP_MAN_VOICE_ID,
-        output_format="mp3_44100_128",
+        output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
         language_code="en",
         extra_params={
             "generation_config": {"emotion": "happy", "speed": 1.1, "volume": 0.9},
@@ -87,7 +88,7 @@ def test_tts_sync_sonic_turbo(cartesia_api_key):
     request = TTSRequest(
         text="Quick test of the sonic turbo model.",
         voice_id=BARBERSHOP_MAN_VOICE_ID,
-        output_format="wav_44100",
+        output_format=AudioOutputFormat(format="wav", sample_rate=44100),
     )
 
     response = generate_tts(config, request)
@@ -116,7 +117,7 @@ async def test_sts_async_voice_changer(cartesia_api_key):
     tts_request = TTSRequest(
         text="This audio will be converted to a different voice.",
         voice_id=BARBERSHOP_MAN_VOICE_ID,
-        output_format="mp3_44100_128",
+        output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
     )
     tts_response = await generate_tts_async(tts_config, tts_request)
     source_audio_bytes = base64.b64decode(tts_response.audio)
@@ -130,7 +131,7 @@ async def test_sts_async_voice_changer(cartesia_api_key):
     sts_request = STSRequest(
         audio={"content": source_audio_bytes, "content_type": "audio/mpeg"},
         voice_id=BARBERSHOP_MAN_VOICE_ID,
-        output_format="mp3_44100_128",
+        output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
     )
     response = await generate_sts_async(sts_config, sts_request)
 

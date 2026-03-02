@@ -29,21 +29,30 @@ AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
 Base64 = str
 StatusType = Literal["queued", "processing", "completed", "failed"]
 
-OutputFormat = Literal[
-    "mp3_22050_32",
-    "mp3_44100_32",
-    "mp3_44100_64",
-    "mp3_44100_96",
-    "mp3_44100_128",
-    "mp3_44100_192",
-    "pcm_16000",
-    "pcm_22050",
-    "pcm_24000",
-    "pcm_44100",
-    "wav_44100",
-    "opus_48000_64",
-    "opus_48000_128",
-]
+
+class AudioOutputFormat(BaseModel):
+    """Structured audio output format."""
+
+    format: str = Field(
+        description="Audio format/codec, e.g. 'mp3', 'wav', 'pcm', 'flac', 'opus'."
+    )
+    sample_rate: int | None = Field(
+        default=None, description="Sample rate in Hz, e.g. 44100."
+    )
+    bitrate: int | None = Field(default=None, description="Bitrate in kbps, e.g. 128.")
+
+
+def format_to_content_type(format: str) -> str:
+    """Map audio format to MIME content type."""
+    return {
+        "mp3": "audio/mpeg",
+        "wav": "audio/wav",
+        "pcm": "audio/pcm",
+        "flac": "audio/flac",
+        "opus": "audio/opus",
+        "ulaw": "audio/basic",
+        "alaw": "audio/basic",
+    }.get(format, "audio/mpeg")
 
 
 class MediaContent(TypedDict):
@@ -553,8 +562,11 @@ class TTSRequest(BaseModel):
 
     text: str = Field(description="Text to convert to speech.")
     voice_id: str = Field(description="Voice identifier (provider-specific).")
-    output_format: str = Field(
-        default="mp3_44100_128", description="Audio output format."
+    output_format: AudioOutputFormat = Field(
+        default_factory=lambda: AudioOutputFormat(
+            format="mp3", sample_rate=44100, bitrate=128
+        ),
+        description="Audio output format with codec, sample_rate (Hz), and bitrate (kbps).",
     )
     language_code: str | None = Field(
         default=None, description="Language hint for the provider."
@@ -590,8 +602,11 @@ class STSRequest(BaseModel):
 
     audio: MediaType = Field(description="Input audio (bytes, URL, or MediaContent).")
     voice_id: str = Field(description="Voice identifier (provider-specific).")
-    output_format: str = Field(
-        default="mp3_44100_128", description="Audio output format."
+    output_format: AudioOutputFormat = Field(
+        default_factory=lambda: AudioOutputFormat(
+            format="mp3", sample_rate=44100, bitrate=128
+        ),
+        description="Audio output format with codec, sample_rate (Hz), and bitrate (kbps).",
     )
     voice_settings: dict[str, Any] | None = Field(
         default=None,

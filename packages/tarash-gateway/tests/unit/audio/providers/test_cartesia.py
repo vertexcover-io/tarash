@@ -7,6 +7,7 @@ import pytest
 
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    AudioOutputFormat,
     STSRequest,
     TTSRequest,
     TTSResponse,
@@ -23,8 +24,7 @@ from tarash.tarash_gateway.exceptions import (
 from tarash.tarash_gateway.providers.cartesia import (
     CartesiaProviderHandler,
     _generate_request_id,
-    _parse_output_format,
-    _output_format_to_content_type,
+    _output_format_to_cartesia_dict,
 )
 
 
@@ -73,71 +73,82 @@ def test_generate_request_id_unique():
     assert len(ids) == 100
 
 
-# ==================== Output Format Parsing ====================
+# ==================== Output Format Conversion ====================
 
 
 @pytest.mark.parametrize(
-    ("format_str", "expected"),
+    ("output_format", "expected"),
     [
-        # Full strings (ElevenLabs-style)
         (
-            "mp3_44100_128",
+            AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
             {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000},
         ),
-        ("mp3_22050_32", {"container": "mp3", "sample_rate": 22050, "bit_rate": 32000}),
         (
-            "wav_44100",
+            AudioOutputFormat(format="mp3", sample_rate=22050, bitrate=32),
+            {"container": "mp3", "sample_rate": 22050, "bit_rate": 32000},
+        ),
+        (
+            AudioOutputFormat(format="wav", sample_rate=44100),
             {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100},
         ),
         (
-            "wav_16000",
+            AudioOutputFormat(format="wav", sample_rate=16000),
             {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 16000},
         ),
         (
-            "pcm_16000",
+            AudioOutputFormat(format="pcm", sample_rate=16000),
             {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 16000},
         ),
         (
-            "pcm_44100",
+            AudioOutputFormat(format="pcm", sample_rate=44100),
             {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 44100},
         ),
-        # Partial strings (sample_rate only, defaults filled in)
-        ("mp3_22050", {"container": "mp3", "sample_rate": 22050, "bit_rate": 128000}),
-        # Bare container strings (all defaults)
-        ("mp3", {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000}),
-        ("wav", {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100}),
-        ("pcm", {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 44100}),
-        # None -> default
-        (None, {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000}),
+        # No sample_rate -> uses default 44100
+        (
+            AudioOutputFormat(format="mp3"),
+            {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000},
+        ),
+        (
+            AudioOutputFormat(format="wav"),
+            {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100},
+        ),
+        (
+            AudioOutputFormat(format="pcm"),
+            {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 44100},
+        ),
+        # Unknown container — pass through
+        (
+            AudioOutputFormat(format="opus", sample_rate=48000, bitrate=64),
+            {"container": "opus", "sample_rate": 48000, "bit_rate": 64000},
+        ),
     ],
 )
-def test_parse_output_format(format_str, expected):
-    assert _parse_output_format(format_str) == expected
+def test_output_format_to_cartesia_dict(output_format, expected):
+    assert _output_format_to_cartesia_dict(output_format) == expected
 
 
-def test_parse_output_format_unknown_container_passthrough():
-    """Unknown containers are passed through for Cartesia API to validate."""
-    result = _parse_output_format("opus_48000_64")
-    assert result == {"container": "opus", "sample_rate": 48000}
+def test_output_format_to_cartesia_dict_warns_on_wav_bitrate(caplog):
+    """Cartesia logs warning when bitrate is set for wav (unsupported)."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        result = _output_format_to_cartesia_dict(
+            AudioOutputFormat(format="wav", sample_rate=44100, bitrate=128)
+        )
+    assert result == {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100}
+    assert "bitrate is not supported" in caplog.text
 
 
-# ==================== Content Type Mapping ====================
+def test_output_format_to_cartesia_dict_warns_on_pcm_bitrate(caplog):
+    """Cartesia logs warning when bitrate is set for pcm (unsupported)."""
+    import logging
 
-
-@pytest.mark.parametrize(
-    ("output_format", "expected_content_type"),
-    [
-        ("mp3_44100_128", "audio/mpeg"),
-        ("mp3", "audio/mpeg"),
-        ("wav_44100", "audio/wav"),
-        ("wav", "audio/wav"),
-        ("pcm_16000", "audio/pcm"),
-        ("pcm", "audio/pcm"),
-        (None, "audio/mpeg"),
-    ],
-)
-def test_output_format_to_content_type(output_format, expected_content_type):
-    assert _output_format_to_content_type(output_format) == expected_content_type
+    with caplog.at_level(logging.WARNING):
+        result = _output_format_to_cartesia_dict(
+            AudioOutputFormat(format="pcm", sample_rate=16000, bitrate=128)
+        )
+    assert result == {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 16000}
+    assert "bitrate is not supported" in caplog.text
 
 
 # ==================== TTS Request Conversion ====================
@@ -162,7 +173,7 @@ def test_convert_tts_request_full(handler, base_config):
     request = TTSRequest(
         text="Bonjour le monde",
         voice_id="test-voice-id",
-        output_format="wav_44100",
+        output_format=AudioOutputFormat(format="wav", sample_rate=44100),
         language_code="fr",
         extra_params={
             "generation_config": {"emotion": "happy", "speed": 1.2, "volume": 0.8},
@@ -216,7 +227,11 @@ def test_convert_tts_response(handler, base_config, tts_request):
 
 
 def test_convert_tts_response_wav_format(handler, base_config):
-    request = TTSRequest(text="test", voice_id="v1", output_format="wav_44100")
+    request = TTSRequest(
+        text="test",
+        voice_id="v1",
+        output_format=AudioOutputFormat(format="wav", sample_rate=44100),
+    )
     response = handler._convert_tts_response(
         base_config, request, "req-456", b"wav-data"
     )
@@ -283,7 +298,7 @@ def test_convert_sts_request_wav_format(handler):
     request = STSRequest(
         audio={"content": b"data", "content_type": "audio/wav"},
         voice_id="v1",
-        output_format="wav_44100",
+        output_format=AudioOutputFormat(format="wav", sample_rate=44100),
     )
     kwargs = handler._convert_sts_request(request)
 

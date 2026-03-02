@@ -32,6 +32,7 @@ from .exceptions import (
 from .models import (
     AspectRatio,
     AudioGenerationConfig,
+    AudioOutputFormat,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -47,6 +48,7 @@ from .models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
+    format_to_content_type,
 )
 
 __all__ = [
@@ -81,6 +83,8 @@ __all__ = [
     "Resolution",
     "AspectRatio",
     "ImageType",
+    "AudioOutputFormat",
+    "format_to_content_type",
     # Exceptions
     "TarashException",
     "ValidationError",

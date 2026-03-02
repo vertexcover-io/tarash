@@ -12,6 +12,7 @@ from tarash.tarash_gateway import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    AudioOutputFormat,
     STSRequest,
     TTSRequest,
     TTSResponse,
@@ -45,7 +46,7 @@ async def test_tts_async_multilingual(elevenlabs_api_key):
     request = TTSRequest(
         text="Hello, this is a test of the ElevenLabs multilingual TTS integration.",
         voice_id=RACHEL_VOICE_ID,
-        output_format="mp3_44100_128",
+        output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
         language_code="en",
         voice_settings={"stability": 0.5, "similarity_boost": 0.75},
     )
@@ -111,7 +112,7 @@ async def test_sts_async(elevenlabs_api_key):
     tts_request = TTSRequest(
         text="This audio will be converted to a different voice.",
         voice_id=RACHEL_VOICE_ID,
-        output_format="mp3_44100_128",
+        output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
     )
     tts_response = await generate_tts_async(tts_config, tts_request)
     source_audio_bytes = base64.b64decode(tts_response.audio)
@@ -125,7 +126,7 @@ async def test_sts_async(elevenlabs_api_key):
     sts_request = STSRequest(
         audio={"content": source_audio_bytes, "content_type": "audio/mpeg"},
         voice_id=RACHEL_VOICE_ID,
-        output_format="mp3_44100_128",
+        output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
     )
 
     response = await generate_sts_async(sts_config, sts_request)
