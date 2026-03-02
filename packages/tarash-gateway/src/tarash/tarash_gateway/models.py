@@ -520,9 +520,11 @@ class AudioGenerationConfig(BaseModel):
     """Configuration for a TTS or STS audio generation request."""
 
     model: str = Field(
-        description="Model identifier, e.g. 'eleven_multilingual_v2', 'eleven_flash_v2_5'."
+        description="Model identifier, e.g. 'eleven_multilingual_v2', 'sonic-3', 'fal-ai/minimax/speech-2.8-hd'."
     )
-    provider: str = Field(description="Provider identifier: 'elevenlabs'.")
+    provider: str = Field(
+        description="Provider identifier, e.g. 'elevenlabs', 'cartesia', 'fal'."
+    )
     api_key: str | None = Field(
         default=None,
         description="API key for authenticating with the provider.",
@@ -550,25 +552,16 @@ class TTSRequest(BaseModel):
     """Parameters for a text-to-speech request."""
 
     text: str = Field(description="Text to convert to speech.")
-    voice_id: str = Field(description="ElevenLabs voice ID.")
+    voice_id: str = Field(description="Voice identifier (provider-specific).")
     output_format: str = Field(
         default="mp3_44100_128", description="Audio output format."
     )
     language_code: str | None = Field(
-        default=None, description="ISO 639-1 language code."
+        default=None, description="Language hint for the provider."
     )
-    voice_settings: dict[str, float | bool] | None = Field(
+    voice_settings: dict[str, Any] | None = Field(
         default=None,
-        description="Voice settings: stability, similarity_boost, style, speed, use_speaker_boost.",
-    )
-    seed: int | None = Field(
-        default=None, description="Seed for reproducible generation."
-    )
-    previous_text: str | None = Field(
-        default=None, description="Context text before this segment for continuity."
-    )
-    next_text: str | None = Field(
-        default=None, description="Context text after this segment for continuity."
+        description="Provider-specific voice settings (e.g. stability, speed, emotion, pitch).",
     )
 
     # Model-specific parameters
@@ -596,19 +589,13 @@ class STSRequest(BaseModel):
     """Parameters for a speech-to-speech request."""
 
     audio: MediaType = Field(description="Input audio (bytes, URL, or MediaContent).")
-    voice_id: str = Field(description="Target voice ID.")
+    voice_id: str = Field(description="Voice identifier (provider-specific).")
     output_format: str = Field(
         default="mp3_44100_128", description="Audio output format."
     )
-    voice_settings: dict[str, float | bool] | None = Field(
+    voice_settings: dict[str, Any] | None = Field(
         default=None,
-        description="Voice settings: stability, similarity_boost, style, speed, use_speaker_boost.",
-    )
-    seed: int | None = Field(
-        default=None, description="Seed for reproducible generation."
-    )
-    remove_background_noise: bool = Field(
-        default=False, description="Remove background noise from input audio."
+        description="Provider-specific voice settings (e.g. stability, speed, emotion, pitch).",
     )
 
     # Model-specific parameters
