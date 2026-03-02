@@ -16,8 +16,12 @@ from tarash.tarash_gateway.models import (
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
+from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
 from tarash.tarash_gateway.providers.xai import (
+    XAI_VIDEO_FIELD_MAPPERS,
+    XAI_VIDEO_MODEL_REGISTRY,
     XaiProviderHandler,
+    get_xai_video_field_mappers,
     parse_xai_video_status,
 )
 
@@ -361,6 +365,102 @@ def test_generate_video_sync_success(handler, base_config, basic_request):
 
     assert response.status == "completed"
     assert response.video == "https://vidgen.x.ai/video.mp4"
+
+
+# ---- field mapper tests ----
+def test_video_field_mapper_registry_exact_match():
+    """Known model returns the correct field mappers."""
+    mappers = get_xai_video_field_mappers("grok-imagine-video")
+    assert mappers is XAI_VIDEO_FIELD_MAPPERS
+
+
+def test_video_field_mapper_registry_unknown_model_returns_fallback():
+    """Unknown model falls back to default field mappers."""
+    mappers = get_xai_video_field_mappers("unknown-model")
+    assert mappers is XAI_VIDEO_FIELD_MAPPERS
+
+
+def test_video_field_mapper_registry_has_expected_models():
+    """Registry contains expected model entries."""
+    assert "grok-imagine-video" in XAI_VIDEO_MODEL_REGISTRY
+
+
+def test_video_field_mappers_basic_request():
+    """Field mappers correctly convert a basic video request."""
+    request = VideoGenerationRequest(
+        prompt="A cat",
+        aspect_ratio="16:9",
+        duration_seconds=5,
+        resolution="720p",
+    )
+    result = apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+    assert result["prompt"] == "A cat"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["duration"] == 5
+    assert result["resolution"] == "720p"
+
+
+def test_video_field_mappers_duration_boundary_min():
+    """Duration of 1 second is valid."""
+    request = VideoGenerationRequest(prompt="test", duration_seconds=1)
+    result = apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+    assert result["duration"] == 1
+
+
+def test_video_field_mappers_duration_boundary_max():
+    """Duration of 15 seconds is valid."""
+    request = VideoGenerationRequest(prompt="test", duration_seconds=15)
+    result = apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+    assert result["duration"] == 15
+
+
+def test_video_field_mappers_duration_out_of_range_raises():
+    """Duration outside 1-15 raises ValidationError."""
+    request = VideoGenerationRequest(prompt="test", duration_seconds=20)
+    with pytest.raises(ValidationError, match="duration"):
+        apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+
+
+def test_video_field_mappers_duration_zero_raises():
+    """Duration of 0 raises ValidationError."""
+    request = VideoGenerationRequest(prompt="test", duration_seconds=0)
+    with pytest.raises(ValidationError, match="duration"):
+        apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+
+
+def test_video_field_mappers_resolution_480p():
+    """480p resolution is valid."""
+    request = VideoGenerationRequest(prompt="test", resolution="480p")
+    result = apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+    assert result["resolution"] == "480p"
+
+
+def test_video_field_mappers_invalid_resolution_raises():
+    """Invalid resolution raises ValidationError."""
+    request = VideoGenerationRequest(prompt="test", resolution="1080p")
+    with pytest.raises(ValidationError, match="resolution"):
+        apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+
+
+def test_video_field_mappers_optional_fields_excluded_when_none():
+    """Optional fields are excluded when not provided."""
+    request = VideoGenerationRequest(prompt="test")
+    result = apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+    assert "duration" not in result
+    assert "resolution" not in result
+    assert "aspect_ratio" not in result
+    assert "image_url" not in result
+    assert "video_url" not in result
+
+
+def test_video_field_mappers_video_url():
+    """Video URL field is converted correctly."""
+    request = VideoGenerationRequest(
+        prompt="Edit this",
+        video="https://example.com/source.mp4",
+    )
+    result = apply_field_mappers(XAI_VIDEO_FIELD_MAPPERS, request)
+    assert result["video_url"] == "https://example.com/source.mp4"
 
 
 # ---- registration tests ----

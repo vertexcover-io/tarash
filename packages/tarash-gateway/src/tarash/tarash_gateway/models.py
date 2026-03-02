@@ -564,7 +564,9 @@ class TTSRequest(BaseModel):
     """Parameters for a text-to-speech request."""
 
     text: str = Field(description="Text to convert to speech.")
-    voice_id: str = Field(description="Voice identifier (provider-specific).")
+    voice_id: str | None = Field(
+        default=None, description="Voice identifier (provider-specific)."
+    )
     output_format: AudioOutputFormat = Field(
         default_factory=lambda: AudioOutputFormat(
             format="mp3", sample_rate=44100, bitrate=128

@@ -7,6 +7,11 @@ import uuid
 from typing import Any, Literal
 
 from tarash.tarash_gateway.logging import log_info
+from tarash.tarash_gateway.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    passthrough_field_mapper,
+)
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     download_media_from_url_async,
@@ -47,8 +52,12 @@ def _generate_request_id() -> str:
     return uuid.uuid4().hex
 
 
-def _output_format_to_elevenlabs_string(output_format: AudioOutputFormat) -> str:
+def _output_format_to_elevenlabs_string(
+    _request: object, output_format: AudioOutputFormat
+) -> str:
     """Convert AudioOutputFormat to ElevenLabs SDK format string.
+
+    Also used directly as a FieldMapper converter (request, value) -> str.
 
     Examples:
         AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128) → "mp3_44100_128"
@@ -61,6 +70,39 @@ def _output_format_to_elevenlabs_string(output_format: AudioOutputFormat) -> str
     if output_format.bitrate is not None:
         parts.append(str(output_format.bitrate))
     return "_".join(parts)
+
+
+def _json_encode_voice_settings(_request: object, value: object) -> str | None:
+    """JSON-encode voice_settings for STS multipart form."""
+    if not value:
+        return None
+    return json.dumps(value)
+
+
+ELEVENLABS_TTS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "voice_id": passthrough_field_mapper("voice_id", required=True),
+    "text": passthrough_field_mapper("text", required=True),
+    "output_format": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_elevenlabs_string,
+    ),
+    # SDK accepts VoiceSettings object/dict directly
+    "voice_settings": passthrough_field_mapper("voice_settings"),
+    "language_code": passthrough_field_mapper("language_code"),
+}
+
+ELEVENLABS_STS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "voice_id": passthrough_field_mapper("voice_id", required=True),
+    "output_format": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_elevenlabs_string,
+    ),
+    # STS multipart form requires JSON-encoded string
+    "voice_settings": FieldMapper(
+        source_field="voice_settings",
+        converter=_json_encode_voice_settings,
+    ),
+}
 
 
 class ElevenLabsProviderHandler:
@@ -80,9 +122,13 @@ class ElevenLabsProviderHandler:
 
         Fresh client each call to avoid event loop issues with async client.
         """
-        kwargs: dict[str, Any] = {}
-        if config.api_key:
-            kwargs["api_key"] = config.api_key
+        if not config.api_key:
+            raise ValidationError(
+                "api_key is required for ElevenLabs provider",
+                provider=config.provider,
+                model=config.model,
+            )
+        kwargs: dict[str, Any] = {"api_key": config.api_key}
         kwargs["timeout"] = config.timeout
 
         if client_type == "async":
@@ -93,59 +139,41 @@ class ElevenLabsProviderHandler:
         self, config: AudioGenerationConfig, request: TTSRequest
     ) -> dict[str, Any]:
         """Convert TTSRequest to ElevenLabs SDK kwargs."""
-        kwargs: dict[str, Any] = {
-            "voice_id": request.voice_id,
-            "text": request.text,
-            "model_id": config.model,
-        }
-
-        kwargs["output_format"] = _output_format_to_elevenlabs_string(
-            request.output_format
-        )
-
-        if request.voice_settings:
-            kwargs["voice_settings"] = request.voice_settings
-
-        if request.language_code:
-            kwargs["language_code"] = request.language_code
-
+        kwargs = apply_field_mappers(ELEVENLABS_TTS_FIELD_MAPPERS, request)
+        kwargs["model_id"] = config.model
         kwargs.update(request.extra_params)
-
         return kwargs
 
     @staticmethod
-    def _resolve_audio_bytes(audio: Any) -> io.BytesIO:
-        """Convert MediaType audio input to BytesIO for the SDK (sync).
+    def _resolve_audio_local(audio: Any) -> io.BytesIO | None:
+        """Resolve audio from local sources (dict, base64, raw bytes).
 
-        Handles MediaContent (dict with content bytes), base64 strings, and URLs.
+        Returns None for URLs, which require sync/async download handling.
         """
         if isinstance(audio, dict) and "content" in audio:
             return io.BytesIO(audio["content"])  # type: ignore[index]
         if isinstance(audio, str):
-            if audio.startswith("http://") or audio.startswith("https://"):
-                content, _ = download_media_from_url(audio, provider="elevenlabs")
-                return io.BytesIO(content)
+            if audio.startswith(("http://", "https://")):
+                return None
             # Base64 string
             return io.BytesIO(base64.b64decode(audio))
         return io.BytesIO(audio)  # type: ignore[arg-type]
 
-    @staticmethod
-    async def _resolve_audio_bytes_async(audio: Any) -> io.BytesIO:
-        """Convert MediaType audio input to BytesIO for the SDK (async).
+    def _resolve_audio_bytes(self, audio: Any) -> io.BytesIO:
+        """Convert MediaType audio input to BytesIO for the SDK (sync)."""
+        result = self._resolve_audio_local(audio)
+        if result is not None:
+            return result
+        content, _ = download_media_from_url(audio, provider="elevenlabs")
+        return io.BytesIO(content)
 
-        Handles MediaContent (dict with content bytes), base64 strings, and URLs.
-        """
-        if isinstance(audio, dict) and "content" in audio:
-            return io.BytesIO(audio["content"])  # type: ignore[index]
-        if isinstance(audio, str):
-            if audio.startswith("http://") or audio.startswith("https://"):
-                content, _ = await download_media_from_url_async(
-                    audio, provider="elevenlabs"
-                )
-                return io.BytesIO(content)
-            # Base64 string
-            return io.BytesIO(base64.b64decode(audio))
-        return io.BytesIO(audio)  # type: ignore[arg-type]
+    async def _resolve_audio_bytes_async(self, audio: Any) -> io.BytesIO:
+        """Convert MediaType audio input to BytesIO for the SDK (async)."""
+        result = self._resolve_audio_local(audio)
+        if result is not None:
+            return result
+        content, _ = await download_media_from_url_async(audio, provider="elevenlabs")
+        return io.BytesIO(content)
 
     def _convert_sts_request(
         self, config: AudioGenerationConfig, request: STSRequest
@@ -155,21 +183,9 @@ class ElevenLabsProviderHandler:
         Audio is resolved separately via _resolve_audio_bytes / _resolve_audio_bytes_async
         because URL downloads require sync/async handling.
         """
-        kwargs: dict[str, Any] = {
-            "voice_id": request.voice_id,
-        }
-
+        kwargs = apply_field_mappers(ELEVENLABS_STS_FIELD_MAPPERS, request)
         kwargs["model_id"] = config.model
-
-        kwargs["output_format"] = _output_format_to_elevenlabs_string(
-            request.output_format
-        )
-
-        if request.voice_settings:
-            kwargs["voice_settings"] = json.dumps(request.voice_settings)
-
         kwargs.update(request.extra_params)
-
         return kwargs
 
     def _convert_tts_response(
@@ -298,10 +314,7 @@ class ElevenLabsProviderHandler:
                 request_id=request_id,
             )
 
-        if isinstance(ex, TimeoutError):
-            return ex
-
-        if isinstance(ex, (TimeoutError, OSError)) and "timed out" in str(ex).lower():
+        if isinstance(ex, OSError) and "timed out" in str(ex).lower():
             return TimeoutError(
                 f"Request timed out: {ex}",
                 provider=provider,

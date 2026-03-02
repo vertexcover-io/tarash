@@ -6,8 +6,14 @@ from typing import Any, Literal
 import httpx
 
 from tarash.tarash_gateway.logging import log_info
+from tarash.tarash_gateway.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    passthrough_field_mapper,
+)
 from tarash.tarash_gateway.exceptions import (
     ContentModerationError,
+    GenerationFailedError,
     HTTPConnectionError,
     HTTPError,
     TarashException,
@@ -40,6 +46,37 @@ def _generate_request_id() -> str:
     return uuid.uuid4().hex
 
 
+def _sarvam_codec_converter(_request: TTSRequest, value: object) -> str | None:
+    """Extract audio codec from AudioOutputFormat."""
+    if value is None:
+        return None
+    fmt = value.format  # type: ignore[union-attr]
+    return fmt if fmt else None
+
+
+def _sarvam_sample_rate_converter(_request: TTSRequest, value: object) -> int:
+    """Extract sample rate from AudioOutputFormat, defaulting to 24000."""
+    if value is None:
+        return _DEFAULT_SAMPLE_RATE
+    sr = value.sample_rate  # type: ignore[union-attr]
+    return sr if sr is not None else _DEFAULT_SAMPLE_RATE
+
+
+SARVAM_TTS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "text": passthrough_field_mapper("text", required=True),
+    "target_language_code": passthrough_field_mapper("language_code", required=True),
+    "speaker": passthrough_field_mapper("voice_id"),
+    "output_audio_codec": FieldMapper(
+        source_field="output_format",
+        converter=_sarvam_codec_converter,
+    ),
+    "speech_sample_rate": FieldMapper(
+        source_field="output_format",
+        converter=_sarvam_sample_rate_converter,
+    ),
+}
+
+
 class SarvamProviderHandler:
     """Handler for Sarvam AI TTS audio generation.
 
@@ -66,41 +103,33 @@ class SarvamProviderHandler:
             )
 
         if client_type == "async":
-            return AsyncSarvamAI(api_subscription_key=config.api_key)
-        return SarvamAI(api_subscription_key=config.api_key)
+            return AsyncSarvamAI(
+                api_subscription_key=config.api_key, timeout=config.timeout
+            )
+        return SarvamAI(api_subscription_key=config.api_key, timeout=config.timeout)
 
-    def _validate_request(self, request: TTSRequest) -> None:
+    def _validate_request(
+        self, config: AudioGenerationConfig, request: TTSRequest
+    ) -> None:
         """Validate TTS request for Sarvam-specific requirements."""
         if not request.language_code:
             raise ValidationError(
                 "language_code is required for Sarvam provider. "
                 "Sarvam requires target_language_code (e.g. 'hi-IN', 'en-IN', 'ta-IN').",
-                provider="sarvam",
+                provider=config.provider,
+                model=config.model,
             )
 
     def _convert_tts_request(
         self, config: AudioGenerationConfig, request: TTSRequest
     ) -> dict[str, Any]:
         """Convert TTSRequest to Sarvam SDK kwargs."""
-        kwargs: dict[str, Any] = {
-            "text": request.text,
-            "target_language_code": request.language_code,
-            "speaker": request.voice_id,
-            "model": config.model,
-        }
-
-        # Output format
-        if request.output_format.format:
-            kwargs["output_audio_codec"] = request.output_format.format
-        sample_rate = request.output_format.sample_rate or _DEFAULT_SAMPLE_RATE
-        kwargs["speech_sample_rate"] = sample_rate
-
+        kwargs = apply_field_mappers(SARVAM_TTS_FIELD_MAPPERS, request)
+        kwargs["model"] = config.model
+        # voice_settings merged first; extra_params can override if needed
         if request.voice_settings:
             kwargs.update(request.voice_settings)
-
-        # Merge extra_params
         kwargs.update(request.extra_params)
-
         return kwargs
 
     def _convert_tts_response(
@@ -111,6 +140,13 @@ class SarvamProviderHandler:
         sarvam_result: Any,
     ) -> TTSResponse:
         """Convert Sarvam response to TTSResponse."""
+        if not getattr(sarvam_result, "audios", None):
+            raise GenerationFailedError(
+                "Sarvam returned empty audio response",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+            )
         audio_b64 = sarvam_result.audios[0]
         content_type = format_to_content_type(request.output_format.format)
 
@@ -125,15 +161,17 @@ class SarvamProviderHandler:
             status="completed",
             raw_response={
                 "model": config.model,
-                "speaker": request.voice_id,
+                "voice_id": request.voice_id,
                 "target_language_code": request.language_code,
                 "output_audio_codec": request.output_format.format,
+                "audio_b64_length": len(audio_b64),
             },
         )
 
     def _handle_error(
         self,
         config: AudioGenerationConfig,
+        request: TTSRequest,
         request_id: str,
         ex: Exception,
     ) -> TarashException:
@@ -235,7 +273,7 @@ class SarvamProviderHandler:
         | None = None,  # Unused: Sarvam returns complete audio in a single response
     ) -> TTSResponse:
         """Generate speech from text asynchronously."""
-        self._validate_request(request)
+        self._validate_request(config, request)
         client = self._get_client(config, "async")
         kwargs = self._convert_tts_request(config, request)
         request_id = _generate_request_id()
@@ -244,7 +282,7 @@ class SarvamProviderHandler:
             "Starting TTS generation (async)",
             context={
                 "model": config.model,
-                "speaker": request.voice_id,
+                "voice_id": request.voice_id,
                 "text_length": len(request.text),
                 "language_code": request.language_code,
                 "request_id": request_id,
@@ -265,7 +303,7 @@ class SarvamProviderHandler:
         except (TarashException, Exception) as ex:
             if isinstance(ex, TarashException):
                 raise
-            raise self._handle_error(config, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex)
 
     @handle_audio_generation_errors
     def generate_tts(
@@ -276,7 +314,7 @@ class SarvamProviderHandler:
         | None = None,  # Unused: Sarvam returns complete audio in a single response
     ) -> TTSResponse:
         """Generate speech from text synchronously."""
-        self._validate_request(request)
+        self._validate_request(config, request)
         client = self._get_client(config, "sync")
         kwargs = self._convert_tts_request(config, request)
         request_id = _generate_request_id()
@@ -285,7 +323,7 @@ class SarvamProviderHandler:
             "Starting TTS generation (sync)",
             context={
                 "model": config.model,
-                "speaker": request.voice_id,
+                "voice_id": request.voice_id,
                 "text_length": len(request.text),
                 "language_code": request.language_code,
                 "request_id": request_id,
@@ -306,4 +344,4 @@ class SarvamProviderHandler:
         except (TarashException, Exception) as ex:
             if isinstance(ex, TarashException):
                 raise
-            raise self._handle_error(config, request_id, ex)
+            raise self._handle_error(config, request, request_id, ex)

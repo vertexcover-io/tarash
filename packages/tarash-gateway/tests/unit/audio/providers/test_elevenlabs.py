@@ -122,7 +122,7 @@ def test_format_to_content_type(fmt, expected_content_type):
 )
 def test_output_format_to_elevenlabs_string(output_format, expected_string):
     """AudioOutputFormat converts to ElevenLabs SDK format string."""
-    assert _output_format_to_elevenlabs_string(output_format) == expected_string
+    assert _output_format_to_elevenlabs_string(None, output_format) == expected_string
 
 
 # ==================== TTS Request Conversion ====================
@@ -565,11 +565,10 @@ def test_get_client_async(handler, base_config):
 
 
 def test_get_client_no_api_key(handler):
-    """Client creation works without api_key."""
+    """Client creation raises ValidationError without api_key."""
     config = AudioGenerationConfig(
         model="model",
         provider="elevenlabs",
     )
-    with patch("tarash.tarash_gateway.providers.elevenlabs.ElevenLabs") as mock_cls:
+    with pytest.raises(ValidationError, match="api_key is required"):
         handler._get_client(config, "sync")
-        mock_cls.assert_called_once_with(timeout=240)

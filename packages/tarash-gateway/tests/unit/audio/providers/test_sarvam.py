@@ -89,13 +89,17 @@ def _make_sarvam_api_error(status_code, message="error"):
 def test_get_client_sync(handler, base_config):
     with patch("tarash.tarash_gateway.providers.sarvam.SarvamAI") as mock_cls:
         handler._get_client(base_config, "sync")
-        mock_cls.assert_called_once_with(api_subscription_key="test-api-key")
+        mock_cls.assert_called_once_with(
+            api_subscription_key="test-api-key", timeout=240
+        )
 
 
 def test_get_client_async(handler, base_config):
     with patch("tarash.tarash_gateway.providers.sarvam.AsyncSarvamAI") as mock_cls:
         handler._get_client(base_config, "async")
-        mock_cls.assert_called_once_with(api_subscription_key="test-api-key")
+        mock_cls.assert_called_once_with(
+            api_subscription_key="test-api-key", timeout=240
+        )
 
 
 # ==================== Request Conversion ====================
@@ -162,6 +166,8 @@ def test_convert_tts_response_basic(handler, base_config, tts_request):
     assert response.request_id == "sarvam-123"  # uses Sarvam's ID
     assert response.content_type == "audio/mpeg"
     assert response.status == "completed"
+    assert response.raw_response["voice_id"] == "shubh"
+    assert response.raw_response["audio_b64_length"] == len("dGVzdA==")
 
 
 def test_convert_tts_response_fallback_request_id(handler, base_config, tts_request):

@@ -6,6 +6,11 @@ import uuid
 from typing import Any, Literal
 
 from tarash.tarash_gateway.logging import log_info, log_warning
+from tarash.tarash_gateway.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    passthrough_field_mapper,
+)
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     download_media_from_url_async,
@@ -61,7 +66,9 @@ _DEFAULT_BIT_RATE = 128000
 _DEFAULT_ENCODING = "pcm_s16le"
 
 
-def _output_format_to_cartesia_dict(output_format: AudioOutputFormat) -> dict[str, Any]:
+def _output_format_to_cartesia_dict(
+    _request: object, output_format: AudioOutputFormat
+) -> dict[str, Any]:
     """Convert AudioOutputFormat to Cartesia structured dict.
 
     Maps format -> container (with pcm -> raw), adds encoding for wav/pcm,
@@ -87,6 +94,73 @@ def _output_format_to_cartesia_dict(output_format: AudioOutputFormat) -> dict[st
         result["bit_rate"] = _DEFAULT_BIT_RATE
 
     return result
+
+
+def _cartesia_voice_converter(
+    _request: TTSRequest, value: object
+) -> dict[str, str] | None:
+    """Convert voice_id to Cartesia voice spec dict."""
+    if value is None:
+        return None
+    return {"mode": "id", "id": str(value)}
+
+
+def _sts_bit_rate_converter(_request: STSRequest, output_format: object) -> int | None:
+    """Extract bit_rate for STS flat params, returning None when not applicable."""
+    if not isinstance(output_format, AudioOutputFormat):
+        return None
+    fmt = output_format.format
+    if fmt in ("wav", "pcm"):
+        if output_format.bitrate is not None:
+            log_warning(
+                f"Cartesia: bitrate is not supported for '{fmt}' format, ignoring",
+                logger_name=_LOGGER_NAME,
+            )
+        return None
+    if output_format.bitrate is not None:
+        return output_format.bitrate * 1000
+    return _DEFAULT_BIT_RATE
+
+
+CARTESIA_TTS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "transcript": passthrough_field_mapper("text", required=True),
+    "voice": FieldMapper(
+        source_field="voice_id",
+        converter=_cartesia_voice_converter,
+        required=True,
+    ),
+    "output_format": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_cartesia_dict,
+    ),
+    "language": passthrough_field_mapper("language_code"),
+}
+
+CARTESIA_STS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "voice_id": passthrough_field_mapper("voice_id", required=True),
+    "output_format_container": FieldMapper(
+        source_field="output_format",
+        converter=lambda _req, val: ("raw" if val.format == "pcm" else val.format)
+        if isinstance(val, AudioOutputFormat)
+        else None,
+    ),
+    "output_format_sample_rate": FieldMapper(
+        source_field="output_format",
+        converter=lambda _req, val: (val.sample_rate or _DEFAULT_SAMPLE_RATE)
+        if isinstance(val, AudioOutputFormat)
+        else _DEFAULT_SAMPLE_RATE,
+    ),
+    "output_format_encoding": FieldMapper(
+        source_field="output_format",
+        converter=lambda _req, val: _DEFAULT_ENCODING
+        if isinstance(val, AudioOutputFormat) and val.format in ("wav", "pcm")
+        else None,
+    ),
+    "output_format_bit_rate": FieldMapper(
+        source_field="output_format",
+        converter=_sts_bit_rate_converter,
+    ),
+}
 
 
 class CartesiaProviderHandler:
@@ -119,19 +193,9 @@ class CartesiaProviderHandler:
         self, config: AudioGenerationConfig, request: TTSRequest
     ) -> dict[str, Any]:
         """Convert TTSRequest to Cartesia SDK kwargs."""
-        kwargs: dict[str, Any] = {
-            "transcript": request.text,
-            "voice": {"mode": "id", "id": request.voice_id},
-            "model_id": config.model,
-            "output_format": _output_format_to_cartesia_dict(request.output_format),
-        }
-
-        if request.language_code:
-            kwargs["language"] = request.language_code
-
-        # Merge extra_params (generation_config, pronunciation_dict_id, etc.)
+        kwargs = apply_field_mappers(CARTESIA_TTS_FIELD_MAPPERS, request)
+        kwargs["model_id"] = config.model
         kwargs.update(request.extra_params)
-
         return kwargs
 
     def _convert_tts_response(
@@ -193,23 +257,11 @@ class CartesiaProviderHandler:
         """Convert STSRequest to Cartesia Voice Changer SDK kwargs (without clip).
 
         Clip (audio) is resolved separately via _resolve_audio_bytes / _resolve_audio_bytes_async.
-        Voice Changer uses flat parameters, not nested output_format dict.
+        Voice Changer uses flat output_format_* parameters — multiple FieldMappers
+        share the same source_field="output_format" to fan out into separate API keys.
         """
-        parsed_format = _output_format_to_cartesia_dict(request.output_format)
-
-        kwargs: dict[str, Any] = {
-            "voice_id": request.voice_id,
-            "output_format_container": parsed_format["container"],
-            "output_format_sample_rate": parsed_format["sample_rate"],
-        }
-
-        if "encoding" in parsed_format:
-            kwargs["output_format_encoding"] = parsed_format["encoding"]
-        if "bit_rate" in parsed_format:
-            kwargs["output_format_bit_rate"] = parsed_format["bit_rate"]
-
+        kwargs = apply_field_mappers(CARTESIA_STS_FIELD_MAPPERS, request)
         kwargs.update(request.extra_params)
-
         return kwargs
 
     def _convert_sts_response(

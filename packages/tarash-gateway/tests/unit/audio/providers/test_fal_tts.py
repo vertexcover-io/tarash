@@ -78,7 +78,7 @@ def tts_request():
     ],
 )
 def test_output_format_to_fal_audio_setting(output_format, expected):
-    assert _output_format_to_fal_audio_setting(output_format) == expected
+    assert _output_format_to_fal_audio_setting(None, output_format) == expected
 
 
 # ==================== TTS Request Conversion ====================
@@ -86,7 +86,7 @@ def test_output_format_to_fal_audio_setting(output_format, expected):
 
 def test_convert_tts_request_minimal(handler, base_config, tts_request):
     """Minimal TTS request with just text and voice_id."""
-    kwargs = handler._convert_tts_request(tts_request)
+    kwargs = handler._convert_tts_request(base_config, tts_request)
 
     assert kwargs["prompt"] == "Hello world"
     assert kwargs["voice_setting"] == {"voice_id": "Wise_Woman"}
@@ -118,7 +118,7 @@ def test_convert_tts_request_full(handler, base_config):
             "pronunciation_dict": {"tone_list": ["hello/(heh-loh)"]},
         },
     )
-    kwargs = handler._convert_tts_request(request)
+    kwargs = handler._convert_tts_request(base_config, request)
 
     assert kwargs["prompt"] == "Bonjour le monde"
     assert kwargs["voice_setting"] == {
@@ -142,7 +142,7 @@ def test_convert_tts_request_extra_params_override(handler, base_config):
         voice_id="v1",
         extra_params={"language_boost": "fr", "output_format": "hex"},
     )
-    kwargs = handler._convert_tts_request(request)
+    kwargs = handler._convert_tts_request(base_config, request)
     # extra_params can override computed fields
     assert kwargs["language_boost"] == "fr"
     # output_format is forced to "url" after extra_params merge (download logic depends on it)
@@ -157,7 +157,7 @@ def test_convert_tts_request_extra_params_override_audio_setting(handler, base_c
         output_format=AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128),
         extra_params={"audio_setting": {"format": "wav", "channel": 2}},
     )
-    kwargs = handler._convert_tts_request(request)
+    kwargs = handler._convert_tts_request(base_config, request)
     # extra_params override replaces computed audio_setting
     assert kwargs["audio_setting"] == {"format": "wav", "channel": 2}
 
@@ -173,7 +173,7 @@ def test_convert_tts_response_with_duration(handler, base_config, tts_request):
         "duration_ms": 2500,
     }
     response = handler._convert_tts_response(
-        tts_request, "req-123", fal_result, audio_bytes
+        base_config, tts_request, "req-123", fal_result, audio_bytes
     )
 
     assert isinstance(response, TTSResponse)
@@ -191,7 +191,7 @@ def test_convert_tts_response_without_duration(handler, base_config, tts_request
         "audio": {"url": "https://example.com/audio.mp3"},
     }
     response = handler._convert_tts_response(
-        tts_request, "req-456", fal_result, b"data"
+        base_config, tts_request, "req-456", fal_result, b"data"
     )
 
     assert response.duration is None
@@ -209,7 +209,7 @@ def test_convert_tts_response_flac_format(handler, base_config):
         "duration_ms": 1000,
     }
     response = handler._convert_tts_response(
-        request, "req-789", fal_result, b"flac-data"
+        base_config, request, "req-789", fal_result, b"flac-data"
     )
 
     assert response.content_type == "audio/flac"
@@ -505,3 +505,219 @@ async def test_generate_tts_async_with_progress(handler, base_config, tts_reques
     assert len(progress_updates) == 2
     assert progress_updates[0].status == "queued"
     assert progress_updates[1].status == "completed"
+
+
+# ==================== Qwen 3 TTS Tests ====================
+
+
+@pytest.fixture
+def qwen_tts_config():
+    return AudioGenerationConfig(
+        model="fal-ai/qwen-3-tts/text-to-speech/1.7b",
+        provider="fal",
+        api_key="test-api-key",
+        timeout=240,
+    )
+
+
+@pytest.fixture
+def qwen_voice_design_config():
+    return AudioGenerationConfig(
+        model="fal-ai/qwen-3-tts/voice-design/1.7b",
+        provider="fal",
+        api_key="test-api-key",
+        timeout=240,
+    )
+
+
+@pytest.fixture
+def qwen_tts_request():
+    return TTSRequest(text="Hello, how are you?", voice_id="Vivian")
+
+
+# ==================== Qwen TTS Request Conversion ====================
+
+
+def test_convert_qwen_tts_request_text_to_speech_minimal(
+    handler, qwen_tts_config, qwen_tts_request
+):
+    """Minimal Qwen text-to-speech request with text and voice."""
+    kwargs = handler._convert_tts_request(qwen_tts_config, qwen_tts_request)
+
+    assert kwargs["text"] == "Hello, how are you?"
+    assert kwargs["voice"] == "Vivian"
+    assert "prompt" not in kwargs
+    assert "voice_setting" not in kwargs
+    assert "audio_setting" not in kwargs
+    assert "output_format" not in kwargs
+
+
+def test_convert_qwen_tts_request_text_to_speech_full(handler, qwen_tts_config):
+    """Full Qwen text-to-speech request with language, voice_settings, and extra_params."""
+    request = TTSRequest(
+        text="Bonjour le monde",
+        voice_id="Serena",
+        language_code="French",
+        voice_settings={
+            "temperature": 0.7,
+            "top_k": 30,
+            "top_p": 0.9,
+            "repetition_penalty": 1.1,
+            "max_new_tokens": 500,
+        },
+        extra_params={
+            "speaker_voice_embedding_file_url": "https://example.com/embedding.safetensors",
+            "reference_text": "Sample reference text",
+            "subtalker_dosample": False,
+        },
+    )
+    kwargs = handler._convert_tts_request(qwen_tts_config, request)
+
+    assert kwargs["text"] == "Bonjour le monde"
+    assert kwargs["voice"] == "Serena"
+    assert kwargs["language"] == "French"
+    # voice_settings passed as individual fields
+    assert kwargs["temperature"] == 0.7
+    assert kwargs["top_k"] == 30
+    assert kwargs["top_p"] == 0.9
+    assert kwargs["repetition_penalty"] == 1.1
+    assert kwargs["max_new_tokens"] == 500
+    # extra_params merged
+    assert (
+        kwargs["speaker_voice_embedding_file_url"]
+        == "https://example.com/embedding.safetensors"
+    )
+    assert kwargs["reference_text"] == "Sample reference text"
+    assert kwargs["subtalker_dosample"] is False
+
+
+def test_convert_qwen_tts_request_voice_design(handler, qwen_voice_design_config):
+    """Qwen voice-design passes prompt via extra_params, no voice_id needed."""
+    request = TTSRequest(
+        text="The quick brown fox jumps over the lazy dog.",
+        language_code="English",
+        voice_settings={"temperature": 0.8},
+        extra_params={
+            "prompt": "Speak in an incredulous tone, but with a hint of panic."
+        },
+    )
+    kwargs = handler._convert_tts_request(qwen_voice_design_config, request)
+
+    assert kwargs["text"] == "The quick brown fox jumps over the lazy dog."
+    assert kwargs["prompt"] == "Speak in an incredulous tone, but with a hint of panic."
+    assert "voice" not in kwargs
+    assert kwargs["language"] == "English"
+    assert kwargs["temperature"] == 0.8
+
+
+def test_convert_qwen_tts_request_0_6b_variant(handler):
+    """Qwen 0.6b text-to-speech variant uses same conversion as 1.7b."""
+    config = AudioGenerationConfig(
+        model="fal-ai/qwen-3-tts/text-to-speech/0.6b",
+        provider="fal",
+        api_key="test-api-key",
+        timeout=240,
+    )
+    request = TTSRequest(text="Test", voice_id="Dylan")
+    kwargs = handler._convert_tts_request(config, request)
+
+    assert kwargs["text"] == "Test"
+    assert kwargs["voice"] == "Dylan"
+
+
+# ==================== Qwen TTS Response Conversion ====================
+
+
+def test_convert_qwen_tts_response_with_duration(
+    handler, qwen_tts_config, qwen_tts_request
+):
+    """Qwen response extracts duration from audio dict (in seconds)."""
+    audio_bytes = b"fake-audio-output"
+    fal_result = {
+        "audio": {
+            "url": "https://fal.ai/files/audio.mp3",
+            "content_type": "audio/mpeg",
+            "duration": 3.45,
+            "sample_rate": 24000,
+            "channels": 1,
+        },
+    }
+    response = handler._convert_tts_response(
+        qwen_tts_config, qwen_tts_request, "req-q1", fal_result, audio_bytes
+    )
+
+    assert isinstance(response, TTSResponse)
+    assert response.request_id == "req-q1"
+    assert response.audio == base64.b64encode(audio_bytes).decode("utf-8")
+    assert response.content_type == "audio/mpeg"
+    assert response.duration == 3.45
+    assert response.status == "completed"
+
+
+def test_convert_qwen_tts_response_without_duration(
+    handler, qwen_tts_config, qwen_tts_request
+):
+    """Qwen response without duration in audio dict has None duration."""
+    fal_result = {
+        "audio": {
+            "url": "https://fal.ai/files/audio.mp3",
+        },
+    }
+    response = handler._convert_tts_response(
+        qwen_tts_config, qwen_tts_request, "req-q2", fal_result, b"data"
+    )
+
+    assert response.duration is None
+
+
+# ==================== Qwen Integration Tests (Mocked SDK) ====================
+
+
+@pytest.mark.asyncio
+async def test_qwen_tts_async_success(handler, qwen_tts_config, qwen_tts_request):
+    """Async Qwen TTS generation with mocked Fal client."""
+    from fal_client import Completed
+
+    mock_handle = AsyncMock()
+    mock_handle.request_id = "fal-qwen-123"
+
+    completed = Completed(metrics={}, logs=[])
+
+    async def mock_iter_events(**kwargs):
+        yield completed
+
+    mock_handle.iter_events = mock_iter_events
+    mock_handle.get = AsyncMock(
+        return_value={
+            "audio": {
+                "url": "https://fal.ai/files/qwen-audio.mp3",
+                "content_type": "audio/mpeg",
+                "duration": 2.1,
+                "sample_rate": 24000,
+                "channels": 1,
+            },
+        }
+    )
+
+    mock_client = AsyncMock()
+    mock_client.submit = AsyncMock(return_value=mock_handle)
+
+    with (
+        patch.object(handler, "_get_client", return_value=mock_client),
+        patch(
+            "tarash.tarash_gateway.providers.fal.download_media_from_url_async",
+            return_value=(b"qwen-audio-bytes", "audio/mpeg"),
+        ) as mock_download,
+    ):
+        response = await handler.generate_tts_async(qwen_tts_config, qwen_tts_request)
+
+    assert isinstance(response, TTSResponse)
+    assert response.request_id == "fal-qwen-123"
+    assert response.status == "completed"
+    assert response.content_type == "audio/mpeg"
+    assert response.duration == 2.1
+    assert response.audio == base64.b64encode(b"qwen-audio-bytes").decode("utf-8")
+
+    mock_download.assert_called_once_with(
+        "https://fal.ai/files/qwen-audio.mp3", provider="fal"
+    )

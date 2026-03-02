@@ -124,7 +124,7 @@ def test_generate_request_id_unique():
     ],
 )
 def test_output_format_to_cartesia_dict(output_format, expected):
-    assert _output_format_to_cartesia_dict(output_format) == expected
+    assert _output_format_to_cartesia_dict(None, output_format) == expected
 
 
 def test_output_format_to_cartesia_dict_warns_on_wav_bitrate(caplog):
@@ -133,7 +133,7 @@ def test_output_format_to_cartesia_dict_warns_on_wav_bitrate(caplog):
 
     with caplog.at_level(logging.WARNING):
         result = _output_format_to_cartesia_dict(
-            AudioOutputFormat(format="wav", sample_rate=44100, bitrate=128)
+            None, AudioOutputFormat(format="wav", sample_rate=44100, bitrate=128)
         )
     assert result == {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100}
     assert "bitrate is not supported" in caplog.text
@@ -145,7 +145,7 @@ def test_output_format_to_cartesia_dict_warns_on_pcm_bitrate(caplog):
 
     with caplog.at_level(logging.WARNING):
         result = _output_format_to_cartesia_dict(
-            AudioOutputFormat(format="pcm", sample_rate=16000, bitrate=128)
+            None, AudioOutputFormat(format="pcm", sample_rate=16000, bitrate=128)
         )
     assert result == {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 16000}
     assert "bitrate is not supported" in caplog.text

@@ -945,6 +945,86 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
         raise ValueError(f"Unknown status: {status}")
 
 
+def _output_format_to_fal_audio_setting(
+    _request: object, output_format: AudioOutputFormat
+) -> dict[str, Any]:
+    """Convert AudioOutputFormat to Fal minimax audio_setting dict.
+
+    Also used directly as a FieldMapper converter (request, value) -> dict.
+
+    Examples:
+        AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128) -> {"format": "mp3", "sample_rate": 44100, "bitrate": 128000}
+        AudioOutputFormat(format="mp3") -> {"format": "mp3"}
+        AudioOutputFormat(format="pcm", sample_rate=16000) -> {"format": "pcm", "sample_rate": 16000}
+    """
+    result = output_format.model_dump(exclude_none=True)
+    if "bitrate" in result:
+        result["bitrate"] *= 1000
+    return result
+
+
+# ==================== TTS Field Mappers ====================
+
+
+def _minimax_voice_converter(request: TTSRequest, value: object) -> dict[str, Any]:
+    """Build MiniMax voice_setting from voice_id + voice_settings."""
+    voice_setting: dict[str, Any] = {"voice_id": value}
+    if request.voice_settings:
+        voice_setting.update(request.voice_settings)
+    return voice_setting
+
+
+FAL_TTS_MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Required field
+    "prompt": passthrough_field_mapper("text", required=True),
+    # Voice configuration
+    "voice_setting": FieldMapper(
+        source_field="voice_id",
+        converter=_minimax_voice_converter,
+    ),
+    # Audio configuration
+    "audio_setting": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_fal_audio_setting,
+    ),
+    # Language setting
+    "language_boost": passthrough_field_mapper("language_code"),
+    # Additional parameters (via extra_params)
+    "normalization_setting": extra_params_field_mapper("normalization_setting"),
+    "voice_modify": extra_params_field_mapper("voice_modify"),
+    "pronunciation_dict": extra_params_field_mapper("pronunciation_dict"),
+    "output_format": extra_params_field_mapper("output_format"),
+}
+
+FAL_TTS_QWEN_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Required field
+    "text": passthrough_field_mapper("text", required=True),
+    # Voice selection
+    "voice": passthrough_field_mapper("voice_id"),
+    # Voice style guidance (optional)
+    "prompt": passthrough_field_mapper("prompt", required=False),
+    # Language setting
+    "language": passthrough_field_mapper("language_code"),
+    # Sampling parameters (via extra_params)
+    "top_k": extra_params_field_mapper("top_k"),
+    "top_p": extra_params_field_mapper("top_p"),
+    "temperature": extra_params_field_mapper("temperature"),
+    "repetition_penalty": extra_params_field_mapper("repetition_penalty"),
+    # Sub-talker parameters (via extra_params)
+    "subtalker_dosample": extra_params_field_mapper("subtalker_dosample"),
+    "subtalker_top_k": extra_params_field_mapper("subtalker_top_k"),
+    "subtalker_top_p": extra_params_field_mapper("subtalker_top_p"),
+    "subtalker_temperature": extra_params_field_mapper("subtalker_temperature"),
+    # Token generation (via extra_params)
+    "max_new_tokens": extra_params_field_mapper("max_new_tokens"),
+}
+
+FAL_TTS_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    "fal-ai/minimax": FAL_TTS_MINIMAX_FIELD_MAPPERS,
+    "fal-ai/qwen-3-tts": FAL_TTS_QWEN_FIELD_MAPPERS,
+}
+
+
 # ==================== Provider Handler ====================
 
 
@@ -1669,45 +1749,35 @@ class FalProviderHandler:
 
     def _convert_tts_request(
         self,
+        config: AudioGenerationConfig,
         request: TTSRequest,
     ) -> dict[str, Any]:
         """Convert TTSRequest to Fal TTS API format.
 
-        Mapping:
-        - text → prompt
-        - voice_id → voice_setting.voice_id
-        - voice_settings → voice_setting.* (passed through as-is)
-        - output_format → audio_setting
-        - language_code → language_boost
-        - extra_params → merged directly (overrides any computed fields)
-        - output_format is forced to "url" after extra_params merge since
-          our download logic depends on receiving a URL back
+        Uses model registry to select the correct field mappers.
         """
-        payload: dict[str, Any] = {"prompt": request.text}
-
-        # Build voice_setting from voice_id + all voice_settings
-        voice_setting: dict[str, Any] = {"voice_id": request.voice_id}
-        if request.voice_settings:
-            voice_setting.update(request.voice_settings)
-        payload["voice_setting"] = voice_setting
-
-        payload["audio_setting"] = _output_format_to_fal_audio_setting(
-            request.output_format
+        mappers = get_field_mappers_from_registry(
+            config.model, FAL_TTS_MODEL_REGISTRY, FAL_TTS_MINIMAX_FIELD_MAPPERS
         )
+        kwargs = apply_field_mappers(mappers, request)
 
-        # Map language_code to language_boost
-        if request.language_code:
-            payload["language_boost"] = request.language_code
+        # Spread voice_settings as top-level kwargs only when the mappers
+        # don't already consume them (MiniMax nests them inside "voice_setting").
+        if request.voice_settings and "voice_setting" not in mappers:
+            kwargs.update(request.voice_settings)
 
-        payload.update(request.extra_params)
+        kwargs.update(request.extra_params)
 
-        # Force "url" output — our download logic depends on it
-        payload["output_format"] = "url"
+        # Models that return audio via URL (indicated by "audio_setting" mapper)
+        # need output_format forced to "url" — our download logic depends on it.
+        if "audio_setting" in mappers:
+            kwargs["output_format"] = "url"
 
-        return payload
+        return kwargs
 
     def _convert_tts_response(
         self,
+        config: AudioGenerationConfig,
         request: TTSRequest,
         request_id: str,
         fal_result: AnyDict,
@@ -1719,11 +1789,7 @@ class FalProviderHandler:
         # Determine content type from output_format
         content_type = format_to_content_type(request.output_format.format)
 
-        # Extract duration (Fal returns duration_ms in milliseconds)
-        duration: float | None = None
-        duration_ms = fal_result.get("duration_ms")
-        if duration_ms is not None:
-            duration = float(cast(int, duration_ms)) / 1000.0
+        duration = _extract_tts_duration(fal_result)
 
         return TTSResponse(
             request_id=request_id,
@@ -1846,7 +1912,7 @@ class FalProviderHandler:
         )
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
 
-        fal_kwargs = self._convert_tts_request(request)
+        fal_kwargs = self._convert_tts_request(config, request)
 
         logger.info(
             "Mapped TTS request to provider format",
@@ -1892,7 +1958,7 @@ class FalProviderHandler:
             )
 
             response = self._convert_tts_response(
-                request, request_id, fal_result, audio_bytes
+                config, request, request_id, fal_result, audio_bytes
             )
 
             logger.info(
@@ -1926,7 +1992,7 @@ class FalProviderHandler:
         )
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
 
-        fal_kwargs = self._convert_tts_request(request)
+        fal_kwargs = self._convert_tts_request(config, request)
 
         logger.info(
             "Mapped TTS request to provider format",
@@ -1968,7 +2034,7 @@ class FalProviderHandler:
             audio_bytes, _ = download_media_from_url(audio_url, provider="fal")
 
             response = self._convert_tts_response(
-                request, request_id, fal_result, audio_bytes
+                config, request, request_id, fal_result, audio_bytes
             )
 
             logger.info(
@@ -1984,23 +2050,34 @@ class FalProviderHandler:
             raise self._handle_tts_error(config, request_id, ex)
 
 
-# ==================== TTS Helper Functions ====================
+def _extract_tts_duration(fal_result: AnyDict) -> float | None:
+    """Extract audio duration in seconds from a Fal TTS response.
 
+    Probes known response locations in priority order:
+    1. ``audio.duration`` — seconds (e.g. Qwen)
+    2. ``duration_ms`` — milliseconds, converted to seconds (e.g. MiniMax)
+    3. ``duration`` — seconds, top-level fallback
 
-def _output_format_to_fal_audio_setting(
-    output_format: AudioOutputFormat,
-) -> dict[str, Any]:
-    """Convert AudioOutputFormat to Fal minimax audio_setting dict.
-
-    Examples:
-        AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128) -> {"format": "mp3", "sample_rate": 44100, "bitrate": 128000}
-        AudioOutputFormat(format="mp3") -> {"format": "mp3"}
-        AudioOutputFormat(format="pcm", sample_rate=16000) -> {"format": "pcm", "sample_rate": 16000}
+    Returns None if no duration field is found.
     """
-    result = output_format.model_dump(exclude_none=True)
-    if "bitrate" in result:
-        result["bitrate"] *= 1000
-    return result
+    # Nested inside audio dict (Qwen returns seconds here)
+    audio_info = fal_result.get("audio")
+    if isinstance(audio_info, dict):
+        dur = audio_info.get("duration")
+        if dur is not None:
+            return float(dur)
+
+    # Top-level milliseconds (MiniMax)
+    duration_ms = fal_result.get("duration_ms")
+    if duration_ms is not None:
+        return float(cast(int, duration_ms)) / 1000.0
+
+    # Top-level seconds (generic fallback)
+    duration = fal_result.get("duration")
+    if duration is not None:
+        return float(duration)
+
+    return None
 
 
 def _extract_tts_audio_url(fal_result: AnyDict) -> str:

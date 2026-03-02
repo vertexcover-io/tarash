@@ -10,7 +10,13 @@ from tarash.tarash_gateway.exceptions import (
     ValidationError,
 )
 from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
-from tarash.tarash_gateway.providers.xai import XaiProviderHandler
+from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+from tarash.tarash_gateway.providers.xai import (
+    XAI_IMAGE_FIELD_MAPPERS,
+    XAI_IMAGE_MODEL_REGISTRY,
+    XaiProviderHandler,
+    get_xai_image_field_mappers,
+)
 
 
 @pytest.fixture
@@ -50,6 +56,96 @@ def _make_xai_image_response(url=None, image=None, respect_moderation=True):
     resp.respect_moderation = respect_moderation
     resp.model = "grok-imagine-image"
     return resp
+
+
+# ---- field mapper tests ----
+
+
+def test_image_field_mapper_registry_exact_match():
+    """Known model returns the correct field mappers."""
+    mappers = get_xai_image_field_mappers("grok-imagine-image")
+    assert mappers is XAI_IMAGE_FIELD_MAPPERS
+
+
+def test_image_field_mapper_registry_grok_2_image():
+    """grok-2-image model is in registry."""
+    mappers = get_xai_image_field_mappers("grok-2-image")
+    assert mappers is XAI_IMAGE_FIELD_MAPPERS
+
+
+def test_image_field_mapper_registry_unknown_model_returns_fallback():
+    """Unknown model falls back to default field mappers."""
+    mappers = get_xai_image_field_mappers("unknown-model")
+    assert mappers is XAI_IMAGE_FIELD_MAPPERS
+
+
+def test_image_field_mapper_registry_has_expected_models():
+    """Registry contains expected model entries."""
+    assert "grok-imagine-image" in XAI_IMAGE_MODEL_REGISTRY
+    assert "grok-2-image" in XAI_IMAGE_MODEL_REGISTRY
+
+
+def test_image_field_mappers_basic_request():
+    """Field mappers correctly convert a basic image request."""
+    request = ImageGenerationRequest(
+        prompt="A sunset",
+        aspect_ratio="16:9",
+    )
+    result = apply_field_mappers(XAI_IMAGE_FIELD_MAPPERS, request)
+    assert result["prompt"] == "A sunset"
+    assert result["aspect_ratio"] == "16:9"
+
+
+def test_image_field_mappers_resolution_from_extra_params():
+    """Resolution is extracted from extra_params."""
+    request = ImageGenerationRequest(prompt="test", extra_params={"resolution": "2k"})
+    result = apply_field_mappers(XAI_IMAGE_FIELD_MAPPERS, request)
+    assert result["resolution"] == "2k"
+
+
+def test_image_field_mappers_invalid_resolution_raises():
+    """Invalid resolution raises ValidationError."""
+    request = ImageGenerationRequest(prompt="test", extra_params={"resolution": "720p"})
+    with pytest.raises(ValidationError, match="resolution"):
+        apply_field_mappers(XAI_IMAGE_FIELD_MAPPERS, request)
+
+
+def test_image_field_mappers_single_image_becomes_image_url():
+    """Single image in image_list maps to image_url."""
+    request = ImageGenerationRequest(
+        prompt="test",
+        image_list=[{"type": "reference", "image": "https://example.com/img.jpg"}],
+    )
+    result = apply_field_mappers(XAI_IMAGE_FIELD_MAPPERS, request)
+    assert result["image_url"] == "https://example.com/img.jpg"
+    assert "image_urls" not in result
+
+
+def test_image_field_mappers_multiple_images_becomes_image_urls():
+    """Multiple images in image_list map to image_urls."""
+    request = ImageGenerationRequest(
+        prompt="test",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/img1.jpg"},
+            {"type": "reference", "image": "https://example.com/img2.jpg"},
+        ],
+    )
+    result = apply_field_mappers(XAI_IMAGE_FIELD_MAPPERS, request)
+    assert "image_url" not in result
+    assert result["image_urls"] == [
+        "https://example.com/img1.jpg",
+        "https://example.com/img2.jpg",
+    ]
+
+
+def test_image_field_mappers_optional_fields_excluded_when_none():
+    """Optional fields are excluded when not provided."""
+    request = ImageGenerationRequest(prompt="test")
+    result = apply_field_mappers(XAI_IMAGE_FIELD_MAPPERS, request)
+    assert "resolution" not in result
+    assert "aspect_ratio" not in result
+    assert "image_url" not in result
+    assert "image_urls" not in result
 
 
 # ---- request conversion tests ----
