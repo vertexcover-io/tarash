@@ -76,6 +76,9 @@ from tarash.tarash_gateway.providers.elevenlabs import (
 from tarash.tarash_gateway.providers.cartesia import (
     CartesiaProviderHandler,
 )
+from tarash.tarash_gateway.providers.sarvam import (
+    SarvamProviderHandler,
+)
 
 # Backwards compatibility alias
 Veo3ProviderHandler = GoogleProviderHandler
@@ -145,4 +148,6 @@ __all__ = [
     "ElevenLabsProviderHandler",
     # Cartesia
     "CartesiaProviderHandler",
+    # Sarvam
+    "SarvamProviderHandler",
 ]

@@ -22,6 +22,7 @@ runway = ["runwayml>=3.0.0"]
 xai = ["xai-sdk>=1.0.0"]
 elevenlabs = ["elevenlabs>=1.0.0"]
 cartesia = ["cartesia>=1.0.0"]
+sarvam = ["sarvamai>=0.1.25"]
 all = [
     "fal-client>=0.4.0",
     "google-genai>=1.0.0",
@@ -32,6 +33,7 @@ all = [
     "xai-sdk>=1.0.0",
     "elevenlabs>=1.0.0",
     "cartesia>=1.0.0",
+    "sarvamai>=0.1.25",
 ]
 dev = [
     "pytest>=7.0.0",

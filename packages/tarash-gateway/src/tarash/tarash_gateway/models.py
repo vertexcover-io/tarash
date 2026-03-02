@@ -51,7 +51,10 @@ def format_to_content_type(format: str) -> str:
         "flac": "audio/flac",
         "opus": "audio/opus",
         "ulaw": "audio/basic",
+        "mulaw": "audio/basic",
         "alaw": "audio/basic",
+        "aac": "audio/aac",
+        "linear16": "audio/pcm",
     }.get(format, "audio/mpeg")
 
 

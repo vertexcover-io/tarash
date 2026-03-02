@@ -375,6 +375,8 @@ def test_handle_error_401_auth(handler, base_config, tts_request):
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 401
+    assert result.provider == "cartesia"
+    assert result.model == "sonic-3"
 
 
 def test_handle_error_403_moderation(handler, base_config, tts_request):
@@ -394,6 +396,8 @@ def test_handle_error_429_rate_limit(handler, base_config, tts_request):
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 429
+    assert result.provider == "cartesia"
+    assert result.model == "sonic-3"
 
 
 def test_handle_error_500_server(handler, base_config, tts_request):
@@ -401,6 +405,8 @@ def test_handle_error_500_server(handler, base_config, tts_request):
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 500
+    assert result.provider == "cartesia"
+    assert result.model == "sonic-3"
 
 
 def test_handle_error_connection_error(handler, base_config, tts_request):
@@ -412,6 +418,34 @@ def test_handle_error_connection_error(handler, base_config, tts_request):
 
 
 def test_handle_error_timeout(handler, base_config, tts_request):
+    from cartesia._exceptions import APITimeoutError as CartesiaTimeout
+
+    ex = CartesiaTimeout(request=MagicMock())
+    result = handler._handle_error(base_config, tts_request, "req-1", ex)
+    assert isinstance(result, TimeoutError)
+
+
+def test_handle_error_unknown_status_code(handler, base_config, tts_request):
+    """Unknown CartesiaAPIStatusError status code maps to generic HTTPError."""
+    import httpx
+    from cartesia._exceptions import APIStatusError as CartesiaAPIStatusError
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 502
+    mock_response.json.return_value = {"error": "Bad gateway"}
+    mock_response.headers = {}
+    mock_response.text = "Bad gateway"
+
+    ex = CartesiaAPIStatusError(
+        message="Bad gateway", response=mock_response, body={"error": "Bad gateway"}
+    )
+    result = handler._handle_error(base_config, tts_request, "req-1", ex)
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 502
+
+
+def test_handle_error_timeout_before_connection(handler, base_config, tts_request):
+    """CartesiaTimeoutError (subclass of CartesiaConnectionError) maps to TimeoutError."""
     from cartesia._exceptions import APITimeoutError as CartesiaTimeout
 
     ex = CartesiaTimeout(request=MagicMock())
@@ -445,6 +479,12 @@ def test_generate_tts_sync_success(handler, base_config, tts_request):
     assert response.content_type == "audio/mpeg"
     assert len(response.request_id) == 32
 
+    # Verify SDK was called with correct args
+    call_kwargs = mock_client.tts.generate.call_args.kwargs
+    assert call_kwargs["transcript"] == "Hello world"
+    assert call_kwargs["voice"] == {"mode": "id", "id": "test-voice-id"}
+    assert call_kwargs["model_id"] == "sonic-3"
+
 
 @pytest.mark.asyncio
 async def test_generate_tts_async_success(handler, base_config, tts_request):
@@ -465,6 +505,12 @@ async def test_generate_tts_async_success(handler, base_config, tts_request):
     assert response.status == "completed"
     expected_audio = base64.b64encode(b"async_chunk1async_chunk2").decode("utf-8")
     assert response.audio == expected_audio
+
+    # Verify SDK was called with correct args
+    call_kwargs = mock_client.tts.generate.call_args.kwargs
+    assert call_kwargs["transcript"] == "Hello world"
+    assert call_kwargs["voice"] == {"mode": "id", "id": "test-voice-id"}
+    assert call_kwargs["model_id"] == "sonic-3"
 
 
 @pytest.mark.asyncio
@@ -493,6 +539,13 @@ def test_generate_sts_sync_success(handler, base_config, sts_request):
     expected_audio = base64.b64encode(b"sts_chunk1sts_chunk2").decode("utf-8")
     assert response.audio == expected_audio
 
+    # Verify SDK was called with correct args
+    call_kwargs = mock_client.voice_changer.change_voice_bytes.call_args.kwargs
+    assert call_kwargs["voice_id"] == "test-voice-id"
+    assert call_kwargs["output_format_container"] == "mp3"
+    assert call_kwargs["output_format_sample_rate"] == 44100
+    assert "clip" in call_kwargs
+
 
 @pytest.mark.asyncio
 async def test_generate_sts_async_success(handler, base_config, sts_request):
@@ -511,6 +564,12 @@ async def test_generate_sts_async_success(handler, base_config, sts_request):
 
     assert isinstance(response, STSResponse)
     assert response.status == "completed"
+
+    # Verify SDK was called with correct args
+    call_kwargs = mock_client.voice_changer.change_voice_bytes.call_args.kwargs
+    assert call_kwargs["voice_id"] == "test-voice-id"
+    assert call_kwargs["output_format_container"] == "mp3"
+    assert "clip" in call_kwargs
 
 
 # ==================== Client Creation ====================

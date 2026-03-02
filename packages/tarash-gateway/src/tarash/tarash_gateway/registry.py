@@ -18,6 +18,7 @@ from tarash.tarash_gateway.providers import (
     OpenAIProviderHandler,
     ReplicateProviderHandler,
     RunwayProviderHandler,
+    SarvamProviderHandler,
     StabilityProviderHandler,
     XaiProviderHandler,
 )
@@ -90,6 +91,10 @@ def get_handler(
         elif provider == "cartesia":
             _HANDLER_INSTANCES[provider] = cast(
                 ProviderHandler, CartesiaProviderHandler()
+            )
+        elif provider == "sarvam":
+            _HANDLER_INSTANCES[provider] = cast(
+                ProviderHandler, SarvamProviderHandler()
             )
         else:
             log_error(

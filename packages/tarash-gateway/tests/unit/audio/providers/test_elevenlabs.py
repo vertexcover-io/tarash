@@ -10,6 +10,7 @@ from tarash.tarash_gateway.exceptions import (
     HTTPConnectionError,
     HTTPError,
     TarashException,
+    TimeoutError,
     ValidationError,
 )
 from tarash.tarash_gateway.models import (
@@ -347,6 +348,8 @@ def test_handle_error_401_auth(handler, base_config, tts_request):
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 401
+    assert result.provider == "elevenlabs"
+    assert result.model == "eleven_multilingual_v2"
 
 
 def test_handle_error_403_moderation(handler, base_config, tts_request):
@@ -369,6 +372,8 @@ def test_handle_error_429_rate_limit(handler, base_config, tts_request):
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 429
+    assert result.provider == "elevenlabs"
+    assert result.model == "eleven_multilingual_v2"
 
 
 def test_handle_error_500_server(handler, base_config, tts_request):
@@ -377,6 +382,8 @@ def test_handle_error_500_server(handler, base_config, tts_request):
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPError)
     assert result.status_code == 500
+    assert result.provider == "elevenlabs"
+    assert result.model == "eleven_multilingual_v2"
 
 
 def test_handle_error_connection_error(handler, base_config, tts_request):
@@ -384,6 +391,23 @@ def test_handle_error_connection_error(handler, base_config, tts_request):
     ex = ConnectionError("Connection refused")
     result = handler._handle_error(base_config, tts_request, "req-1", ex)
     assert isinstance(result, HTTPConnectionError)
+
+
+def test_handle_error_unknown_status_code(handler, base_config, tts_request):
+    """Unknown ApiError status code maps to generic HTTPError."""
+    ex = _make_api_error(502, "Bad gateway")
+    result = handler._handle_error(base_config, tts_request, "req-1", ex)
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 502
+
+
+def test_handle_error_timeout(handler, base_config, tts_request):
+    """OSError with 'timed out' maps to TimeoutError."""
+    ex = OSError("Connection timed out")
+    result = handler._handle_error(base_config, tts_request, "req-1", ex)
+    assert isinstance(result, TimeoutError)
+    assert result.provider == "elevenlabs"
+    assert result.model == "eleven_multilingual_v2"
 
 
 def test_handle_error_unknown(handler, base_config, tts_request):
@@ -412,11 +436,19 @@ def test_generate_tts_sync_success(handler, base_config, tts_request):
     assert response.content_type == "audio/mpeg"
     assert len(response.request_id) == 32
 
+    # Verify SDK was called with correct args
+    call_kwargs = mock_client.text_to_speech.convert.call_args.kwargs
+    assert call_kwargs["text"] == "Hello world"
+    assert call_kwargs["voice_id"] == "test-voice-id"
+    assert call_kwargs["model_id"] == "eleven_multilingual_v2"
+
 
 async def test_generate_tts_async_success(handler, base_config, tts_request):
     """Async TTS generation with mocked SDK returns valid TTSResponse."""
+    captured_kwargs = {}
 
     async def mock_iter(*args, **kwargs):
+        captured_kwargs.update(kwargs)
         yield b"async_chunk1"
         yield b"async_chunk2"
 
@@ -430,6 +462,11 @@ async def test_generate_tts_async_success(handler, base_config, tts_request):
     assert response.status == "completed"
     expected_audio = base64.b64encode(b"async_chunk1async_chunk2").decode("utf-8")
     assert response.audio == expected_audio
+
+    # Verify SDK was called with correct args
+    assert captured_kwargs["text"] == "Hello world"
+    assert captured_kwargs["voice_id"] == "test-voice-id"
+    assert captured_kwargs["model_id"] == "eleven_multilingual_v2"
 
 
 def test_generate_tts_sync_api_error(handler, base_config, tts_request):
@@ -478,11 +515,19 @@ def test_generate_sts_sync_success(handler, base_config, sts_request):
     expected_audio = base64.b64encode(b"sts_chunk").decode("utf-8")
     assert response.audio == expected_audio
 
+    # Verify SDK was called with correct args
+    call_kwargs = mock_client.speech_to_speech.convert.call_args.kwargs
+    assert call_kwargs["voice_id"] == "test-voice-id"
+    assert call_kwargs["model_id"] == "eleven_multilingual_v2"
+    assert "audio" in call_kwargs
+
 
 async def test_generate_sts_async_success(handler, base_config, sts_request):
     """Async STS generation with mocked SDK returns valid STSResponse."""
+    captured_kwargs = {}
 
     async def mock_iter(*args, **kwargs):
+        captured_kwargs.update(kwargs)
         yield b"sts_async"
 
     mock_client = MagicMock()
@@ -493,6 +538,11 @@ async def test_generate_sts_async_success(handler, base_config, sts_request):
 
     assert isinstance(response, STSResponse)
     assert response.status == "completed"
+
+    # Verify SDK was called with correct args
+    assert captured_kwargs["voice_id"] == "test-voice-id"
+    assert captured_kwargs["model_id"] == "eleven_multilingual_v2"
+    assert "audio" in captured_kwargs
 
 
 # ==================== Client Creation ====================
