@@ -1,57 +1,33 @@
-# Tarash
+<h1 align="center">Tarash</h1>
 
-**A monorepo of Python SDKs for AI-powered media generation.**
+<p align="center">
+  <strong>AI media toolkit</strong><br>
+  Generate video, image, and audio with a unified interface — plus tools to process and enhance them
+</p>
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="https://tarash.vertexcover.io"><b>Documentation</b></a> &nbsp;·&nbsp;
+  <a href="https://tarash.vertexcover.io/getting-started/quickstart/">Quick Start</a> &nbsp;·&nbsp;
+  <a href="https://tarash.vertexcover.io/providers/">Providers</a> &nbsp;·&nbsp;
+  <a href="https://blog.vertexcover.io/unified-ai-video-gateway">Blog</a>
+</p>
 
 ---
 
-## Goal
+## What is Tarash?
 
-The AI media generation landscape is fragmented. Every provider — Fal.ai, Runway, Replicate, OpenAI, Google — ships its own SDK, its own parameter names, its own response shapes, and its own error formats. Building a product that supports more than one provider means writing and maintaining N separate integrations.
+Every AI media provider ships its own SDK with its own parameter names, response shapes, and error formats. Tarash is a Python toolkit that unifies all of this — generation across providers, plus processing tools to enhance the output.
 
-Tarash solves this. It is a suite of SDKs that abstract AI media generation behind unified interfaces — similar to what LiteLLM does for text generation. You write one integration. Swap providers by changing a config value. Get consistent responses, errors, and progress events regardless of who is generating on the backend.
+**Tarash Gateway** is the first package: a unified SDK for video, image, and audio generation across 10+ providers and 100+ models. Write one integration, swap providers by changing config.
 
 ---
 
-## Packages
-
-### `tarash-gateway` — Video & Image Generation
-
-**Status: Implemented**
-
-Unified SDK for AI video and image generation. One API surface across all providers, with automatic parameter mapping, orchestrated fallback chains, real-time progress tracking, and production-ready error handling.
-
-**Video generation providers:**
-
-| Provider | SDK Extra | Models |
-|----------|-----------|--------|
-| Fal.ai | `fal` | Veo3, Veo3.1, Minimax, Kling v2.6, Wan, ByteDance Seedance, Sora-2 |
-| OpenAI | `openai` | Sora-2 Turbo |
-| Azure OpenAI | `openai` | Sora-2 |
-| Replicate | `replicate` | Kling, Luma, Minimax, Wan, Veo3 |
-| Runway | `runway` | Gen-3 Alpha |
-| Google (Vertex AI) | `google` | Veo3 |
-| Luma | `lumaai` | Dream Machine |
-
-**Image generation providers:**
-
-| Provider | SDK Extra | Models |
-|----------|-----------|--------|
-| Stability AI | `stability` | Stable Diffusion 3.5 Large, Stable Image Ultra |
-| Google | `google` | Imagen 3, Nano Banana |
-
-**Capabilities:**
-- Text-to-video, image-to-video, video-to-video, extend, remix
-- Text-to-image with multiple style and resolution options
-- Async/sync support — full `async/await` or blocking calls
-- Progress callbacks — real-time updates during long-running generation
-- Provider fallback — automatic failover across a prioritized provider chain
-- Type safety — Pydantic v2 models with full IDE autocomplete
-- Mock generation — deterministic fake responses for testing without API calls
-- Structured logging — automatic credential redaction, request tracing
-- Field mapper registry — declarative parameter translation per model, with prefix matching
+## Quick Example
 
 ```python
 from tarash_gateway import VideoGenerationConfig, VideoGenerationRequest, generate_video
@@ -59,7 +35,7 @@ from tarash_gateway import VideoGenerationConfig, VideoGenerationRequest, genera
 config = VideoGenerationConfig(
     model="fal-ai/veo3.1/fast",
     provider="fal",
-    api_key="your-api-key",
+    api_key="YOUR_FAL_KEY",
 )
 
 request = VideoGenerationRequest(
@@ -72,33 +48,97 @@ response = generate_video(config, request)
 print(response.video)  # URL to generated video
 ```
 
-Switching providers requires only changing `model` and `provider` in the config. The request and the rest of your code stay the same.
+Switch to any other provider — same request, same response:
+
+```python
+config = VideoGenerationConfig(
+    model="gen4_turbo", provider="runway", api_key="YOUR_RUNWAY_KEY",
+)
+response = generate_video(config, request)
+```
+
+> See [tarash-gateway](packages/tarash-gateway/) for image, audio, async, and fallback examples.
 
 ---
 
-## Architecture
+## Packages
 
-All packages share the same design principles:
-
-- **Protocol-based providers** — every provider implements the same handler interface; adding a new provider is a drop-in
-- **Immutable config** — frozen Pydantic models, safe to share across threads and async tasks
-- **Rich exceptions** — every error includes `provider`, `model`, `request_id`, and the raw provider response for debugging
-- **Dual sync/async** — all public APIs have both `generate_*` and `generate_*_async` variants
-- **Singleton handlers** — provider handler instances are cached; client connections are reused across calls
+| Package | Description | |
+|---------|-------------|-|
+| **[tarash-gateway](packages/tarash-gateway/)** | Unified SDK for AI video, image, and audio generation | Stable |
+| *tarash-tools* | Media processing utilities (silence removal, scene detection, and more) | Coming soon |
 
 ---
 
-## Development
+## Supported Providers
+
+| Provider | Video | Image | Audio |
+|----------|:-----:|:-----:|:-----:|
+| **Fal.ai** | ✓ | ✓ | ✓ |
+| **OpenAI** | ✓ | ✓ | — |
+| **Google** | ✓ | ✓ | — |
+| **Runway** | ✓ | — | — |
+| **Replicate** | ✓ | — | — |
+| **Luma** | ✓ | ✓ | — |
+| **XAI** | ✓ | — | — |
+| **Stability AI** | — | ✓ | — |
+| **ElevenLabs** | — | — | ✓ |
+| **Cartesia** | — | — | ✓ |
+| **Sarvam** | — | — | ✓ |
+| **Hume** | — | — | ✓ |
+
+> **Full model list at [tarash.vertexcover.io/providers](https://tarash.vertexcover.io/providers/)**
+
+---
+
+## Highlights
+
+- **One interface for video, image, and audio** — stop rewriting integrations for every provider
+- **Swap providers by changing config** — your request code, response handling, and error logic stay identical
+- **Automatic fallback chains** — if a provider goes down, the next one picks up seamlessly
+- **Sync and async** — every function has both `generate_*` and `generate_*_async` variants
+- **Production-ready** — type-safe Pydantic v2 models, structured logging, and rich error context
+
+---
+
+## Installation
+
+```bash
+pip install tarash-gateway[fal]
+```
+
+Install only the provider extras you need:
+
+```bash
+pip install tarash-gateway[openai]       # OpenAI / Azure
+pip install tarash-gateway[runway]       # Runway
+pip install tarash-gateway[elevenlabs]   # ElevenLabs TTS
+pip install tarash-gateway[fal,runway]   # Multiple providers
+pip install tarash-gateway[all]          # Everything
+```
+
+> **Requires Python 3.12+** — see the [installation guide](https://tarash.vertexcover.io/getting-started/installation/) for details.
+
+---
+
+## Contributing
+
+Tarash is open source and contributions are welcome.
+
+- **Questions or ideas?** Open a [Discussion](https://github.com/vertexcover-io/tarash/discussions)
+- **Found a bug?** File an [Issue](https://github.com/vertexcover-io/tarash/issues)
+- **Want to add a provider?** See the [custom providers guide](https://tarash.vertexcover.io/guides/custom-providers/)
+
+<details>
+<summary><strong>Development setup</strong></summary>
 
 **Requirements:** Python 3.12+, [`uv`](https://docs.astral.sh/uv/)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/vertexcover-io/tarash.git
 cd tarash
 uv sync
 ```
-
-Run tests for a specific package:
 
 ```bash
 # Unit tests (no API keys needed)
@@ -108,18 +148,7 @@ uv run pytest packages/tarash-gateway/tests/unit/
 uv run pytest packages/tarash-gateway/tests/e2e/ --e2e
 ```
 
-### Adding a Workspace Package
-
-Create a new package under `packages/`. Each package must have its own `pyproject.toml`.
-
-To depend on another workspace package:
-
-```toml
-dependencies = ["tarash-gateway"]
-
-[tool.uv.sources]
-tarash-gateway = { workspace = true }
-```
+</details>
 
 ---
 
