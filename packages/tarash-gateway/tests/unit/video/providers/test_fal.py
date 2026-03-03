@@ -3020,3 +3020,73 @@ def test_reve_remix_multiple_images_conversion():
     assert result["aspect_ratio"] == "1:1"
     assert result["num_images"] == 1
     assert result["output_format"] == "webp"
+
+
+# ==================== Grok Imagine Image Field Mapper Tests ====================
+
+
+def test_get_image_field_mappers_grok_imagine_all_variants():
+    """Test that all Grok Imagine variants resolve to unified GROK_IMAGINE_FIELD_MAPPERS."""
+    from tarash.tarash_gateway.providers.fal import GROK_IMAGINE_FIELD_MAPPERS
+
+    variants = [
+        "xai/grok-imagine-image",
+        "xai/grok-imagine-image/edit",
+    ]
+    for variant in variants:
+        mappers = get_image_field_mappers(variant)
+        assert mappers is GROK_IMAGINE_FIELD_MAPPERS, (
+            f"Expected GROK_IMAGINE_FIELD_MAPPERS for {variant}, got {mappers}"
+        )
+
+
+def test_grok_imagine_text_to_image_conversion():
+    """Test Grok Imagine text-to-image with prompt, n, and aspect_ratio."""
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("xai/grok-imagine-image")
+
+    request = ImageGenerationRequest(
+        prompt="A futuristic city skyline at night with neon lights",
+        n=2,
+        aspect_ratio="16:9",
+        extra_params={"output_format": "png"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A futuristic city skyline at night with neon lights"
+    assert result["num_images"] == 2
+    assert result["aspect_ratio"] == "16:9"
+    assert result["output_format"] == "png"
+    # No image fields for text-to-image
+    assert "image_urls" not in result
+
+
+def test_grok_imagine_edit_image_conversion():
+    """Test Grok Imagine image editing with reference images, n, and output_format."""
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("xai/grok-imagine-image/edit")
+
+    request = ImageGenerationRequest(
+        prompt="Make the sky a vibrant purple sunset",
+        n=1,
+        image_list=[
+            {"image": "https://example.com/landscape.jpg", "type": "reference"},
+            {"image": "https://example.com/style.jpg", "type": "reference"},
+        ],
+        extra_params={"output_format": "jpeg"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Make the sky a vibrant purple sunset"
+    assert result["num_images"] == 1
+    assert result["image_urls"] == [
+        "https://example.com/landscape.jpg",
+        "https://example.com/style.jpg",
+    ]
+    assert result["output_format"] == "jpeg"
+    # No aspect_ratio for edit (not in request)
+    assert "aspect_ratio" not in result

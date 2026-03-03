@@ -141,6 +141,7 @@ response = await generate_video_async(config, request)  # async
 | **Recraft** | `fal-ai/recraft-v3`<br>`fal-ai/recraft` | [Fal.ai](providers/fal/index.md) |
 | **Ideogram** | `fal-ai/ideogram` | [Fal.ai](providers/fal/index.md) |
 | **Z-Image Turbo** | `fal-ai/z-image/turbo` | [Fal.ai](providers/fal/index.md) |
+| **Grok Imagine** | `xai/grok-imagine-image`<br>`xai/grok-imagine-image/edit` | [Fal.ai](providers/fal/index.md) |
 
 </div>
 
