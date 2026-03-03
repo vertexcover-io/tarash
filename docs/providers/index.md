@@ -16,7 +16,6 @@ Change `provider` and `model` in your config — nothing else in your code chang
 | [Runway](runway.md) | ✅ | — | ✅ | `runway` |
 | [Replicate](replicate.md) | ✅ | — | ✅ | `replicate` |
 | [xAI](xai.md) | ✅ | ✅ | ✅ | `xai` |
-| [Luma AI](luma.md) | ✅ | ✅ | ✅ | `luma` |
 | [Stability AI](stability.md) | — | ✅ | — | — |
 
 ### Audio (TTS / STS)

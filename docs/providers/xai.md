@@ -6,6 +6,14 @@ xAI provides video and image generation via Grok Imagine models through its nati
 
 ---
 
+## Installation
+
+```bash
+pip install tarash-gateway[xai]
+```
+
+---
+
 ## Video Generation
 
 ### Quick Example

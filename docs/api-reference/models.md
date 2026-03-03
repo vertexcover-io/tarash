@@ -22,7 +22,7 @@ Configuration passed to `generate_video()` and `generate_video_async()`. Immutab
 
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
-| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"xai"`, `"luma"` |
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"xai"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"fal-ai/veo3"`, `"openai/sora-2"` |
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override provider base URL |
@@ -94,7 +94,7 @@ Passed to the `on_progress` callback on each polling cycle during video generati
 
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
-| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"xai"`, `"luma"` |
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"xai"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"dall-e-3"`, `"fal-ai/flux/dev"` |
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override base URL |

@@ -30,7 +30,6 @@ config = VideoGenerationConfig(
 | Replicate | [replicate.com/account](https://replicate.com/account) |
 | Stability AI | [platform.stability.ai](https://platform.stability.ai) |
 | xAI | [console.x.ai](https://console.x.ai) |
-| Luma AI | [lumalabs.ai](https://lumalabs.ai) |
 | ElevenLabs | [elevenlabs.io](https://elevenlabs.io) |
 | Cartesia | [play.cartesia.ai](https://play.cartesia.ai) |
 | Sarvam AI | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) |

@@ -7,6 +7,18 @@ Hume AI provides expressive text-to-speech via **Octave** models with emotional 
 
 ---
 
+## Installation
+
+Install tarash-gateway with the Hume extra:
+
+```bash
+pip install tarash-gateway[hume]
+```
+
+This installs the `hume` SDK (`>=0.9.0`).
+
+---
+
 ## Quick Example
 
 ```python

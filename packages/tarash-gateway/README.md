@@ -172,7 +172,6 @@ response = generate_video(config, request)
 | **[Google](https://tarash.vertexcover.io/providers/google/)** | ✓ | ✓ | — |
 | **[Runway](https://tarash.vertexcover.io/providers/runway/)** | ✓ | — | — |
 | **[Replicate](https://tarash.vertexcover.io/providers/replicate/)** | ✓ | — | — |
-| **[Luma](https://tarash.vertexcover.io/providers/)** | ✓ | ✓ | — |
 | **[XAI](https://tarash.vertexcover.io/providers/)** | ✓ | — | — |
 | **[Stability AI](https://tarash.vertexcover.io/providers/stability/)** | — | ✓ | — |
 | **[ElevenLabs](https://tarash.vertexcover.io/providers/)** | — | — | ✓ |

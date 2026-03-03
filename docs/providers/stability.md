@@ -5,6 +5,14 @@ Stability AI provides image generation via Stable Diffusion 3.5 and Stable Image
 !!! info "Image only"
     Stability AI does not support video generation. Use this provider with `ImageGenerationConfig` and `generate_image()`.
 
+---
+
+## Installation
+
+No extra required — Stability AI uses `httpx`, which is included in the base package.
+
+---
+
 ## Quick Example
 
 ```python

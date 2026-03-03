@@ -5,6 +5,16 @@ ElevenLabs provides high-quality text-to-speech (TTS) and speech-to-speech (STS)
 !!! info "Audio only"
     ElevenLabs supports TTS and STS audio generation. Use this provider with `AudioGenerationConfig` and `generate_tts()` / `generate_sts()`.
 
+---
+
+## Installation
+
+```bash
+pip install tarash-gateway[elevenlabs]
+```
+
+---
+
 ## Quick Example — Text-to-Speech (TTS)
 
 ```python
@@ -142,12 +152,6 @@ config = AudioGenerationConfig(
 ---
 
 ## Provider-Specific Notes
-
-**SDK dependency:** This provider requires the `elevenlabs` package. Install with:
-
-```bash
-pip install tarash-gateway[elevenlabs]
-```
 
 **Authentication:** The `api_key` must always be passed explicitly in the `AudioGenerationConfig`. There is no automatic environment variable fallback.
 

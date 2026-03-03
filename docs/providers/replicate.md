@@ -2,6 +2,16 @@
 
 Replicate is a platform for running open-source AI models. Tarash supports video generation via Kling, Luma Dream Machine, Minimax (Hailuo), Wan, and Google Veo 3.
 
+---
+
+## Installation
+
+```bash
+pip install tarash-gateway[replicate]
+```
+
+---
+
 ## Quick Example
 
 ```python

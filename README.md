@@ -79,7 +79,6 @@ response = generate_video(config, request)
 | **Google** | ✓ | ✓ | — |
 | **Runway** | ✓ | — | — |
 | **Replicate** | ✓ | — | — |
-| **Luma** | ✓ | ✓ | — |
 | **XAI** | ✓ | — | — |
 | **Stability AI** | — | ✓ | — |
 | **ElevenLabs** | — | — | ✓ |

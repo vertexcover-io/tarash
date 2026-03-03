@@ -4,6 +4,14 @@ Google provides **Veo 3** video generation and **Imagen 3** / **Gemini** image g
 
 ---
 
+## Installation
+
+```bash
+pip install tarash-gateway[google]
+```
+
+---
+
 ## Image Generation
 
 ### Quick Example

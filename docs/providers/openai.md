@@ -4,6 +4,14 @@ OpenAI provides image generation via **DALL-E** and **GPT Image**, and video gen
 
 ---
 
+## Installation
+
+```bash
+pip install tarash-gateway[openai]
+```
+
+---
+
 ## Image Generation
 
 ### Quick Example

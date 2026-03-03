@@ -121,9 +121,9 @@ response = await generate_video_async(config, request)  # async
 | **WAN** | `fal-ai/wan-25-preview/text-to-video`<br>`fal-ai/wan-25-preview/image-to-video`<br>`fal-ai/wan/v2.2-14b/animate/move`<br>`fal-ai/wan/v2.2-a14b/image-to-video`<br>`fal-ai/wan/v2.2-a14b/image-to-video/lora`<br>`fal-ai/wan/v2.2-a14b/text-to-video/lora`<br>`fal-ai/wan/v2.2-a14b/video-to-video`<br>| [Fal.ai](providers/fal/index.md) · [Replicate](providers/replicate.md) |
 | **Seedance** | `fal-ai/bytedance/seedance/v1.5/pro/text-to-video`<br>`fal-ai/bytedance/seedance/v1/pro/image-to-video`<br>`fal-ai/bytedance/seedance/v1/lite/reference-to-video` | [Fal.ai](providers/fal/index.md) |
 | **Pixverse** | `fal-ai/pixverse/v5.5/text-to-video`<br>`fal-ai/pixverse/v5.5/image-to-video`<br>`fal-ai/pixverse/v5/text-to-video` | [Fal.ai](providers/fal/index.md) |
+| **Sync Lipsync** | `fal-ai/sync-lipsync/v2/pro`<br>`fal-ai/sync-lipsync/v2`<br>`fal-ai/sync-lipsync` | [Fal.ai](providers/fal/index.md) |
 | **Runway** | `gen4_turbo`<br>`gen4_aleph`<br>`veo3.1`<br>`veo3.1_fast` | [Runway](providers/runway.md) |
 | **Grok Imagine** | `grok-imagine-video` | [xAI](providers/xai.md) |
-| **Luma** | Video models via Luma SDK | [Luma AI](providers/luma.md) |
 
 </div>
 
@@ -146,7 +146,6 @@ response = await generate_video_async(config, request)  # async
 | **Reve** | `fal-ai/reve/text-to-image`<br>`fal-ai/reve/edit`<br>`fal-ai/reve/remix` | [Fal.ai](providers/fal/index.md) |
 | **Grok Imagine** | `xai/grok-imagine-image`<br>`xai/grok-imagine-image/edit` | [Fal.ai](providers/fal/index.md) |
 | **Grok Imagine (native)** | `grok-imagine-image`<br>`grok-2-image` | [xAI](providers/xai.md) |
-| **Luma** | Image models via Luma SDK | [Luma AI](providers/luma.md) |
 
 </div>
 

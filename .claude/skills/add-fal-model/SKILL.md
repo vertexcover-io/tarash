@@ -1,6 +1,6 @@
 ---
 name: add-fal-model
-description: Add a new model to the Fal provider in tarash-gateway. Fetches model docs from fal.ai, generates field mappers, registers in the model registry, writes unit and e2e tests, and runs them.
+description: Add a new model (video, image, or audio/TTS) to the Fal provider in tarash-gateway. Fetches model docs from fal.ai, generates field mappers, registers in the appropriate model registry, writes unit and e2e tests, and runs them.
 disable-model-invocation: false
 user-invokable: true
 argument-hint: "model-id"
@@ -20,17 +20,19 @@ The user provided model ID: `$ARGUMENTS`
 - **API entry point**: `packages/tarash-gateway/src/tarash/tarash_gateway/api.py`
 - **Unit tests (video)**: `packages/tarash-gateway/tests/unit/video/providers/test_fal.py`
 - **Unit tests (image)**: `packages/tarash-gateway/tests/unit/image/providers/test_fal.py`
+- **Unit tests (audio/TTS)**: `packages/tarash-gateway/tests/unit/audio/providers/test_fal_tts.py`
 - **E2E video tests**: `packages/tarash-gateway/tests/e2e/test_fal.py`
 - **E2E image tests**: `packages/tarash-gateway/tests/e2e/test_fal_image.py`
+- **E2E audio/TTS tests**: `packages/tarash-gateway/tests/e2e/test_fal_tts.py`
 - **Test config**: `packages/tarash-gateway/tests/conftest.py`
 
 ## CRITICAL: Read Before Writing
 
 **Before writing ANY code or tests**, you MUST read the existing implementations to understand the patterns:
 
-1. **Read existing field mappers in `fal.py`** - Study how VEO3_FIELD_MAPPERS, SORA2_FIELD_MAPPERS, BYTEDANCE_SEEDANCE_FIELD_MAPPERS, KONTEXT_FIELD_MAPPERS are structured as unified mappers
-2. **Read existing unit tests** - Study the test patterns in `tests/unit/video/providers/test_fal.py` and `tests/unit/image/providers/test_fal.py`
-3. **Read existing e2e tests** - Study `tests/e2e/test_fal.py` and `tests/e2e/test_fal_image.py` to understand how tests maximize feature coverage per test
+1. **Read existing field mappers in `fal.py`** - Study how VEO3_FIELD_MAPPERS, SORA2_FIELD_MAPPERS, BYTEDANCE_SEEDANCE_FIELD_MAPPERS, KONTEXT_FIELD_MAPPERS, and FAL_TTS_MINIMAX_FIELD_MAPPERS are structured as unified mappers
+2. **Read existing unit tests** - Study the test patterns in `tests/unit/video/providers/test_fal.py`, `tests/unit/image/providers/test_fal.py`, and `tests/unit/audio/providers/test_fal_tts.py`
+3. **Read existing e2e tests** - Study `tests/e2e/test_fal.py`, `tests/e2e/test_fal_image.py`, and `tests/e2e/test_fal_tts.py` to understand how tests maximize feature coverage per test
 
 ## Step-by-Step Process
 
@@ -62,14 +64,17 @@ For EACH sub-model variant discovered:
    - Image input formats
    - Video input formats
    - Duration format and allowed values
+   - Audio-specific: voice settings, output format, sample rate
    - Any model-specific parameters
 
-### Step 3: Determine if Video or Image Model
+### Step 3: Determine Media Type
 
 Based on the documentation:
 - If the model generates **videos**: add field mappers to `FAL_MODEL_REGISTRY` and use `VideoGenerationRequest`/`VideoGenerationResponse`
 - If the model generates **images**: add field mappers to `FAL_IMAGE_MODEL_REGISTRY` and use `ImageGenerationRequest`/`ImageGenerationResponse`
-- Some models may support both
+- If the model generates **audio/speech (TTS)**: add field mappers to `FAL_TTS_MODEL_REGISTRY` and use `TTSRequest`/`TTSResponse`
+- If the model does **speech-to-speech (STS)**: use `STSRequest`/`STSResponse`
+- Some models may support multiple media types
 
 ### Step 4: Create Field Mappers
 
@@ -132,6 +137,8 @@ MODEL_FIELD_MAPPERS = {
 **IMPORTANT: Check which fields exist on the request model.**
 - `VideoGenerationRequest` has `enhance_prompt`, `generate_audio`, etc. as direct fields → use `passthrough_field_mapper()`
 - `ImageGenerationRequest` does NOT have these fields → they will be captured into `extra_params` → use `extra_params_field_mapper()`
+- `TTSRequest` has `text` (not `prompt`), `voice_id`, `output_format`, `language_code`, `voice_settings` as direct fields
+- `STSRequest` has `audio` (MediaType input), `voice_id`, `output_format`, `voice_settings` as direct fields
 - When unsure, check the model class definition in `models.py`
 
 ### Step 5: Register in Model Registry
@@ -149,6 +156,14 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
 **For image models** - add to `FAL_IMAGE_MODEL_REGISTRY`:
 ```python
 FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    # ... existing entries ...
+    "fal-ai/new-model": NEW_MODEL_FIELD_MAPPERS,
+}
+```
+
+**For audio/TTS models** - add to `FAL_TTS_MODEL_REGISTRY`:
+```python
+FAL_TTS_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # ... existing entries ...
     "fal-ai/new-model": NEW_MODEL_FIELD_MAPPERS,
 }
@@ -184,8 +199,9 @@ Add unit tests to the appropriate test file. Follow these patterns:
 
 **For video models** - add to `tests/unit/video/providers/test_fal.py`
 **For image models** - add to `tests/unit/image/providers/test_fal.py`
+**For audio/TTS models** - add to `tests/unit/audio/providers/test_fal_tts.py`
 
-**CRITICAL: Read existing tests first.** Study how tests are structured for VEO3, Wan, ByteDance Seedance, and Pixverse in the unit test files before writing new ones.
+**CRITICAL: Read existing tests first.** Study how tests are structured for VEO3, Wan, ByteDance Seedance, and Pixverse in the unit test files, and MiniMax/Qwen in the TTS test file, before writing new ones.
 
 **What to test (each test should be valuable and non-redundant):**
 1. **Unified registry lookup** - verify ALL variants resolve to the SAME mapper dict (single test with loop)
@@ -236,8 +252,9 @@ Add e2e tests to the appropriate test file.
 
 **For video models** - add to `tests/e2e/test_fal.py`
 **For image models** - add to `tests/e2e/test_fal_image.py`
+**For audio/TTS models** - add to `tests/e2e/test_fal_tts.py`
 
-**CRITICAL: Read existing e2e tests first.** Study how `test_comprehensive_async_video_generation` and `test_sync_veo31_image_to_video` in `tests/e2e/test_fal.py` maximize feature coverage per test.
+**CRITICAL: Read existing e2e tests first.** Study how `test_comprehensive_async_video_generation` and `test_sync_veo31_image_to_video` in `tests/e2e/test_fal.py`, and existing TTS tests in `tests/e2e/test_fal_tts.py`, maximize feature coverage per test.
 
 **E2E test principles — MAXIMIZE COVERAGE PER TEST:**
 - **Minimum tests, maximum features per test.** Each test should exercise as many features as possible in one go.
@@ -245,7 +262,7 @@ Add e2e tests to the appropriate test file.
 - Maximum 3-4 tests total for the new model (fewer is better)
 - Include progress callback tracking in the async test
 - Use realistic parameters from the model's documentation
-- Always validate: response type, request_id, video/image URL, status
+- Always validate: response type, request_id, video/image URL or audio content, status
 
 **How to decide test count:**
 - 1 test: Model has one variant → one comprehensive test combining async + progress + all params
@@ -307,7 +324,7 @@ async def test_<model>_<variant>_async(fal_api_key):
         progress_updates.append(update)
         print(f"  Progress: {update.status}")
 
-    config = ImageGenerationConfig(  # or VideoGenerationConfig
+    config = ImageGenerationConfig(  # or VideoGenerationConfig / AudioGenerationConfig
         model="<full-model-id>",
         provider="fal",
         api_key=fal_api_key,
@@ -316,7 +333,7 @@ async def test_<model>_<variant>_async(fal_api_key):
         poll_interval=2,
     )
 
-    request = ImageGenerationRequest(  # or VideoGenerationRequest
+    request = ImageGenerationRequest(  # or VideoGenerationRequest / TTSRequest
         prompt="...",
         seed=42,
         aspect_ratio="16:9",
@@ -361,6 +378,10 @@ Or for image models:
 ```bash
 uv run pytest packages/tarash-gateway/tests/unit/image/providers/test_fal.py -v
 ```
+Or for audio/TTS models:
+```bash
+uv run pytest packages/tarash-gateway/tests/unit/audio/providers/test_fal_tts.py -v
+```
 
 If tests fail:
 1. Read the error messages carefully
@@ -391,6 +412,10 @@ Before running e2e tests:
    ```bash
    uv run pytest packages/tarash-gateway/tests/e2e/test_fal_image.py -v --e2e -k "<model_name>"
    ```
+   Or for audio/TTS models:
+   ```bash
+   uv run pytest packages/tarash-gateway/tests/e2e/test_fal_tts.py -v --e2e -k "<model_name>"
+   ```
 
 4. If tests fail:
    - Read the error output carefully
@@ -418,6 +443,7 @@ Update the docs site at `docs/` (root-level, NOT `packages/tarash-gateway/docs/`
 **1. Update the homepage provider tables** in `docs/index.md`:
 - If **video model**: add/update a row in the `## Providers > ### Video Generation` table
 - If **image model**: add/update a row in the `## Providers > ### Image Generation` table
+- If **audio/TTS model**: add/update a row in the `## Providers > ### Audio Generation` table (create if it doesn't exist)
 - If the model family already has a row (e.g., Veo, Kling), **append the new variants** to the existing row
 - If it's a completely new model family, **add a new row**
 - Follow the existing format: `| **Model** | \`variant-1\`<br>\`variant-2\` | [Fal.ai](providers/fal/index.md) |`

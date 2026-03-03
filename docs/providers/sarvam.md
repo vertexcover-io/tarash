@@ -7,6 +7,18 @@ Sarvam AI provides high-quality text-to-speech (TTS) for **Indian languages**, s
 
 ---
 
+## Installation
+
+Install tarash-gateway with the Sarvam extra:
+
+```bash
+pip install tarash-gateway[sarvam]
+```
+
+This installs the `sarvamai` SDK (`>=0.1.25`).
+
+---
+
 ## Quick Example
 
 ```python
@@ -84,17 +96,6 @@ request = TTSRequest(
 
 ---
 
-## Installation
-
-Install tarash-gateway with the Sarvam extra:
-
-```bash
-pip install tarash-gateway[sarvam]
-```
-
-This installs the `sarvamai` SDK (`>=0.1.25`).
-
----
 
 ## Provider-Specific Notes
 
