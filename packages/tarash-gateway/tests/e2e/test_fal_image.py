@@ -346,3 +346,106 @@ async def test_zimage_turbo_fast_generation(fal_api_key):
 
     print(f"✓ Generated Z-Image-Turbo image (fast): {response.request_id}")
     print(f"  Image URL: {response.images[0][:80]}...")
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_reve_text_to_image_async(fal_api_key):
+    """
+    Test Reve text-to-image generation (async).
+
+    This tests:
+    - Text-to-image with no image input
+    - Progress tracking
+    - aspect_ratio, n (num_images), output_format via extra_params
+    - Prefix matching: fal-ai/reve/text-to-image → REVE_FIELD_MAPPERS
+    """
+    progress_updates = []
+
+    async def progress_callback(update: ImageGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = ImageGenerationConfig(
+        model="fal-ai/reve/text-to-image",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A vibrant tropical rainforest with exotic birds and lush green foliage, photorealistic",
+        seed=42,
+        aspect_ratio="16:9",
+        n=1,
+        extra_params={"output_format": "png"},
+    )
+
+    response = await api.generate_image_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) == 1
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    assert len(progress_updates) > 0
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Reve text-to-image: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_reve_fast_edit_image_sync(fal_api_key):
+    """
+    Test Reve fast/edit image editing (sync).
+
+    This tests:
+    - Single image input (image_url mapping from image_list)
+    - Sync API path
+    - fal-ai/reve/fast/edit variant (cheaper, faster editing)
+    """
+    config = ImageGenerationConfig(
+        model="fal-ai/reve/fast/edit",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="Add a rainbow arching over the elephant in a colorful sky",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+                "type": "reference",
+            }
+        ],
+        extra_params={"output_format": "jpeg"},
+    )
+
+    response = api.generate_image(config, request)
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    print(f"✓ Generated Reve fast/edit image: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
