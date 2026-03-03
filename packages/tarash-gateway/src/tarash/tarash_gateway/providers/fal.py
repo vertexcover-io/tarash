@@ -677,6 +677,20 @@ SYNC_LIPSYNC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "model": extra_params_field_mapper("model"),
 }
 
+# PixVerse Lipsync - Takes video + audio (or text with TTS) and generates a lip-synced video
+# Supports audio-driven lipsync (audio_url) or text-to-speech lipsync (text + voice_id)
+PIXVERSE_LIPSYNC_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Video input (required by API, mapped from VideoGenerationRequest.video)
+    "video_url": video_url_field_mapper(required=True),
+    # Audio input (optional - if not provided, text+voice_id used for TTS)
+    "audio_url": extra_params_field_mapper("audio_url"),
+    # Text for TTS when audio_url is not provided
+    "text": extra_params_field_mapper("text"),
+    # Voice selection for TTS (default: "Auto")
+    # Values: Emily, James, Isabella, Liam, Chloe, Adrian, Harper, Ava, Sophia, Julia, Mason, Jack, Oliver, Ethan, Auto
+    "voice_id": extra_params_field_mapper("voice_id"),
+}
+
 # Generic fallback field mappings
 GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -730,6 +744,8 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/pixverse/v5.5": PIXVERSE_FIELD_MAPPERS,  # v5.5 variants
     "fal-ai/pixverse/v5": PIXVERSE_FIELD_MAPPERS,  # v5 variants (same API)
     "fal-ai/pixverse/swap": PIXVERSE_FIELD_MAPPERS,  # Swap variant (works for both v5 and v5.5)
+    # PixVerse Lipsync - audio-driven or TTS-driven lip sync
+    "fal-ai/pixverse/lipsync": PIXVERSE_LIPSYNC_FIELD_MAPPERS,
     # Sync Lipsync - All variants (v1.x, v2, v2/pro) use unified mapper
     "fal-ai/sync-lipsync": SYNC_LIPSYNC_FIELD_MAPPERS,
     # Future models...

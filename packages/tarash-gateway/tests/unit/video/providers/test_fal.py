@@ -29,6 +29,7 @@ from tarash.tarash_gateway.providers.fal import (
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     PIXVERSE_FIELD_MAPPERS,
     SYNC_LIPSYNC_FIELD_MAPPERS,
+    PIXVERSE_LIPSYNC_FIELD_MAPPERS,
     parse_fal_status,
     parse_fal_image_status,
 )
@@ -3187,6 +3188,81 @@ def test_sync_lipsync_missing_video_raises(handler):
     request = VideoGenerationRequest(
         prompt="unused",
         # No video
+        extra_params={
+            "audio_url": "https://example.com/audio.mp3",
+        },
+    )
+
+    with pytest.raises(ValueError, match="Required field 'video' is missing"):
+        handler._convert_request(config, request)
+
+
+# ==================== PixVerse Lipsync Tests ====================
+
+
+def test_get_field_mappers_pixverse_lipsync():
+    """Test that pixverse/lipsync resolves to PIXVERSE_LIPSYNC_FIELD_MAPPERS."""
+    mappers = get_field_mappers("fal-ai/pixverse/lipsync")
+    assert mappers is PIXVERSE_LIPSYNC_FIELD_MAPPERS
+
+
+def test_pixverse_lipsync_audio_conversion(handler):
+    """Test PixVerse lipsync with audio_url input."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/lipsync",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        video="https://example.com/video.mp4",
+        extra_params={
+            "audio_url": "https://example.com/audio.mp3",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/video.mp4"
+    assert result["audio_url"] == "https://example.com/audio.mp3"
+    assert "text" not in result
+    assert "voice_id" not in result
+    assert "prompt" not in result
+
+
+def test_pixverse_lipsync_tts_conversion(handler):
+    """Test PixVerse lipsync with text + voice_id for TTS."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/lipsync",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        video="https://example.com/video.mp4",
+        extra_params={
+            "text": "Hello, how are you today?",
+            "voice_id": "Emily",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/video.mp4"
+    assert result["text"] == "Hello, how are you today?"
+    assert result["voice_id"] == "Emily"
+    assert "audio_url" not in result
+
+
+def test_pixverse_lipsync_missing_video_raises(handler):
+    """Test that missing video raises ValueError."""
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/lipsync",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
         extra_params={
             "audio_url": "https://example.com/audio.mp3",
         },

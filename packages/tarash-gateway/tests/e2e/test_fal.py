@@ -929,3 +929,103 @@ def test_sync_lipsync_v2_sync(fal_api_key):
 
     print(f"✓ Generated lipsync video (sync): {response.request_id}")
     print(f"  Video URL: {response.video}")
+
+
+# ==================== PixVerse Lipsync Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_pixverse_lipsync_audio_async(fal_api_key):
+    """
+    Async test for PixVerse Lipsync with audio input and progress tracking.
+
+    This tests:
+    - Lipsync video generation with external audio
+    - Progress callback tracking
+    - Async generation path
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/lipsync",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="lipsync",
+        video="https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_video_input.mp4",
+        extra_params={
+            "audio_url": "https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_audio_input.mp3",
+        },
+    )
+
+    print(f"\nGenerating PixVerse lipsync video with model: {config.model}")
+    response = await api.generate_video_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated PixVerse lipsync video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_pixverse_lipsync_tts_sync(fal_api_key):
+    """
+    Sync test for PixVerse Lipsync with text-to-speech input.
+
+    This tests:
+    - Lipsync with TTS (text + voice_id instead of audio_url)
+    - Sync generation path
+    - Voice selection parameter
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/pixverse/lipsync",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="lipsync",
+        video="https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_video_input.mp4",
+        extra_params={
+            "text": "Hello, welcome to our product demonstration. This is a test of the lip sync feature.",
+            "voice_id": "Emily",
+        },
+    )
+
+    print(f"\nGenerating PixVerse lipsync video (TTS) with model: {config.model}")
+    response = api.generate_video(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated PixVerse lipsync video (TTS): {response.request_id}")
+    print(f"  Video URL: {response.video}")
