@@ -189,7 +189,7 @@ class VideoGenerationConfig(BaseModel):
         description="Model identifier, e.g. 'fal-ai/veo3', 'openai/sora-2'."
     )
     provider: str = Field(
-        description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability', 'luma'."
+        description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability'."
     )
     api_key: str | None = Field(
         default=None,
@@ -370,7 +370,7 @@ class ImageGenerationConfig(BaseModel):
         description="Model identifier, e.g. 'dall-e-3', 'fal-ai/flux/dev'."
     )
     provider: str = Field(
-        description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability', 'luma'."
+        description="Provider identifier: 'fal', 'openai', 'azure-openai', 'google', 'runway', 'replicate', 'stability'."
     )
     api_key: str | None = Field(
         default=None,

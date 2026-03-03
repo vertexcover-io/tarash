@@ -21,6 +21,9 @@ from tarash.tarash_gateway.providers.xai import (
     XAI_VIDEO_FIELD_MAPPERS,
     XAI_VIDEO_MODEL_REGISTRY,
     XaiProviderHandler,
+    _DEFERRED_STATUS_DONE,
+    _DEFERRED_STATUS_EXPIRED,
+    _DEFERRED_STATUS_PENDING,
     get_xai_video_field_mappers,
     parse_xai_video_status,
 )
@@ -79,16 +82,27 @@ def _make_xai_video_response(
     return resp
 
 
+_STATUS_NAME_TO_INT = {
+    "DONE": _DEFERRED_STATUS_DONE,
+    "PENDING": _DEFERRED_STATUS_PENDING,
+    "EXPIRED": _DEFERRED_STATUS_EXPIRED,
+}
+
+
 def _make_xai_poll_response(status_name: str, url: str | None = None):
+    """Create a mock GetDeferredVideoResponse with nested .response proto."""
     resp = MagicMock()
-    status = MagicMock()
-    status.name = status_name  # "DONE", "PENDING", "EXPIRED"
-    resp.status = status
-    resp.url = url
-    resp.respect_moderation = True
-    resp.duration = 5
-    resp.model = "grok-imagine-video"
+    resp.status = _STATUS_NAME_TO_INT[status_name]
     resp.request_id = "xai-req-abc"
+
+    # Simulate nested VideoResponse proto (accessed via completed.response)
+    inner = MagicMock()
+    inner.url = url
+    inner.respect_moderation = True
+    inner.duration = 5
+    inner.model = "grok-imagine-video"
+    resp.response = inner
+
     return resp
 
 
@@ -285,8 +299,14 @@ async def test_generate_video_async_success(handler, base_config, basic_request)
     mock_client.video.start = AsyncMock(return_value=pending_resp)
     mock_client.video.get = AsyncMock(side_effect=[pending_resp, done_resp])
 
-    with patch(
-        "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+    with (
+        patch(
+            "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+        ),
+        patch(
+            "tarash.tarash_gateway.providers.xai.XaiVideoResponse",
+            side_effect=lambda proto: proto,
+        ),
     ):
         response = await handler.generate_video_async(base_config, basic_request)
 
@@ -310,8 +330,14 @@ async def test_generate_video_async_fires_progress_callbacks(
     def on_progress(update):
         updates.append(update)
 
-    with patch(
-        "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+    with (
+        patch(
+            "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+        ),
+        patch(
+            "tarash.tarash_gateway.providers.xai.XaiVideoResponse",
+            side_effect=lambda proto: proto,
+        ),
     ):
         await handler.generate_video_async(
             base_config, basic_request, on_progress=on_progress
@@ -331,8 +357,14 @@ async def test_generate_video_async_expired_raises_generation_failed(
     mock_client.video.start = AsyncMock(return_value=pending_resp)
     mock_client.video.get = AsyncMock(return_value=expired_resp)
 
-    with patch(
-        "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+    with (
+        patch(
+            "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+        ),
+        patch(
+            "tarash.tarash_gateway.providers.xai.XaiVideoResponse",
+            side_effect=lambda proto: proto,
+        ),
     ):
         with pytest.raises(GenerationFailedError, match="expired"):
             await handler.generate_video_async(base_config, basic_request)
@@ -346,8 +378,14 @@ async def test_generate_video_async_timeout(handler, base_config, basic_request)
     mock_client.video.start = AsyncMock(return_value=pending_resp)
     mock_client.video.get = AsyncMock(return_value=pending_resp)
 
-    with patch(
-        "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+    with (
+        patch(
+            "tarash.tarash_gateway.providers.xai.AsyncClient", return_value=mock_client
+        ),
+        patch(
+            "tarash.tarash_gateway.providers.xai.XaiVideoResponse",
+            side_effect=lambda proto: proto,
+        ),
     ):
         with pytest.raises(TimeoutError, match="timed out"):
             await handler.generate_video_async(base_config, basic_request)
@@ -360,7 +398,13 @@ def test_generate_video_sync_success(handler, base_config, basic_request):
     mock_client.video.start.return_value = done_resp
     mock_client.video.get.return_value = done_resp
 
-    with patch("tarash.tarash_gateway.providers.xai.Client", return_value=mock_client):
+    with (
+        patch("tarash.tarash_gateway.providers.xai.Client", return_value=mock_client),
+        patch(
+            "tarash.tarash_gateway.providers.xai.XaiVideoResponse",
+            side_effect=lambda proto: proto,
+        ),
+    ):
         response = handler.generate_video(base_config, basic_request)
 
     assert response.status == "completed"

@@ -40,8 +40,17 @@ from tarash.tarash_gateway.providers.field_mappers import (
 
 
 has_xai_sdk = True
+_DEFERRED_STATUS_DONE: int = 1
+_DEFERRED_STATUS_EXPIRED: int = 2
+_DEFERRED_STATUS_PENDING: int = 3
 try:
     from xai_sdk import AsyncClient, Client
+    from xai_sdk.proto import deferred_pb2
+    from xai_sdk.video import VideoResponse as XaiVideoResponse
+
+    _DEFERRED_STATUS_DONE = deferred_pb2.DeferredStatus.DONE
+    _DEFERRED_STATUS_EXPIRED = deferred_pb2.DeferredStatus.EXPIRED
+    _DEFERRED_STATUS_PENDING = deferred_pb2.DeferredStatus.PENDING
 except ImportError:
     has_xai_sdk = False
 
@@ -488,9 +497,15 @@ class XaiProviderHandler:
 
             poll_attempts += 1
 
-            raw_status = getattr(
-                getattr(last_response, "status", None), "name", "PENDING"
-            ).upper()
+            status_int = getattr(last_response, "status", _DEFERRED_STATUS_PENDING)
+
+            # Map protobuf enum int to human-readable string for logging
+            _STATUS_INT_TO_STR = {
+                _DEFERRED_STATUS_DONE: "DONE",
+                _DEFERRED_STATUS_EXPIRED: "EXPIRED",
+                _DEFERRED_STATUS_PENDING: "PENDING",
+            }
+            raw_status = _STATUS_INT_TO_STR.get(status_int, f"UNKNOWN({status_int})")
 
             if on_progress:
                 update = parse_xai_video_status(request_id, raw_status.lower())
@@ -504,10 +519,10 @@ class XaiProviderHandler:
                 {"status": raw_status, "poll_attempt": poll_attempts},
             )
 
-            if raw_status == "DONE":
+            if status_int == _DEFERRED_STATUS_DONE:
                 return last_response
 
-            if raw_status == "EXPIRED":
+            if status_int == _DEFERRED_STATUS_EXPIRED:
                 raise GenerationFailedError(
                     "xAI video generation expired before completing",
                     provider=provider,
@@ -564,8 +579,11 @@ class XaiProviderHandler:
                 is_async=True,
             )
 
+            # GetDeferredVideoResponse has .response (VideoResponse proto);
+            # wrap it with XaiVideoResponse to get .url, .duration, etc.
+            video_resp = XaiVideoResponse(completed.response)
             response = self._convert_video_response(
-                config, request, request_id, completed
+                config, request, request_id, video_resp
             )
             logger.info("Final generated response", {"response": response}, redact=True)
             return response
@@ -608,8 +626,11 @@ class XaiProviderHandler:
                 )
             )
 
+            # GetDeferredVideoResponse has .response (VideoResponse proto);
+            # wrap it with XaiVideoResponse to get .url, .duration, etc.
+            video_resp = XaiVideoResponse(completed.response)
             response = self._convert_video_response(
-                config, request, request_id, completed
+                config, request, request_id, video_resp
             )
             logger.info("Final generated response", {"response": response}, redact=True)
             return response
