@@ -238,3 +238,104 @@ async def test_veo31_first_last_frame_to_video(replicate_api_key):
     print("  Resolution: 720p")
     print("  Generate Audio: True")
     print(f"  Progress updates: {len(progress_updates)}")
+
+
+# ==================== Kling Lip Sync Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_kling_lipsync_audio_async(replicate_api_key):
+    """
+    Async test for Kling Lip Sync with audio input and progress tracking.
+
+    This tests:
+    - Lip sync video generation (video + audio input)
+    - Async generation with progress callback
+    - Kling Lip Sync specific field mapping
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
+        model="kwaivgi/kling-lip-sync",
+        provider="replicate",
+        api_key=replicate_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="lipsync",
+        video="https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_video_input.mp4",
+        extra_params={
+            "audio_file": "https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_audio_input.mp3",
+        },
+    )
+
+    print(f"\nGenerating Kling lip sync video with model: {config.model}")
+    response = await api.generate_video_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Kling lip sync video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_kling_lipsync_tts_sync(replicate_api_key):
+    """
+    Sync test for Kling Lip Sync with text-to-speech input.
+
+    This tests:
+    - Sync generation path
+    - TTS-driven lip sync (text + voice_id)
+    - voice_speed parameter
+    """
+    config = VideoGenerationConfig(
+        model="kwaivgi/kling-lip-sync",
+        provider="replicate",
+        api_key=replicate_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="lipsync",
+        video="https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_video_input.mp4",
+        extra_params={
+            "text": "Hello, this is a test of the Kling lip sync model.",
+            "voice_id": "en_AOT",
+            "voice_speed": 1.0,
+        },
+    )
+
+    print(f"\nGenerating Kling lip sync video (TTS) with model: {config.model}")
+    response = api.generate_video(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated Kling lip sync video (TTS): {response.request_id}")
+    print(f"  Video URL: {response.video}")

@@ -40,6 +40,7 @@ from tarash.tarash_gateway.providers.field_mappers import (
     image_list_field_mapper,
     passthrough_field_mapper,
     single_image_field_mapper,
+    video_url_field_mapper,
 )
 
 has_replicate = True
@@ -223,6 +224,25 @@ VEO31_FIELD_MAPPERS: dict[str, FieldMapper] = {
 }
 
 
+# Kling Lip Sync field mappings (kwaivgi/kling-lip-sync)
+# Takes video + audio (or text with TTS) and generates a lip-synced video
+# Supports audio-driven lipsync (audio_file) or text-to-speech lipsync (text + voice_id)
+KLING_LIPSYNC_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Video input (optional - can use video_id instead)
+    "video_url": video_url_field_mapper(required=False),
+    # Audio input (optional - if not provided, text+voice_id used for TTS)
+    "audio_file": extra_params_field_mapper("audio_file"),
+    # Text for TTS when audio_file is not provided
+    "text": extra_params_field_mapper("text"),
+    # Voice selection for TTS (default: "en_AOT")
+    "voice_id": extra_params_field_mapper("voice_id"),
+    # Speech rate for TTS (0.8-2.0, default: 1)
+    "voice_speed": extra_params_field_mapper("voice_speed"),
+    # Kling video ID (alternative to video_url, cannot be used together)
+    "video_id": extra_params_field_mapper("video_id"),
+}
+
+
 # Generic fallback field mappings for unknown Replicate models
 GENERIC_REPLICATE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -240,6 +260,7 @@ GENERIC_REPLICATE_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Registry maps model name prefixes to their field mappers
 REPLICATE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     # Kling models
+    "kwaivgi/kling-lip-sync": KLING_LIPSYNC_FIELD_MAPPERS,
     "kwaivgi/kling": KLING_V21_FIELD_MAPPERS,
     # Minimax / Hailuo models
     "minimax/": MINIMAX_FIELD_MAPPERS,

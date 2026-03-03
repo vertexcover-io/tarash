@@ -17,6 +17,7 @@ from tarash.tarash_gateway.providers.replicate import (
     get_replicate_field_mappers,
     parse_replicate_status,
     KLING_V21_FIELD_MAPPERS,
+    KLING_LIPSYNC_FIELD_MAPPERS,
     MINIMAX_FIELD_MAPPERS,
     LUMA_FIELD_MAPPERS,
     WAN_FIELD_MAPPERS,
@@ -118,6 +119,18 @@ def test_get_replicate_field_mappers_veo3():
     # With version tags
     mappers_v31_versioned = get_replicate_field_mappers("google/veo-3.1:abc123")
     assert mappers_v31_versioned is VEO31_FIELD_MAPPERS
+
+
+def test_get_replicate_field_mappers_kling_lipsync():
+    """Test exact match for Kling Lip Sync model."""
+    mappers = get_replicate_field_mappers("kwaivgi/kling-lip-sync")
+    assert mappers is KLING_LIPSYNC_FIELD_MAPPERS
+
+
+def test_get_replicate_field_mappers_kling_lipsync_with_version():
+    """Test Kling Lip Sync with version hash."""
+    mappers = get_replicate_field_mappers("kwaivgi/kling-lip-sync:abc123")
+    assert mappers is KLING_LIPSYNC_FIELD_MAPPERS
 
 
 def test_get_replicate_field_mappers_unknown():
@@ -865,6 +878,103 @@ def test_full_luma_request_conversion(handler):
     assert result["start_image_url"] == "https://example.com/start.jpg"
     assert result["end_image_url"] == "https://example.com/end.jpg"
     assert result["loop"] is True
+
+
+# ==================== Kling Lip Sync Tests ====================
+
+
+def test_kling_lipsync_audio_conversion(handler):
+    """Test Kling Lip Sync request conversion with audio input."""
+    config = VideoGenerationConfig(
+        model="kwaivgi/kling-lip-sync",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        video="https://example.com/video.mp4",
+        extra_params={
+            "audio_file": "https://example.com/audio.mp3",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/video.mp4"
+    assert result["audio_file"] == "https://example.com/audio.mp3"
+    assert "text" not in result
+    assert "voice_id" not in result
+
+
+def test_kling_lipsync_tts_conversion(handler):
+    """Test Kling Lip Sync request conversion with text-to-speech input."""
+    config = VideoGenerationConfig(
+        model="kwaivgi/kling-lip-sync",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        video="https://example.com/video.mp4",
+        extra_params={
+            "text": "Hello world, this is a test",
+            "voice_id": "en_uk_boy1",
+            "voice_speed": 1.2,
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/video.mp4"
+    assert result["text"] == "Hello world, this is a test"
+    assert result["voice_id"] == "en_uk_boy1"
+    assert result["voice_speed"] == 1.2
+    assert "audio_file" not in result
+
+
+def test_kling_lipsync_video_id_conversion(handler):
+    """Test Kling Lip Sync request conversion with video_id instead of video_url."""
+    config = VideoGenerationConfig(
+        model="kwaivgi/kling-lip-sync",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        extra_params={
+            "video_id": "kling-video-12345",
+            "audio_file": "https://example.com/audio.mp3",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_id"] == "kling-video-12345"
+    assert result["audio_file"] == "https://example.com/audio.mp3"
+    assert "video_url" not in result
+
+
+def test_kling_lipsync_minimal_conversion(handler):
+    """Test minimal Kling Lip Sync request with only video_id (no video URL)."""
+    config = VideoGenerationConfig(
+        model="kwaivgi/kling-lip-sync",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        extra_params={
+            "video_id": "kling-12345",
+            "text": "Hello world",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_id"] == "kling-12345"
+    assert result["text"] == "Hello world"
+    assert "video_url" not in result
+    assert "audio_file" not in result
 
 
 # ==================== Image Field Mapper Registry Tests ====================
