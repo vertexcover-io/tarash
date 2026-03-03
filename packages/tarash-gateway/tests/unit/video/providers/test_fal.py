@@ -2919,3 +2919,104 @@ def test_zimage_turbo_all_parameters():
     assert result["size"] == "landscape_4_3"
     assert result["num_inference_steps"] == 8
     assert result["enable_safety_checker"] is True
+
+# ==================== Reve Image Generation Field Mapper Tests ====================
+
+
+def test_get_image_field_mappers_reve_all_variants():
+    """Test that all Reve variants resolve to the unified REVE_FIELD_MAPPERS via prefix matching."""
+    from tarash.tarash_gateway.providers.fal import REVE_FIELD_MAPPERS
+
+    variants = [
+        "fal-ai/reve/edit",
+        "fal-ai/reve/fast/edit",
+        "fal-ai/reve/remix",
+        "fal-ai/reve/fast/remix",
+        "fal-ai/reve/text-to-image",
+    ]
+    for variant in variants:
+        mappers = get_image_field_mappers(variant)
+        assert mappers is REVE_FIELD_MAPPERS, (
+            f"Expected REVE_FIELD_MAPPERS for {variant}, got {mappers}"
+        )
+
+
+def test_reve_text_to_image_conversion():
+    """Test Reve text-to-image with prompt, aspect_ratio, n, and output_format."""
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/reve/text-to-image")
+
+    request = ImageGenerationRequest(
+        prompt="A serene mountain lake at sunset",
+        seed=42,
+        aspect_ratio="16:9",
+        n=2,
+        extra_params={"output_format": "png"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "A serene mountain lake at sunset"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["num_images"] == 2
+    assert result["output_format"] == "png"
+    # No image fields should be present for text-to-image
+    assert "image_url" not in result
+    assert "image_urls" not in result
+
+
+def test_reve_edit_single_image_conversion():
+    """Test Reve edit with single reference image for image editing."""
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/reve/edit")
+
+    request = ImageGenerationRequest(
+        prompt="Make the sky more dramatic with stormy clouds",
+        image_list=[
+            {"image": "https://example.com/photo.jpg", "type": "reference"},
+        ],
+        extra_params={"output_format": "jpeg"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Make the sky more dramatic with stormy clouds"
+    assert result["image_url"] == "https://example.com/photo.jpg"
+    assert result["output_format"] == "jpeg"
+    # Single image: image_urls should also include it
+    assert result["image_urls"] == ["https://example.com/photo.jpg"]
+
+
+def test_reve_remix_multiple_images_conversion():
+    """Test Reve remix with multiple reference images (1-6 images required by API)."""
+    from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
+
+    mappers = get_image_field_mappers("fal-ai/reve/remix")
+
+    request = ImageGenerationRequest(
+        prompt="Reimagine this scene with a futuristic twist",
+        image_list=[
+            {"image": "https://example.com/img1.jpg", "type": "reference"},
+            {"image": "https://example.com/img2.jpg", "type": "reference"},
+            {"image": "https://example.com/img3.jpg", "type": "reference"},
+        ],
+        aspect_ratio="1:1",
+        n=1,
+        extra_params={"output_format": "webp"},
+    )
+
+    result = apply_field_mappers(mappers, request)
+
+    assert result["prompt"] == "Reimagine this scene with a futuristic twist"
+    # Multiple images: image_url is None (strict=False returns None for >1 image)
+    assert "image_url" not in result
+    assert result["image_urls"] == [
+        "https://example.com/img1.jpg",
+        "https://example.com/img2.jpg",
+        "https://example.com/img3.jpg",
+    ]
+    assert result["aspect_ratio"] == "1:1"
+    assert result["num_images"] == 1
+    assert result["output_format"] == "webp"
