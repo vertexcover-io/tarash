@@ -29,6 +29,12 @@ config = VideoGenerationConfig(
 | Google (Vertex AI) | GCP project + service account or Application Default Credentials |
 | Replicate | [replicate.com/account](https://replicate.com/account) |
 | Stability AI | [platform.stability.ai](https://platform.stability.ai) |
+| xAI | [console.x.ai](https://console.x.ai) |
+| Luma AI | [lumalabs.ai](https://lumalabs.ai) |
+| ElevenLabs | [elevenlabs.io](https://elevenlabs.io) |
+| Cartesia | [play.cartesia.ai](https://play.cartesia.ai) |
+| Sarvam AI | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) |
+| Hume AI | [platform.hume.ai](https://platform.hume.ai) |
 
 !!! tip "Google models support two authentication modes"
     **Gemini Developer API (API key):** Works for both video (Veo) and image (Imagen, Gemini) models. Pass your `AIza...` key directly:

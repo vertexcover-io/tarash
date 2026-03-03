@@ -56,6 +56,7 @@ Fal hosts many Flux-family image models. Use any Fal image model path as the `mo
 |---|---|
 | `fal-ai/flux/dev` | Flux Dev |
 | `fal-ai/flux-realism` | Photorealism LoRA |
+| [`fal-ai/reve`](fal/reve.md) | Reve text-to-image, edit, remix |
 
 For unlisted Fal image models, Tarash Gateway applies generic field mappers (prompt passthrough + seed).
 

@@ -86,6 +86,7 @@ config = VideoGenerationConfig(
 | [Sora](sora.md) | Sora | `fal-ai/sora-2` | — |
 | [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | — |
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5` | — |
+| [Reve](reve.md) | Reve | — | `fal-ai/reve/text-to-image`, `fal-ai/reve/edit`, `fal-ai/reve/remix` |
 | [Grok Imagine](grok-imagine.md) | Grok Imagine | — | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` |
 | Generic | — | Any other `fal-ai/*` | ✅ |
 
@@ -94,6 +95,7 @@ config = VideoGenerationConfig(
 | Family | Model prefix | Notes |
 |---|---|---|
 | [MiniMax Speech](minimax-speech.md) | `fal-ai/minimax/speech-2.8-hd` | HD quality TTS with interjection support |
+| [Qwen 3 TTS](qwen-tts.md) | `fal-ai/qwen-3-tts` | Voice customization, sampling control |
 
 Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry, so any sub-variant automatically inherits the right field mappers.
 

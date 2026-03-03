@@ -22,7 +22,7 @@ Configuration passed to `generate_video()` and `generate_video_async()`. Immutab
 
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
-| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"` |
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"xai"`, `"luma"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"fal-ai/veo3"`, `"openai/sora-2"` |
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override provider base URL |
@@ -94,7 +94,7 @@ Passed to the `on_progress` callback on each polling cycle during video generati
 
 | Field | Type | Required | Default | Description |
 |---|---|:---:|---|---|
-| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"` |
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"openai"`, `"azure-openai"`, `"runway"`, `"google"`, `"replicate"`, `"stability"`, `"xai"`, `"luma"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"dall-e-3"`, `"fal-ai/flux/dev"` |
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override base URL |
@@ -188,6 +188,93 @@ One entry per provider tried. Accessible via `response.execution_metadata.attemp
 | `is_retryable` | `bool | None` | Whether the error triggered the next fallback |
 | `request_id` | `str | None` | Provider-assigned request ID if available |
 | `elapsed_seconds` | `float | None` | Duration of this attempt (computed property) |
+
+---
+
+## AudioGenerationConfig
+
+Configuration passed to `generate_tts()`, `generate_tts_async()`, `generate_sts()`, and `generate_sts_async()`. Immutable.
+
+| Field | Type | Required | Default | Description |
+|---|---|:---:|---|---|
+| `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"elevenlabs"`, `"cartesia"`, `"sarvam"`, `"hume"` |
+| `model` | `str` | ✅ | — | Model ID, e.g. `"eleven_multilingual_v2"`, `"sonic-3"`, `"fal-ai/minimax/speech-2.8-hd"` |
+| `api_key` | `str | None` | — | `None` | API key |
+| `timeout` | `int` | — | `240` | Max seconds to wait for completion |
+| `mock` | `MockConfig | None` | — | `None` | Enable mock generation |
+| `fallback_configs` | `list[AudioGenerationConfig] | None` | — | `None` | Fallback chain |
+| `provider_config` | `dict` | — | `{}` | Extra provider-specific config |
+
+---
+
+## AudioOutputFormat
+
+Audio format specification used by `TTSRequest` and `STSRequest`.
+
+| Field | Type | Required | Default | Description |
+|---|---|:---:|---|---|
+| `format` | `str` | ✅ | — | Audio codec: `"mp3"`, `"wav"`, `"pcm"`, `"flac"`, `"opus"` |
+| `sample_rate` | `int | None` | — | `None` | Sample rate in Hz (e.g. `44100`, `24000`) |
+| `bitrate` | `int | None` | — | `None` | Bitrate in kbps (e.g. `128`, `192`) |
+
+---
+
+## TTSRequest
+
+Parameters for a text-to-speech request. Unknown kwargs are automatically captured into `extra_params`.
+
+| Field | Type | Required | Default | Description |
+|---|---|:---:|---|---|
+| `text` | `str` | ✅ | — | Text to convert to speech |
+| `voice_id` | `str | None` | — | `None` | Voice identifier (provider-specific) |
+| `output_format` | `AudioOutputFormat` | — | `mp3, 44100 Hz, 128 kbps` | Audio output format |
+| `language_code` | `str | None` | — | `None` | Language hint for the provider |
+| `voice_settings` | `dict | None` | — | `None` | Provider-specific voice settings (stability, speed, emotion, pitch) |
+| `extra_params` | `dict` | — | `{}` | Provider- or model-specific parameters |
+
+---
+
+## STSRequest
+
+Parameters for a speech-to-speech (voice conversion) request. Unknown kwargs are automatically captured into `extra_params`.
+
+| Field | Type | Required | Default | Description |
+|---|---|:---:|---|---|
+| `audio` | `MediaType` | ✅ | — | Input audio (bytes, URL, or MediaContent) |
+| `voice_id` | `str` | ✅ | — | Target voice identifier |
+| `output_format` | `AudioOutputFormat` | — | `mp3, 44100 Hz, 128 kbps` | Audio output format |
+| `voice_settings` | `dict | None` | — | `None` | Provider-specific voice settings |
+| `extra_params` | `dict` | — | `{}` | Provider- or model-specific parameters |
+
+---
+
+## TTSResponse
+
+| Field | Type | Description |
+|---|---|---|
+| `request_id` | `str` | Tarash-assigned unique ID |
+| `audio` | `str` | Base64-encoded audio bytes |
+| `content_type` | `str | None` | MIME type (e.g. `"audio/mpeg"`) |
+| `duration` | `float | None` | Audio duration in seconds, if available |
+| `status` | `"completed" | "failed"` | Final status |
+| `is_mock` | `bool` | True if produced by mock provider |
+| `raw_response` | `dict` | Unmodified provider response |
+| `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
+
+---
+
+## STSResponse
+
+| Field | Type | Description |
+|---|---|---|
+| `request_id` | `str` | Tarash-assigned unique ID |
+| `audio` | `str` | Base64-encoded audio bytes |
+| `content_type` | `str | None` | MIME type (e.g. `"audio/mpeg"`) |
+| `duration` | `float | None` | Audio duration in seconds, if available |
+| `status` | `"completed" | "failed"` | Final status |
+| `is_mock` | `bool` | True if produced by mock provider |
+| `raw_response` | `dict` | Unmodified provider response |
+| `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---
 

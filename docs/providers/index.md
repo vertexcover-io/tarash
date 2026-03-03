@@ -5,6 +5,8 @@ Change `provider` and `model` in your config — nothing else in your code chang
 
 ## Supported providers
 
+### Video & Image
+
 | Provider | Video | Image | Image-to-Video | Install extra |
 |---|:---:|:---:|:---:|---|
 | [OpenAI](openai.md) | ✅ | ✅ | ✅ | `openai` |
@@ -13,7 +15,19 @@ Change `provider` and `model` in your config — nothing else in your code chang
 | [Google](google.md) | ✅ | ✅ | ✅ | `veo3` |
 | [Runway](runway.md) | ✅ | — | ✅ | `runway` |
 | [Replicate](replicate.md) | ✅ | — | ✅ | `replicate` |
+| [xAI](xai.md) | ✅ | ✅ | ✅ | `xai` |
+| [Luma AI](luma.md) | ✅ | ✅ | ✅ | `luma` |
 | [Stability AI](stability.md) | — | ✅ | — | — |
+
+### Audio (TTS / STS)
+
+| Provider | TTS | STS | Install extra |
+|---|:---:|:---:|---|
+| [Fal.ai](fal.md) | ✅ | — | `fal` |
+| [ElevenLabs](elevenlabs.md) | ✅ | ✅ | `elevenlabs` |
+| [Cartesia](cartesia.md) | ✅ | ✅ | `cartesia` |
+| [Sarvam AI](sarvam.md) | ✅ | — | `sarvam` |
+| [Hume AI](hume.md) | ✅ | — | `hume` |
 
 ---
 

@@ -122,6 +122,8 @@ response = await generate_video_async(config, request)  # async
 | **Seedance** | `fal-ai/bytedance/seedance/v1.5/pro/text-to-video`<br>`fal-ai/bytedance/seedance/v1/pro/image-to-video`<br>`fal-ai/bytedance/seedance/v1/lite/reference-to-video` | [Fal.ai](providers/fal/index.md) |
 | **Pixverse** | `fal-ai/pixverse/v5.5/text-to-video`<br>`fal-ai/pixverse/v5.5/image-to-video`<br>`fal-ai/pixverse/v5/text-to-video` | [Fal.ai](providers/fal/index.md) |
 | **Runway** | `gen4_turbo`<br>`gen4_aleph`<br>`veo3.1`<br>`veo3.1_fast` | [Runway](providers/runway.md) |
+| **Grok Imagine** | `grok-imagine-video` | [xAI](providers/xai.md) |
+| **Luma** | Video models via Luma SDK | [Luma AI](providers/luma.md) |
 
 </div>
 
@@ -141,7 +143,10 @@ response = await generate_video_async(config, request)  # async
 | **Recraft** | `fal-ai/recraft-v3`<br>`fal-ai/recraft` | [Fal.ai](providers/fal/index.md) |
 | **Ideogram** | `fal-ai/ideogram` | [Fal.ai](providers/fal/index.md) |
 | **Z-Image Turbo** | `fal-ai/z-image/turbo` | [Fal.ai](providers/fal/index.md) |
+| **Reve** | `fal-ai/reve/text-to-image`<br>`fal-ai/reve/edit`<br>`fal-ai/reve/remix` | [Fal.ai](providers/fal/index.md) |
 | **Grok Imagine** | `xai/grok-imagine-image`<br>`xai/grok-imagine-image/edit` | [Fal.ai](providers/fal/index.md) |
+| **Grok Imagine (native)** | `grok-imagine-image`<br>`grok-2-image` | [xAI](providers/xai.md) |
+| **Luma** | Image models via Luma SDK | [Luma AI](providers/luma.md) |
 
 </div>
 
@@ -153,6 +158,9 @@ response = await generate_video_async(config, request)  # async
 |---|---|---|
 | **MiniMax Speech** | `fal-ai/minimax/speech-2.8-hd`<br>`fal-ai/minimax/speech-2.8-turbo`<br>`fal-ai/minimax/speech-2.6-hd`<br>`fal-ai/minimax/speech-2.6-turbo` | [Fal.ai](providers/fal/index.md) |
 | **ElevenLabs** | `eleven_multilingual_v2`<br>`eleven_flash_v2_5`<br>`eleven_turbo_v2_5` | [ElevenLabs](providers/elevenlabs.md) |
+| **Qwen 3 TTS** | `fal-ai/qwen-3-tts` | [Fal.ai](providers/fal/index.md) |
 | **Cartesia** | `sonic-3`<br>`sonic-turbo` | [Cartesia](providers/cartesia.md) |
+| **Sarvam AI** | `bulbul:v2`<br>`bulbul:v3` | [Sarvam](providers/sarvam.md) |
+| **Hume AI** | `octave-2`<br>`octave-1` | [Hume](providers/hume.md) |
 
 </div>
