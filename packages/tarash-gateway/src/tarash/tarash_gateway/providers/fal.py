@@ -662,6 +662,21 @@ PIXVERSE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "original_sound_switch": extra_params_field_mapper("original_sound_switch"),
 }
 
+# Sync Lipsync - Unified mapper for all variants (v1.x, v2, v2/pro)
+# Takes video + audio and generates a lip-synced video
+# All variants share the same parameters: video_url, audio_url, sync_mode, model
+SYNC_LIPSYNC_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Video input (required by API, mapped from VideoGenerationRequest.video)
+    "video_url": video_url_field_mapper(required=True),
+    # Audio input (required by API, passed via extra_params)
+    "audio_url": extra_params_field_mapper("audio_url", required=True),
+    # Optional: how to handle audio/video duration mismatch
+    # Values: "cut_off" (default), "loop", "bounce", "silence", "remap"
+    "sync_mode": extra_params_field_mapper("sync_mode"),
+    # Optional: sub-model selection (e.g., "lipsync-2", "lipsync-2-pro" on v2 endpoint)
+    "model": extra_params_field_mapper("model"),
+}
+
 # Generic fallback field mappings
 GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -715,6 +730,8 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/pixverse/v5.5": PIXVERSE_FIELD_MAPPERS,  # v5.5 variants
     "fal-ai/pixverse/v5": PIXVERSE_FIELD_MAPPERS,  # v5 variants (same API)
     "fal-ai/pixverse/swap": PIXVERSE_FIELD_MAPPERS,  # Swap variant (works for both v5 and v5.5)
+    # Sync Lipsync - All variants (v1.x, v2, v2/pro) use unified mapper
+    "fal-ai/sync-lipsync": SYNC_LIPSYNC_FIELD_MAPPERS,
     # Future models...
     # "fal-ai/hunyuan-video": HUNYUAN_FIELD_MAPPERS,
 }
@@ -807,7 +824,9 @@ REVE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),
     "aspect_ratio": passthrough_field_mapper("aspect_ratio"),  # remix and text-to-image
     "num_images": passthrough_field_mapper("n"),  # n → num_images (1-4 outputs)
-    "output_format": extra_params_field_mapper("output_format"),  # "png", "jpeg", "webp"
+    "output_format": extra_params_field_mapper(
+        "output_format"
+    ),  # "png", "jpeg", "webp"
 }
 
 # Grok Imagine Image (xAI) - Unified mapper for all variants:
@@ -824,7 +843,9 @@ GROK_IMAGINE_FIELD_MAPPERS: dict[str, FieldMapper] = {
         accepted_formats=_FAL_ACCEPTED_FORMATS,
         provider="fal",
     ),
-    "output_format": extra_params_field_mapper("output_format"),  # "jpeg", "png", "webp"
+    "output_format": extra_params_field_mapper(
+        "output_format"
+    ),  # "jpeg", "png", "webp"
 }
 
 # Generic image field mappings (fallback)

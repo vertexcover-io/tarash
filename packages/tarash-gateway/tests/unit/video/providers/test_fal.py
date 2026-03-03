@@ -28,6 +28,7 @@ from tarash.tarash_gateway.providers.fal import (
     WAN_V22_A14B_FIELD_MAPPERS,
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
     PIXVERSE_FIELD_MAPPERS,
+    SYNC_LIPSYNC_FIELD_MAPPERS,
     parse_fal_status,
     parse_fal_image_status,
 )
@@ -2920,6 +2921,7 @@ def test_zimage_turbo_all_parameters():
     assert result["num_inference_steps"] == 8
     assert result["enable_safety_checker"] is True
 
+
 # ==================== Reve Image Generation Field Mapper Tests ====================
 
 
@@ -3090,3 +3092,105 @@ def test_grok_imagine_edit_image_conversion():
     assert result["output_format"] == "jpeg"
     # No aspect_ratio for edit (not in request)
     assert "aspect_ratio" not in result
+
+
+# ==================== Sync Lipsync Tests ====================
+
+
+def test_get_field_mappers_sync_lipsync_all_variants():
+    """Test unified mapper for all Sync Lipsync variants via prefix matching."""
+    variants = [
+        "fal-ai/sync-lipsync",
+        "fal-ai/sync-lipsync/v2",
+        "fal-ai/sync-lipsync/v2/pro",
+    ]
+    for variant in variants:
+        mappers = get_field_mappers(variant)
+        assert mappers is SYNC_LIPSYNC_FIELD_MAPPERS, (
+            f"Expected SYNC_LIPSYNC_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_sync_lipsync_conversion(handler):
+    """Test Sync Lipsync request conversion with video, audio, and sync_mode."""
+    config = VideoGenerationConfig(
+        model="fal-ai/sync-lipsync/v2/pro",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",  # Lipsync doesn't use prompt
+        video="https://example.com/video.mp4",
+        extra_params={
+            "audio_url": "https://example.com/audio.mp3",
+            "sync_mode": "loop",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/video.mp4"
+    assert result["audio_url"] == "https://example.com/audio.mp3"
+    assert result["sync_mode"] == "loop"
+    # Prompt should not be in the result (not mapped)
+    assert "prompt" not in result
+
+
+def test_sync_lipsync_conversion_minimal(handler):
+    """Test Sync Lipsync with only required fields (video + audio)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/sync-lipsync/v2",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        video="https://example.com/video.mp4",
+        extra_params={
+            "audio_url": "https://example.com/audio.mp3",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["video_url"] == "https://example.com/video.mp4"
+    assert result["audio_url"] == "https://example.com/audio.mp3"
+    # Optional fields should not appear
+    assert "sync_mode" not in result
+    assert "model" not in result
+
+
+def test_sync_lipsync_missing_audio_url_raises(handler):
+    """Test that missing audio_url raises ValueError."""
+    config = VideoGenerationConfig(
+        model="fal-ai/sync-lipsync/v2/pro",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        video="https://example.com/video.mp4",
+        # No audio_url in extra_params
+    )
+
+    with pytest.raises(ValueError, match="Required field 'audio_url' cannot be None"):
+        handler._convert_request(config, request)
+
+
+def test_sync_lipsync_missing_video_raises(handler):
+    """Test that missing video raises ValueError."""
+    config = VideoGenerationConfig(
+        model="fal-ai/sync-lipsync/v2/pro",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        # No video
+        extra_params={
+            "audio_url": "https://example.com/audio.mp3",
+        },
+    )
+
+    with pytest.raises(ValueError, match="Required field 'video' is missing"):
+        handler._convert_request(config, request)

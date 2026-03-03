@@ -828,3 +828,104 @@ async def test_wan_v22_a14b_image_to_video_lora(fal_api_key):
 
     print(f"Generated Wan v2.2-a14b image-to-video/lora: {response.request_id}")
     print(f"  Video URL: {response.video}")
+
+
+# ==================== Sync Lipsync Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_sync_lipsync_v2_pro_async(fal_api_key):
+    """
+    Async test for Sync Lipsync v2/pro with progress tracking.
+
+    This tests:
+    - Lipsync video generation (video + audio input)
+    - Progress callback tracking
+    - sync_mode parameter
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
+        model="fal-ai/sync-lipsync/v2/pro",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="lipsync",
+        video="https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_video_input.mp4",
+        extra_params={
+            "audio_url": "https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_audio_input.mp3",
+            "sync_mode": "cut_off",
+        },
+    )
+
+    print(f"\nGenerating lipsync video with model: {config.model}")
+    response = await api.generate_video_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated lipsync video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_sync_lipsync_v2_sync(fal_api_key):
+    """
+    Sync test for Sync Lipsync v2 with loop sync_mode.
+
+    This tests:
+    - Sync generation path
+    - v2 model variant (via prefix matching)
+    - Different sync_mode ("loop")
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/sync-lipsync/v2",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="lipsync",
+        video="https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_video_input.mp4",
+        extra_params={
+            "audio_url": "https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_audio_input.mp3",
+            "sync_mode": "loop",
+        },
+    )
+
+    print(f"\nGenerating lipsync video (sync) with model: {config.model}")
+    response = api.generate_video(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated lipsync video (sync): {response.request_id}")
+    print(f"  Video URL: {response.video}")
