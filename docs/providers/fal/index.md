@@ -96,6 +96,7 @@ config = VideoGenerationConfig(
 | [Sora](sora.md) | Sora | `fal-ai/sora-2` | — |
 | [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | — |
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5`, `fal-ai/pixverse/lipsync` | — |
+| [OmniHuman](omnihuman.md) | OmniHuman | `fal-ai/bytedance/omnihuman`, `fal-ai/bytedance/omnihuman/v1.5` | — |
 | [Sync Lipsync](sync-lipsync.md) | Sync Lipsync | `fal-ai/sync-lipsync`, `fal-ai/sync-lipsync/v2`, `fal-ai/sync-lipsync/v2/pro` | — |
 | [Reve](reve.md) | Reve | — | `fal-ai/reve/text-to-image`, `fal-ai/reve/edit`, `fal-ai/reve/remix` |
 | [Grok Imagine](grok-imagine.md) | Grok Imagine | — | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` |

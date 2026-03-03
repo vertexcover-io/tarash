@@ -30,6 +30,7 @@ from tarash.tarash_gateway.providers.fal import (
     PIXVERSE_FIELD_MAPPERS,
     SYNC_LIPSYNC_FIELD_MAPPERS,
     PIXVERSE_LIPSYNC_FIELD_MAPPERS,
+    OMNIHUMAN_FIELD_MAPPERS,
     parse_fal_status,
     parse_fal_image_status,
 )
@@ -3269,4 +3270,103 @@ def test_pixverse_lipsync_missing_video_raises(handler):
     )
 
     with pytest.raises(ValueError, match="Required field 'video' is missing"):
+        handler._convert_request(config, request)
+
+
+# ==================== ByteDance OmniHuman Tests ====================
+
+
+def test_get_field_mappers_omnihuman_all_variants():
+    """Test unified mapper for all OmniHuman variants via prefix matching."""
+    variants = [
+        "fal-ai/bytedance/omnihuman",
+        "fal-ai/bytedance/omnihuman/v1.5",
+    ]
+    for variant in variants:
+        mappers = get_field_mappers(variant)
+        assert mappers is OMNIHUMAN_FIELD_MAPPERS, (
+            f"Expected OMNIHUMAN_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_omnihuman_conversion(handler):
+    """Test OmniHuman request conversion with image, audio, prompt, resolution, and turbo_mode."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/omnihuman/v1.5",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A person speaking naturally",
+        image_list=[{"type": "reference", "image": "https://example.com/person.jpg"}],
+        extra_params={
+            "audio_url": "https://example.com/speech.mp3",
+            "turbo_mode": True,
+        },
+        resolution="720p",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["image_url"] == "https://example.com/person.jpg"
+    assert result["audio_url"] == "https://example.com/speech.mp3"
+    assert result["prompt"] == "A person speaking naturally"
+    assert result["resolution"] == "720p"
+    assert result["turbo_mode"] is True
+
+
+def test_omnihuman_conversion_minimal(handler):
+    """Test OmniHuman with only required fields (image + audio)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/omnihuman/v1.5",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        image_list=[{"type": "reference", "image": "https://example.com/person.jpg"}],
+        extra_params={
+            "audio_url": "https://example.com/speech.mp3",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["image_url"] == "https://example.com/person.jpg"
+    assert result["audio_url"] == "https://example.com/speech.mp3"
+    # Optional fields should not appear
+    assert "turbo_mode" not in result
+
+
+def test_omnihuman_missing_audio_url_raises(handler):
+    """Test that missing audio_url raises ValueError."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/omnihuman/v1.5",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        image_list=[{"type": "reference", "image": "https://example.com/person.jpg"}],
+    )
+
+    with pytest.raises(ValueError, match="Required field 'audio_url' cannot be None"):
+        handler._convert_request(config, request)
+
+
+def test_omnihuman_missing_image_raises(handler):
+    """Test that missing image raises ValueError."""
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/omnihuman/v1.5",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="unused",
+        extra_params={
+            "audio_url": "https://example.com/speech.mp3",
+        },
+    )
+
+    with pytest.raises(ValueError, match="Required field 'image_url' cannot be None"):
         handler._convert_request(config, request)

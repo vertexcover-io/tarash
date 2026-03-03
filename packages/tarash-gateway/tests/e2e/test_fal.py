@@ -1029,3 +1029,114 @@ def test_pixverse_lipsync_tts_sync(fal_api_key):
 
     print(f"✓ Generated PixVerse lipsync video (TTS): {response.request_id}")
     print(f"  Video URL: {response.video}")
+
+
+# ==================== ByteDance OmniHuman Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_omnihuman_v15_async(fal_api_key):
+    """
+    Async test for OmniHuman v1.5 with progress tracking.
+
+    This tests:
+    - Image + audio → video generation
+    - Progress callback tracking
+    - Resolution and turbo_mode parameters
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/omnihuman/v1.5",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A person speaking naturally with expressive gestures",
+        image_list=[
+            {
+                "type": "reference",
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/omnihuman_v15_input_image.png",
+            }
+        ],
+        resolution="720p",
+        extra_params={
+            "audio_url": "https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_audio_input.mp3",
+            "turbo_mode": True,
+        },
+    )
+
+    print(f"\nGenerating OmniHuman video with model: {config.model}")
+    response = await api.generate_video_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated OmniHuman video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_omnihuman_v15_sync(fal_api_key):
+    """
+    Sync test for OmniHuman v1.5 with 1080p resolution.
+
+    This tests:
+    - Sync generation path
+    - 1080p resolution (default)
+    - Minimal parameters (no turbo_mode, no prompt)
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/bytedance/omnihuman/v1.5",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="omnihuman",
+        image_list=[
+            {
+                "type": "reference",
+                "image": "https://storage.googleapis.com/falserverless/example_inputs/omnihuman_v15_input_image.png",
+            }
+        ],
+        extra_params={
+            "audio_url": "https://storage.googleapis.com/falserverless/example_inputs/sync_v2_pro_audio_input.mp3",
+        },
+    )
+
+    print(f"\nGenerating OmniHuman video (sync) with model: {config.model}")
+    response = api.generate_video(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated OmniHuman video (sync): {response.request_id}")
+    print(f"  Video URL: {response.video}")

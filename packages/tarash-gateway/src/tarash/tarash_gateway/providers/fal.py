@@ -691,6 +691,27 @@ PIXVERSE_LIPSYNC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "voice_id": extra_params_field_mapper("voice_id"),
 }
 
+# ByteDance OmniHuman - Unified mapper for all versions (v1, v1.5)
+# Takes image of a human figure + audio and generates a video with synchronized lip movements
+# Audio must be under 30s for 1080p, 60s for 720p
+OMNIHUMAN_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Image input (required - human figure image)
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # Audio input (required - drives lip sync and body movement)
+    "audio_url": extra_params_field_mapper("audio_url", required=True),
+    # Optional text guidance for video generation
+    "prompt": passthrough_field_mapper("prompt"),
+    # Resolution: "720p" or "1080p" (default: 1080p)
+    "resolution": passthrough_field_mapper("resolution"),
+    # Faster generation with slight quality trade-off
+    "turbo_mode": extra_params_field_mapper("turbo_mode"),
+}
+
 # Generic fallback field mappings
 GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -746,6 +767,9 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/pixverse/swap": PIXVERSE_FIELD_MAPPERS,  # Swap variant (works for both v5 and v5.5)
     # PixVerse Lipsync - audio-driven or TTS-driven lip sync
     "fal-ai/pixverse/lipsync": PIXVERSE_LIPSYNC_FIELD_MAPPERS,
+    # ByteDance OmniHuman - Unified mapper for all versions (v1, v1.5)
+    # Image + audio → video with synchronized lip movements and body motion
+    "fal-ai/bytedance/omnihuman": OMNIHUMAN_FIELD_MAPPERS,
     # Sync Lipsync - All variants (v1.x, v2, v2/pro) use unified mapper
     "fal-ai/sync-lipsync": SYNC_LIPSYNC_FIELD_MAPPERS,
     # Future models...

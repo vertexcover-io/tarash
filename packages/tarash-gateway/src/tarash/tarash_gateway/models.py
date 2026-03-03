@@ -1026,3 +1026,14 @@ class ProviderHandler(Protocol):
             TarashException: On any provider-level error.
         """
         ...
+
+
+# ==================== Resolve Forward References ====================
+# MockConfig is used as a string annotation ("MockConfig | None") in the config
+# models above to avoid a circular import (mock.py imports from models.py).
+# By this point all classes are defined, so mock.py can safely import them.
+from tarash.tarash_gateway.mock import MockConfig  # noqa: E402, F811
+
+VideoGenerationConfig.model_rebuild()
+ImageGenerationConfig.model_rebuild()
+AudioGenerationConfig.model_rebuild()
