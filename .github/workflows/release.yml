@@ -58,9 +58,9 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git fetch origin main
-          git checkout main
-          git pull --rebase origin main
+          git fetch origin master
+          git checkout master
+          git pull --rebase origin master
           # Re-apply the changelog update on main
           {
             echo "## [${{ github.ref_name }}] - $(date +%Y-%m-%d)"
@@ -75,7 +75,7 @@ jobs:
           rm temp_changelog.md
           git add CHANGELOG.md
           git commit -m "📝 update CHANGELOG.md for ${{ github.ref_name }}" || exit 0
-          git push origin main
+          git push origin master
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
