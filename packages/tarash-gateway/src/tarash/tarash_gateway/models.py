@@ -1,4 +1,4 @@
-"""Core data models for video and image generation."""
+"""Core data models for video, image, and audio generation."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -28,6 +28,34 @@ Resolution = Literal["360p", "480p", "720p", "1080p", "4k"]
 AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
 Base64 = str
 StatusType = Literal["queued", "processing", "completed", "failed"]
+
+
+class AudioOutputFormat(BaseModel):
+    """Structured audio output format."""
+
+    format: str = Field(
+        description="Audio format/codec, e.g. 'mp3', 'wav', 'pcm', 'flac', 'opus'."
+    )
+    sample_rate: int | None = Field(
+        default=None, description="Sample rate in Hz, e.g. 44100."
+    )
+    bitrate: int | None = Field(default=None, description="Bitrate in kbps, e.g. 128.")
+
+
+def format_to_content_type(format: str) -> str:
+    """Map audio format to MIME content type."""
+    return {
+        "mp3": "audio/mpeg",
+        "wav": "audio/wav",
+        "pcm": "audio/pcm",
+        "flac": "audio/flac",
+        "opus": "audio/opus",
+        "ulaw": "audio/basic",
+        "mulaw": "audio/basic",
+        "alaw": "audio/basic",
+        "aac": "audio/aac",
+        "linear16": "audio/pcm",
+    }.get(format, "audio/mpeg")
 
 
 class MediaContent(TypedDict):
@@ -61,6 +89,16 @@ ProgressCallback = SyncProgressCallback | AsyncProgressCallback
 SyncImageProgressCallback = Callable[["ImageGenerationUpdate"], None]
 AsyncImageProgressCallback = Callable[["ImageGenerationUpdate"], Awaitable[None]]
 ImageProgressCallback = SyncImageProgressCallback | AsyncImageProgressCallback
+
+# Progress callback types (TTS)
+SyncTTSProgressCallback = Callable[["TTSUpdate"], None]
+AsyncTTSProgressCallback = Callable[["TTSUpdate"], Awaitable[None]]
+TTSProgressCallback = SyncTTSProgressCallback | AsyncTTSProgressCallback
+
+# Progress callback types (STS)
+SyncSTSProgressCallback = Callable[["STSUpdate"], None]
+AsyncSTSProgressCallback = Callable[["STSUpdate"], Awaitable[None]]
+STSProgressCallback = SyncSTSProgressCallback | AsyncSTSProgressCallback
 
 # ==================== Execution Metadata ====================
 
@@ -487,6 +525,220 @@ class ImageGenerationUpdate(BaseModel):
     )
 
 
+# ==================== Audio Generation Models ====================
+
+
+class AudioGenerationConfig(BaseModel):
+    """Configuration for a TTS or STS audio generation request."""
+
+    model: str = Field(
+        description="Model identifier, e.g. 'eleven_multilingual_v2', 'sonic-3', 'fal-ai/minimax/speech-2.8-hd'."
+    )
+    provider: str = Field(
+        description="Provider identifier, e.g. 'elevenlabs', 'cartesia', 'fal'."
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="API key for authenticating with the provider.",
+    )
+    timeout: int = Field(
+        default=240,
+        description="Maximum seconds to wait for generation to complete.",
+    )
+    mock: "MockConfig | None" = Field(
+        default=None, description="If set, enables mock generation for testing."
+    )
+    fallback_configs: list["AudioGenerationConfig"] | None = Field(
+        default=None,
+        description="Ordered list of fallback configs to try on retryable errors.",
+    )
+    provider_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional provider-specific configuration.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class TTSRequest(BaseModel):
+    """Parameters for a text-to-speech request."""
+
+    text: str = Field(description="Text to convert to speech.")
+    voice_id: str | None = Field(
+        default=None, description="Voice identifier (provider-specific)."
+    )
+    output_format: AudioOutputFormat = Field(
+        default_factory=lambda: AudioOutputFormat(
+            format="mp3", sample_rate=44100, bitrate=128
+        ),
+        description="Audio output format with codec, sample_rate (Hz), and bitrate (kbps).",
+    )
+    language_code: str | None = Field(
+        default=None, description="Language hint for the provider."
+    )
+    voice_settings: dict[str, Any] | None = Field(
+        default=None,
+        description="Provider-specific voice settings (e.g. stability, speed, emotion, pitch).",
+    )
+
+    # Model-specific parameters
+    extra_params: dict[str, object] = Field(
+        default_factory=dict,
+        description="Provider- or model-specific parameters with no standard equivalent.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_extra_fields(cls, data: dict[str, object]) -> dict[str, object]:
+        extra_params: dict[str, object] = cast(
+            dict[str, object], data.pop("extra_params", {})
+        )
+        known_fields = set(cls.model_fields.keys())
+        extra = {k: v for k, v in data.items() if k not in known_fields}
+        for k in extra.keys():
+            _ = data.pop(k)
+        extra_params.update(extra)
+        data["extra_params"] = extra_params
+        return data
+
+
+class STSRequest(BaseModel):
+    """Parameters for a speech-to-speech request."""
+
+    audio: MediaType = Field(description="Input audio (bytes, URL, or MediaContent).")
+    voice_id: str = Field(description="Voice identifier (provider-specific).")
+    output_format: AudioOutputFormat = Field(
+        default_factory=lambda: AudioOutputFormat(
+            format="mp3", sample_rate=44100, bitrate=128
+        ),
+        description="Audio output format with codec, sample_rate (Hz), and bitrate (kbps).",
+    )
+    voice_settings: dict[str, Any] | None = Field(
+        default=None,
+        description="Provider-specific voice settings (e.g. stability, speed, emotion, pitch).",
+    )
+
+    # Model-specific parameters
+    extra_params: dict[str, object] = Field(
+        default_factory=dict,
+        description="Provider- or model-specific parameters with no standard equivalent.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_extra_fields(cls, data: dict[str, object]) -> dict[str, object]:
+        extra_params: dict[str, object] = cast(
+            dict[str, object], data.pop("extra_params", {})
+        )
+        known_fields = set(cls.model_fields.keys())
+        extra = {k: v for k, v in data.items() if k not in known_fields}
+        for k in extra.keys():
+            _ = data.pop(k)
+        extra_params.update(extra)
+        data["extra_params"] = extra_params
+        return data
+
+
+class TTSResponse(BaseModel):
+    """Normalized response returned by every TTS call."""
+
+    request_id: str = Field(description="Tarash-assigned unique ID for this request.")
+    audio: str = Field(description="Base64-encoded audio bytes.")
+    content_type: str | None = Field(
+        default=None, description="MIME type of the audio, e.g. 'audio/mpeg'."
+    )
+    duration: float | None = Field(
+        default=None, description="Audio duration in seconds, if available."
+    )
+    status: Literal["completed", "failed"] = Field(
+        description="Final generation status."
+    )
+    is_mock: bool = Field(
+        default=False,
+        description="True if the response was produced by the mock provider.",
+    )
+    raw_response: dict[str, object] = Field(
+        description="Unmodified provider response, preserved for debugging."
+    )
+    execution_metadata: ExecutionMetadata | None = Field(
+        default=None,
+        description="Timing and fallback attempt details captured by the orchestrator.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class STSResponse(BaseModel):
+    """Normalized response returned by every STS call."""
+
+    request_id: str = Field(description="Tarash-assigned unique ID for this request.")
+    audio: str = Field(description="Base64-encoded audio bytes.")
+    content_type: str | None = Field(
+        default=None, description="MIME type of the audio, e.g. 'audio/mpeg'."
+    )
+    duration: float | None = Field(
+        default=None, description="Audio duration in seconds, if available."
+    )
+    status: Literal["completed", "failed"] = Field(
+        description="Final generation status."
+    )
+    is_mock: bool = Field(
+        default=False,
+        description="True if the response was produced by the mock provider.",
+    )
+    raw_response: dict[str, object] = Field(
+        description="Unmodified provider response, preserved for debugging."
+    )
+    execution_metadata: ExecutionMetadata | None = Field(
+        default=None,
+        description="Timing and fallback attempt details captured by the orchestrator.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class TTSUpdate(BaseModel):
+    """A progress event emitted during TTS generation."""
+
+    request_id: str = Field(
+        description="Same ID as the originating request, for correlation."
+    )
+    status: StatusType = Field(description="Current generation status.")
+    progress_percent: int | None = Field(
+        None, ge=0, le=100, description="Estimated completion percentage (0–100)."
+    )
+    update: dict[str, object] = Field(
+        description="Raw event payload from the provider."
+    )
+    result: TTSResponse | None = Field(
+        default=None, description="Final response, set only when status is 'completed'."
+    )
+    error: str | None = Field(
+        default=None, description="Error message if status is 'failed'."
+    )
+
+
+class STSUpdate(BaseModel):
+    """A progress event emitted during STS generation."""
+
+    request_id: str = Field(
+        description="Same ID as the originating request, for correlation."
+    )
+    status: StatusType = Field(description="Current generation status.")
+    progress_percent: int | None = Field(
+        None, ge=0, le=100, description="Estimated completion percentage (0–100)."
+    )
+    update: dict[str, object] = Field(
+        description="Raw event payload from the provider."
+    )
+    result: STSResponse | None = Field(
+        default=None, description="Final response, set only when status is 'completed'."
+    )
+    error: str | None = Field(
+        default=None, description="Error message if status is 'failed'."
+    )
+
+
 # ==================== Model-Specific Parameters ====================
 
 
@@ -679,6 +931,98 @@ class ProviderHandler(Protocol):
 
         Raises:
             NotImplementedError: If this provider does not support image generation.
+            TarashException: On any provider-level error.
+        """
+        ...
+
+    # ==================== TTS Generation ====================
+
+    async def generate_tts_async(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        on_progress: TTSProgressCallback | None = None,
+    ) -> TTSResponse:
+        """Generate speech from text asynchronously.
+
+        Args:
+            config: Provider configuration with API key, model, and timeouts.
+            request: TTS parameters (text, voice_id, output_format, etc.).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``TTSResponse`` with base64-encoded audio and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support TTS.
+            TarashException: On any provider-level error.
+        """
+        ...
+
+    def generate_tts(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        on_progress: TTSProgressCallback | None = None,
+    ) -> TTSResponse:
+        """Generate speech from text synchronously (blocking).
+
+        Args:
+            config: Provider configuration with API key, model, and timeouts.
+            request: TTS parameters (text, voice_id, output_format, etc.).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``TTSResponse`` with base64-encoded audio and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support TTS.
+            TarashException: On any provider-level error.
+        """
+        ...
+
+    # ==================== STS Generation ====================
+
+    async def generate_sts_async(
+        self,
+        config: AudioGenerationConfig,
+        request: STSRequest,
+        on_progress: STSProgressCallback | None = None,
+    ) -> STSResponse:
+        """Convert speech to speech asynchronously.
+
+        Args:
+            config: Provider configuration with API key, model, and timeouts.
+            request: STS parameters (audio, voice_id, output_format, etc.).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``STSResponse`` with base64-encoded audio and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support STS.
+            TarashException: On any provider-level error.
+        """
+        ...
+
+    def generate_sts(
+        self,
+        config: AudioGenerationConfig,
+        request: STSRequest,
+        on_progress: STSProgressCallback | None = None,
+    ) -> STSResponse:
+        """Convert speech to speech synchronously (blocking).
+
+        Args:
+            config: Provider configuration with API key, model, and timeouts.
+            request: STS parameters (audio, voice_id, output_format, etc.).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``STSResponse`` with base64-encoded audio and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support STS.
             TarashException: On any provider-level error.
         """
         ...

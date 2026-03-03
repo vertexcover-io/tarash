@@ -12,11 +12,18 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
     from tarash.tarash_gateway.models import (
+        AudioGenerationConfig,
+        ProgressCallback,
+        ProviderHandler,
+        STSRequest,
+        STSResponse,
+        TTSProgressCallback,
+        STSProgressCallback,
+        TTSRequest,
+        TTSResponse,
         VideoGenerationConfig,
         VideoGenerationRequest,
         VideoGenerationResponse,
-        ProviderHandler,
-        ProgressCallback,
     )
 
 # Type alias needed at runtime for class attributes
@@ -25,6 +32,14 @@ AnyDict = dict[str, Any]
 F = TypeVar(
     "F",
     bound=Callable[..., "VideoGenerationResponse | Awaitable[VideoGenerationResponse]"],
+)
+
+AF = TypeVar(
+    "AF",
+    bound=Callable[
+        ...,
+        "TTSResponse | STSResponse | Awaitable[TTSResponse] | Awaitable[STSResponse]",
+    ],
 )
 
 
@@ -326,3 +341,93 @@ def handle_video_generation_errors(func: F) -> F:
                 ) from ex
 
         return cast(F, sync_wrapper)
+
+
+def handle_audio_generation_errors(func: AF) -> AF:
+    """Decorator that wraps unhandled exceptions in ``TarashException``.
+
+    Apply to provider ``generate_tts``/``generate_sts`` and their async variants.
+    Works with both sync and async functions automatically.
+
+    Behaviour:
+    - [TarashException][] subclasses — propagate unchanged.
+    - ``PydanticValidationError`` — propagate unchanged.
+    - Any other exception — wrapped in [TarashException][] with full traceback
+      captured in ``raw_response`` and logged at ERROR level.
+    """
+    if inspect.iscoroutinefunction(func):
+
+        @functools.wraps(func)
+        async def async_wrapper(
+            self: "ProviderHandler",
+            config: "AudioGenerationConfig",
+            request: "TTSRequest | STSRequest",
+            on_progress: "TTSProgressCallback | STSProgressCallback | None" = None,
+        ) -> "TTSResponse | STSResponse":
+            try:
+                return await func(self, config, request, on_progress)  # pyright: ignore[reportAny]
+            except (
+                PydanticValidationError,
+                TarashException,
+            ):
+                raise
+            except Exception as ex:
+                log_error(
+                    f"Unknown error while generating audio: {ex}",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                    },
+                    logger_name="tarash.tarash_gateway.exceptions",
+                    exc_info=True,
+                )
+                raise TarashException(
+                    f"Unknown error while generating audio: {ex}",
+                    provider=config.provider,
+                    model=config.model,
+                    raw_response={
+                        "error": str(ex),
+                        "error_type": type(ex).__name__,
+                        "traceback": traceback.format_exc(),
+                    },
+                ) from ex
+
+        return cast(AF, async_wrapper)
+    else:
+
+        @functools.wraps(func)
+        def sync_wrapper(
+            self: "ProviderHandler",
+            config: "AudioGenerationConfig",
+            request: "TTSRequest | STSRequest",
+            on_progress: "TTSProgressCallback | STSProgressCallback | None" = None,
+        ) -> "TTSResponse | STSResponse":
+            try:
+                return func(self, config, request, on_progress)  # pyright: ignore[reportReturnType]
+            except (
+                PydanticValidationError,
+                TarashException,
+            ):
+                raise
+            except Exception as ex:
+                log_error(
+                    f"Unknown error while generating audio: {ex}",
+                    context={
+                        "provider": config.provider,
+                        "model": config.model,
+                    },
+                    logger_name="tarash.tarash_gateway.exceptions",
+                    exc_info=True,
+                )
+                raise TarashException(
+                    f"Unknown error while generating audio: {ex}",
+                    provider=config.provider,
+                    model=config.model,
+                    raw_response={
+                        "error": str(ex),
+                        "error_type": type(ex).__name__,
+                        "traceback": traceback.format_exc(),
+                    },
+                ) from ex
+
+        return cast(AF, sync_wrapper)

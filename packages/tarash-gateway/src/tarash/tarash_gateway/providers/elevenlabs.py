@@ -1,0 +1,512 @@
+"""ElevenLabs provider handler for TTS and STS audio generation."""
+
+import base64
+import io
+import json
+import uuid
+from typing import Any, Literal
+
+from tarash.tarash_gateway.logging import log_info
+from tarash.tarash_gateway.providers.field_mappers import (
+    FieldMapper,
+    apply_field_mappers,
+    passthrough_field_mapper,
+)
+from tarash.tarash_gateway.utils import (
+    download_media_from_url,
+    download_media_from_url_async,
+)
+from tarash.tarash_gateway.exceptions import (
+    ContentModerationError,
+    HTTPConnectionError,
+    HTTPError,
+    TarashException,
+    TimeoutError,
+    ValidationError,
+    handle_audio_generation_errors,
+)
+from tarash.tarash_gateway.models import (
+    AudioGenerationConfig,
+    AudioOutputFormat,
+    STSProgressCallback,
+    STSRequest,
+    STSResponse,
+    TTSProgressCallback,
+    TTSRequest,
+    TTSResponse,
+    format_to_content_type,
+)
+
+has_elevenlabs = True
+try:
+    from elevenlabs.client import AsyncElevenLabs, ElevenLabs
+    from elevenlabs.core import ApiError
+except ImportError:
+    has_elevenlabs = False
+
+_LOGGER_NAME = "tarash.tarash_gateway.providers.elevenlabs"
+
+
+def _generate_request_id() -> str:
+    """Generate a unique request ID."""
+    return uuid.uuid4().hex
+
+
+def _output_format_to_elevenlabs_string(
+    _request: object, output_format: AudioOutputFormat
+) -> str:
+    """Convert AudioOutputFormat to ElevenLabs SDK format string.
+
+    Also used directly as a FieldMapper converter (request, value) -> str.
+
+    Examples:
+        AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128) → "mp3_44100_128"
+        AudioOutputFormat(format="pcm", sample_rate=16000) → "pcm_16000"
+        AudioOutputFormat(format="mp3") → "mp3"
+    """
+    parts = [output_format.format]
+    if output_format.sample_rate is not None:
+        parts.append(str(output_format.sample_rate))
+    if output_format.bitrate is not None:
+        parts.append(str(output_format.bitrate))
+    return "_".join(parts)
+
+
+def _json_encode_voice_settings(_request: object, value: object) -> str | None:
+    """JSON-encode voice_settings for STS multipart form."""
+    if not value:
+        return None
+    return json.dumps(value)
+
+
+ELEVENLABS_TTS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "voice_id": passthrough_field_mapper("voice_id", required=True),
+    "text": passthrough_field_mapper("text", required=True),
+    "output_format": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_elevenlabs_string,
+    ),
+    # SDK accepts VoiceSettings object/dict directly
+    "voice_settings": passthrough_field_mapper("voice_settings"),
+    "language_code": passthrough_field_mapper("language_code"),
+}
+
+ELEVENLABS_STS_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "voice_id": passthrough_field_mapper("voice_id", required=True),
+    "output_format": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_elevenlabs_string,
+    ),
+    # STS multipart form requires JSON-encoded string
+    "voice_settings": FieldMapper(
+        source_field="voice_settings",
+        converter=_json_encode_voice_settings,
+    ),
+}
+
+
+class ElevenLabsProviderHandler:
+    """Handler for ElevenLabs TTS and STS audio generation."""
+
+    def __init__(self) -> None:
+        if not has_elevenlabs:
+            raise ImportError(
+                "elevenlabs is required for ElevenLabs provider. "
+                "Install with: pip install tarash-gateway[elevenlabs]"
+            )
+
+    def _get_client(
+        self, config: AudioGenerationConfig, client_type: Literal["sync", "async"]
+    ) -> Any:
+        """Create a fresh ElevenLabs client.
+
+        Fresh client each call to avoid event loop issues with async client.
+        """
+        if not config.api_key:
+            raise ValidationError(
+                "api_key is required for ElevenLabs provider",
+                provider=config.provider,
+                model=config.model,
+            )
+        kwargs: dict[str, Any] = {"api_key": config.api_key}
+        kwargs["timeout"] = config.timeout
+
+        if client_type == "async":
+            return AsyncElevenLabs(**kwargs)
+        return ElevenLabs(**kwargs)
+
+    def _convert_tts_request(
+        self, config: AudioGenerationConfig, request: TTSRequest
+    ) -> dict[str, Any]:
+        """Convert TTSRequest to ElevenLabs SDK kwargs."""
+        kwargs = apply_field_mappers(ELEVENLABS_TTS_FIELD_MAPPERS, request)
+        kwargs["model_id"] = config.model
+        kwargs.update(request.extra_params)
+        return kwargs
+
+    @staticmethod
+    def _resolve_audio_local(audio: Any) -> io.BytesIO | None:
+        """Resolve audio from local sources (dict, base64, raw bytes).
+
+        Returns None for URLs, which require sync/async download handling.
+        """
+        if isinstance(audio, dict) and "content" in audio:
+            return io.BytesIO(audio["content"])  # type: ignore[index]
+        if isinstance(audio, str):
+            if audio.startswith(("http://", "https://")):
+                return None
+            # Base64 string
+            return io.BytesIO(base64.b64decode(audio))
+        return io.BytesIO(audio)  # type: ignore[arg-type]
+
+    def _resolve_audio_bytes(self, audio: Any) -> io.BytesIO:
+        """Convert MediaType audio input to BytesIO for the SDK (sync)."""
+        result = self._resolve_audio_local(audio)
+        if result is not None:
+            return result
+        content, _ = download_media_from_url(audio, provider="elevenlabs")
+        return io.BytesIO(content)
+
+    async def _resolve_audio_bytes_async(self, audio: Any) -> io.BytesIO:
+        """Convert MediaType audio input to BytesIO for the SDK (async)."""
+        result = self._resolve_audio_local(audio)
+        if result is not None:
+            return result
+        content, _ = await download_media_from_url_async(audio, provider="elevenlabs")
+        return io.BytesIO(content)
+
+    def _convert_sts_request(
+        self, config: AudioGenerationConfig, request: STSRequest
+    ) -> dict[str, Any]:
+        """Convert STSRequest to ElevenLabs SDK kwargs (without audio).
+
+        Audio is resolved separately via _resolve_audio_bytes / _resolve_audio_bytes_async
+        because URL downloads require sync/async handling.
+        """
+        kwargs = apply_field_mappers(ELEVENLABS_STS_FIELD_MAPPERS, request)
+        kwargs["model_id"] = config.model
+        kwargs.update(request.extra_params)
+        return kwargs
+
+    def _convert_tts_response(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        request_id: str,
+        audio_bytes: bytes,
+    ) -> TTSResponse:
+        """Convert raw audio bytes to TTSResponse."""
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        content_type = format_to_content_type(request.output_format.format)
+
+        return TTSResponse(
+            request_id=request_id,
+            audio=audio_b64,
+            content_type=content_type,
+            duration=None,
+            status="completed",
+            raw_response={
+                "audio_size_bytes": len(audio_bytes),
+                "output_format": request.output_format.model_dump(),
+                "model": config.model,
+                "voice_id": request.voice_id,
+            },
+        )
+
+    def _convert_sts_response(
+        self,
+        config: AudioGenerationConfig,
+        request: STSRequest,
+        request_id: str,
+        audio_bytes: bytes,
+    ) -> STSResponse:
+        """Convert raw audio bytes to STSResponse."""
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        content_type = format_to_content_type(request.output_format.format)
+
+        return STSResponse(
+            request_id=request_id,
+            audio=audio_b64,
+            content_type=content_type,
+            duration=None,
+            status="completed",
+            raw_response={
+                "audio_size_bytes": len(audio_bytes),
+                "output_format": request.output_format.model_dump(),
+                "model": config.model,
+                "voice_id": request.voice_id,
+            },
+        )
+
+    def _handle_error(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest | STSRequest,
+        request_id: str,
+        ex: Exception,
+    ) -> TarashException:
+        """Map ElevenLabs errors to TarashException hierarchy."""
+        provider = config.provider
+        model = config.model
+
+        if isinstance(ex, ApiError):
+            status_code = ex.status_code
+            body = str(ex.body) if ex.body else str(ex)
+
+            if status_code == 400 or status_code == 422:
+                return ValidationError(
+                    f"Invalid request: {body}",
+                    provider=provider,
+                    model=model,
+                    request_id=request_id,
+                    raw_response={"error": body, "status_code": status_code},
+                )
+            elif status_code == 401:
+                return HTTPError(
+                    f"Authentication failed: {body}",
+                    provider=provider,
+                    model=model,
+                    request_id=request_id,
+                    raw_response={"error": body, "status_code": status_code},
+                    status_code=status_code,
+                )
+            elif status_code == 403:
+                return ContentModerationError(
+                    f"Content policy violation: {body}",
+                    provider=provider,
+                    model=model,
+                    request_id=request_id,
+                    raw_response={"error": body, "status_code": status_code},
+                )
+            elif status_code == 429:
+                return HTTPError(
+                    f"Rate limit exceeded: {body}",
+                    provider=provider,
+                    model=model,
+                    request_id=request_id,
+                    raw_response={"error": body, "status_code": status_code},
+                    status_code=status_code,
+                )
+            elif status_code is not None and status_code >= 500:
+                return HTTPError(
+                    f"Server error: {body}",
+                    provider=provider,
+                    model=model,
+                    request_id=request_id,
+                    raw_response={"error": body, "status_code": status_code},
+                    status_code=status_code,
+                )
+            else:
+                return HTTPError(
+                    f"API error: {body}",
+                    provider=provider,
+                    model=model,
+                    request_id=request_id,
+                    raw_response={"error": body, "status_code": status_code},
+                    status_code=status_code,
+                )
+
+        if isinstance(ex, ConnectionError):
+            return HTTPConnectionError(
+                f"Connection error: {ex}",
+                provider=provider,
+                model=model,
+                request_id=request_id,
+            )
+
+        if isinstance(ex, OSError) and "timed out" in str(ex).lower():
+            return TimeoutError(
+                f"Request timed out: {ex}",
+                provider=provider,
+                model=model,
+                request_id=request_id,
+                timeout_seconds=config.timeout,
+            )
+
+        return TarashException(
+            f"Unknown error: {ex}",
+            provider=provider,
+            model=model,
+            request_id=request_id,
+            raw_response={"error": str(ex), "error_type": type(ex).__name__},
+        )
+
+    # ==================== TTS Generation ====================
+
+    @handle_audio_generation_errors
+    async def generate_tts_async(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        on_progress: TTSProgressCallback
+        | None = None,  # Unused: ElevenLabs SDK streams chunks directly with no status/polling events
+    ) -> TTSResponse:
+        """Generate speech from text asynchronously."""
+        client = self._get_client(config, "async")
+        kwargs = self._convert_tts_request(config, request)
+        request_id = _generate_request_id()
+
+        log_info(
+            "Starting TTS generation (async)",
+            context={
+                "model": config.model,
+                "voice_id": request.voice_id,
+                "text_length": len(request.text),
+                "output_format": request.output_format.model_dump(),
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        try:
+            audio_iter = client.text_to_speech.convert(**kwargs)
+            audio_bytes = b"".join([chunk async for chunk in audio_iter])
+
+            log_info(
+                "TTS generation completed (async)",
+                context={
+                    "request_id": request_id,
+                    "audio_size_bytes": len(audio_bytes),
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
+            return self._convert_tts_response(config, request, request_id, audio_bytes)
+        except (TarashException, Exception) as ex:
+            if isinstance(ex, TarashException):
+                raise
+            raise self._handle_error(config, request, request_id, ex)
+
+    @handle_audio_generation_errors
+    def generate_tts(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        on_progress: TTSProgressCallback
+        | None = None,  # Unused: ElevenLabs SDK streams chunks directly with no status/polling events
+    ) -> TTSResponse:
+        """Generate speech from text synchronously."""
+        client = self._get_client(config, "sync")
+        kwargs = self._convert_tts_request(config, request)
+        request_id = _generate_request_id()
+
+        log_info(
+            "Starting TTS generation (sync)",
+            context={
+                "model": config.model,
+                "voice_id": request.voice_id,
+                "text_length": len(request.text),
+                "output_format": request.output_format.model_dump(),
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        try:
+            audio_iter = client.text_to_speech.convert(**kwargs)
+            audio_bytes = b"".join(audio_iter)
+
+            log_info(
+                "TTS generation completed (sync)",
+                context={
+                    "request_id": request_id,
+                    "audio_size_bytes": len(audio_bytes),
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
+            return self._convert_tts_response(config, request, request_id, audio_bytes)
+        except (TarashException, Exception) as ex:
+            if isinstance(ex, TarashException):
+                raise
+            raise self._handle_error(config, request, request_id, ex)
+
+    # ==================== STS Generation ====================
+
+    @handle_audio_generation_errors
+    async def generate_sts_async(
+        self,
+        config: AudioGenerationConfig,
+        request: STSRequest,
+        on_progress: STSProgressCallback
+        | None = None,  # Unused: ElevenLabs SDK streams chunks directly with no status/polling events
+    ) -> STSResponse:
+        """Convert speech to speech asynchronously."""
+        client = self._get_client(config, "async")
+        kwargs = self._convert_sts_request(config, request)
+        kwargs["audio"] = await self._resolve_audio_bytes_async(request.audio)
+        request_id = _generate_request_id()
+
+        log_info(
+            "Starting STS generation (async)",
+            context={
+                "model": config.model,
+                "voice_id": request.voice_id,
+                "output_format": request.output_format.model_dump(),
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        try:
+            audio_iter = client.speech_to_speech.convert(**kwargs)
+            audio_bytes = b"".join([chunk async for chunk in audio_iter])
+
+            log_info(
+                "STS generation completed (async)",
+                context={
+                    "request_id": request_id,
+                    "audio_size_bytes": len(audio_bytes),
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
+            return self._convert_sts_response(config, request, request_id, audio_bytes)
+        except (TarashException, Exception) as ex:
+            if isinstance(ex, TarashException):
+                raise
+            raise self._handle_error(config, request, request_id, ex)
+
+    @handle_audio_generation_errors
+    def generate_sts(
+        self,
+        config: AudioGenerationConfig,
+        request: STSRequest,
+        on_progress: STSProgressCallback
+        | None = None,  # Unused: ElevenLabs SDK streams chunks directly with no status/polling events
+    ) -> STSResponse:
+        """Convert speech to speech synchronously."""
+        client = self._get_client(config, "sync")
+        kwargs = self._convert_sts_request(config, request)
+        kwargs["audio"] = self._resolve_audio_bytes(request.audio)
+        request_id = _generate_request_id()
+
+        log_info(
+            "Starting STS generation (sync)",
+            context={
+                "model": config.model,
+                "voice_id": request.voice_id,
+                "output_format": request.output_format.model_dump(),
+                "request_id": request_id,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        try:
+            audio_iter = client.speech_to_speech.convert(**kwargs)
+            audio_bytes = b"".join(audio_iter)
+
+            log_info(
+                "STS generation completed (sync)",
+                context={
+                    "request_id": request_id,
+                    "audio_size_bytes": len(audio_bytes),
+                },
+                logger_name=_LOGGER_NAME,
+            )
+
+            return self._convert_sts_response(config, request, request_id, audio_bytes)
+        except (TarashException, Exception) as ex:
+            if isinstance(ex, TarashException):
+                raise
+            raise self._handle_error(config, request, request_id, ex)

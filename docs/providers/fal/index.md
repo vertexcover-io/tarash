@@ -88,6 +88,12 @@ config = VideoGenerationConfig(
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5` | — |
 | Generic | — | Any other `fal-ai/*` | ✅ |
 
+### Audio (TTS)
+
+| Family | Model prefix | Notes |
+|---|---|---|
+| [MiniMax Speech](minimax-speech.md) | `fal-ai/minimax/speech-2.8-hd` | HD quality TTS with interjection support |
+
 Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry, so any sub-variant automatically inherits the right field mappers.
 
 Any Fal model not in this table gets **generic mappers** (prompt passthrough + common fields). For full support with model-specific parameters, use `/add-fal-model` in Claude Code.

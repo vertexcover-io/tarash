@@ -1,9 +1,10 @@
 """Fal.ai provider handler."""
 
 import asyncio
+import base64
 import time
 import traceback
-from typing import TYPE_CHECKING, cast, Literal, overload
+from typing import TYPE_CHECKING, Any, cast, Literal, overload
 
 from fal_client import AsyncRequestHandle, SyncRequestHandle
 from fal_client.client import FalClientHTTPError
@@ -18,10 +19,13 @@ from tarash.tarash_gateway.exceptions import (
     TarashException,
     TimeoutError,
     ValidationError,
+    handle_audio_generation_errors,
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    AudioGenerationConfig,
+    AudioOutputFormat,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -30,10 +34,19 @@ from tarash.tarash_gateway.models import (
     ProgressCallback,
     SyncImageProgressCallback,
     SyncProgressCallback,
+    TTSProgressCallback,
+    TTSRequest,
+    TTSResponse,
+    TTSUpdate,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
+    format_to_content_type,
+)
+from tarash.tarash_gateway.utils import (
+    download_media_from_url,
+    download_media_from_url_async,
 )
 from tarash.tarash_gateway.image_format import ImageInputFormat
 from tarash.tarash_gateway.providers.field_mappers import (
@@ -959,6 +972,86 @@ def parse_fal_status(request_id: str, status: Status) -> VideoGenerationUpdate:
         raise ValueError(f"Unknown status: {status}")
 
 
+def _output_format_to_fal_audio_setting(
+    _request: object, output_format: AudioOutputFormat
+) -> dict[str, Any]:
+    """Convert AudioOutputFormat to Fal minimax audio_setting dict.
+
+    Also used directly as a FieldMapper converter (request, value) -> dict.
+
+    Examples:
+        AudioOutputFormat(format="mp3", sample_rate=44100, bitrate=128) -> {"format": "mp3", "sample_rate": 44100, "bitrate": 128000}
+        AudioOutputFormat(format="mp3") -> {"format": "mp3"}
+        AudioOutputFormat(format="pcm", sample_rate=16000) -> {"format": "pcm", "sample_rate": 16000}
+    """
+    result = output_format.model_dump(exclude_none=True)
+    if "bitrate" in result:
+        result["bitrate"] *= 1000
+    return result
+
+
+# ==================== TTS Field Mappers ====================
+
+
+def _minimax_voice_converter(request: TTSRequest, value: object) -> dict[str, Any]:
+    """Build MiniMax voice_setting from voice_id + voice_settings."""
+    voice_setting: dict[str, Any] = {"voice_id": value}
+    if request.voice_settings:
+        voice_setting.update(request.voice_settings)
+    return voice_setting
+
+
+FAL_TTS_MINIMAX_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Required field
+    "prompt": passthrough_field_mapper("text", required=True),
+    # Voice configuration
+    "voice_setting": FieldMapper(
+        source_field="voice_id",
+        converter=_minimax_voice_converter,
+    ),
+    # Audio configuration
+    "audio_setting": FieldMapper(
+        source_field="output_format",
+        converter=_output_format_to_fal_audio_setting,
+    ),
+    # Language setting
+    "language_boost": passthrough_field_mapper("language_code"),
+    # Additional parameters (via extra_params)
+    "normalization_setting": extra_params_field_mapper("normalization_setting"),
+    "voice_modify": extra_params_field_mapper("voice_modify"),
+    "pronunciation_dict": extra_params_field_mapper("pronunciation_dict"),
+    "output_format": extra_params_field_mapper("output_format"),
+}
+
+FAL_TTS_QWEN_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Required field
+    "text": passthrough_field_mapper("text", required=True),
+    # Voice selection
+    "voice": passthrough_field_mapper("voice_id"),
+    # Voice style guidance (optional)
+    "prompt": passthrough_field_mapper("prompt", required=False),
+    # Language setting
+    "language": passthrough_field_mapper("language_code"),
+    # Sampling parameters (via extra_params)
+    "top_k": extra_params_field_mapper("top_k"),
+    "top_p": extra_params_field_mapper("top_p"),
+    "temperature": extra_params_field_mapper("temperature"),
+    "repetition_penalty": extra_params_field_mapper("repetition_penalty"),
+    # Sub-talker parameters (via extra_params)
+    "subtalker_dosample": extra_params_field_mapper("subtalker_dosample"),
+    "subtalker_top_k": extra_params_field_mapper("subtalker_top_k"),
+    "subtalker_top_p": extra_params_field_mapper("subtalker_top_p"),
+    "subtalker_temperature": extra_params_field_mapper("subtalker_temperature"),
+    # Token generation (via extra_params)
+    "max_new_tokens": extra_params_field_mapper("max_new_tokens"),
+}
+
+FAL_TTS_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
+    "fal-ai/minimax": FAL_TTS_MINIMAX_FIELD_MAPPERS,
+    "fal-ai/qwen-3-tts": FAL_TTS_QWEN_FIELD_MAPPERS,
+}
+
+
 # ==================== Provider Handler ====================
 
 
@@ -1678,3 +1771,389 @@ class FalProviderHandler:
 
         except Exception as ex:
             raise self._handle_image_error(config, request, request_id, ex)
+
+    # ==================== TTS Generation ====================
+
+    def _convert_tts_request(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+    ) -> dict[str, Any]:
+        """Convert TTSRequest to Fal TTS API format.
+
+        Uses model registry to select the correct field mappers.
+        """
+        mappers = get_field_mappers_from_registry(
+            config.model, FAL_TTS_MODEL_REGISTRY, FAL_TTS_MINIMAX_FIELD_MAPPERS
+        )
+        kwargs = apply_field_mappers(mappers, request)
+
+        # Spread voice_settings as top-level kwargs only when the mappers
+        # don't already consume them (MiniMax nests them inside "voice_setting").
+        if request.voice_settings and "voice_setting" not in mappers:
+            kwargs.update(request.voice_settings)
+
+        kwargs.update(request.extra_params)
+
+        # Models that return audio via URL (indicated by "audio_setting" mapper)
+        # need output_format forced to "url" — our download logic depends on it.
+        if "audio_setting" in mappers:
+            kwargs["output_format"] = "url"
+
+        return kwargs
+
+    def _convert_tts_response(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        request_id: str,
+        fal_result: AnyDict,
+        audio_bytes: bytes,
+    ) -> TTSResponse:
+        """Convert Fal response + downloaded audio to TTSResponse."""
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+        # Determine content type from output_format
+        content_type = format_to_content_type(request.output_format.format)
+
+        duration = _extract_tts_duration(fal_result)
+
+        return TTSResponse(
+            request_id=request_id,
+            audio=audio_b64,
+            content_type=content_type,
+            duration=duration,
+            status="completed",
+            raw_response=fal_result,
+        )
+
+    def _handle_tts_error(
+        self,
+        config: AudioGenerationConfig,
+        request_id: str,
+        ex: Exception,
+    ) -> TarashException:
+        """Map errors during TTS generation to TarashException hierarchy."""
+        if isinstance(ex, TarashException):
+            return ex
+
+        # httpx timeout errors
+        if isinstance(ex, httpx.TimeoutException):
+            return TimeoutError(
+                f"Request timed out: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+                timeout_seconds=config.timeout,
+            )
+
+        # httpx connection errors
+        if isinstance(ex, (httpx.ConnectError, httpx.NetworkError)):
+            return HTTPConnectionError(
+                f"Connection error: {str(ex)}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response={"error": str(ex)},
+            )
+
+        # Fal HTTP errors
+        if isinstance(ex, FalClientHTTPError):
+            raw_response: dict[str, object] = {
+                "status_code": ex.status_code,
+                "response_headers": ex.response_headers,
+                "response": ex.response.content,
+            }
+
+            if ex.status_code == 422 and "content_policy_violation" in ex.message:
+                return ContentModerationError(
+                    ex.message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+
+            if ex.status_code in (400, 422):
+                return ValidationError(
+                    ex.message,
+                    provider=config.provider,
+                    model=config.model,
+                    request_id=request_id,
+                    raw_response=raw_response,
+                )
+
+            return HTTPError(
+                f"HTTP {ex.status_code}: {ex.message}",
+                provider=config.provider,
+                model=config.model,
+                request_id=request_id,
+                raw_response=raw_response,
+                status_code=ex.status_code,
+            )
+
+        # Unknown errors
+        log_error(
+            f"Fal TTS unknown error: {str(ex)}",
+            context={
+                "provider": config.provider,
+                "model": config.model,
+                "request_id": request_id,
+                "error_type": type(ex).__name__,
+            },
+            logger_name=_LOGGER_NAME,
+            exc_info=True,
+        )
+        return GenerationFailedError(
+            f"Error while generating TTS audio: {str(ex)}",
+            provider=config.provider,
+            model=config.model,
+            request_id=request_id,
+            raw_response={
+                "error": str(ex),
+                "traceback": traceback.format_exc(),
+            },
+        )
+
+    @handle_audio_generation_errors
+    async def generate_tts_async(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        on_progress: TTSProgressCallback | None = None,
+    ) -> TTSResponse:
+        """Generate speech from text asynchronously via Fal queue API.
+
+        Submits TTS request to Fal queue, polls for completion with progress
+        callbacks, downloads the generated audio, and returns base64-encoded result.
+        """
+        client = self._get_client(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                timeout=config.timeout,
+            ),
+            "async",
+        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+
+        fal_kwargs = self._convert_tts_request(config, request)
+
+        logger.info(
+            "Mapped TTS request to provider format",
+            {"converted_request": fal_kwargs},
+            redact=True,
+        )
+
+        request_id = "unknown"
+        try:
+            handle: AsyncRequestHandle[AnyDict] = await client.submit(
+                config.model,
+                arguments=fal_kwargs,
+            )
+
+            request_id = handle.request_id
+            logger = logger.with_request_id(request_id)
+            logger.debug("TTS request submitted")
+
+            # Poll for completion with progress callbacks
+            start_time = time.time()
+            async for event in handle.iter_events(with_logs=True, interval=2):
+                update = parse_fal_tts_status(request_id, event)
+                elapsed = round(time.time() - start_time, 2)
+
+                logger.info(
+                    "TTS progress update",
+                    {"status": update.status, "time_elapsed_seconds": elapsed},
+                )
+
+                if on_progress:
+                    result = on_progress(update)
+                    if asyncio.iscoroutine(result):
+                        await result
+
+            # Get final result
+            fal_result = await handle.get()
+            logger.debug("TTS request complete", {"response": fal_result}, redact=True)
+
+            # Download audio from URL
+            audio_url = _extract_tts_audio_url(fal_result)
+            audio_bytes, _ = await download_media_from_url_async(
+                audio_url, provider="fal"
+            )
+
+            response = self._convert_tts_response(
+                config, request, request_id, fal_result, audio_bytes
+            )
+
+            logger.info(
+                "TTS generation completed",
+                {"audio_size_bytes": len(audio_bytes), "duration": response.duration},
+            )
+
+            return response
+
+        except (TarashException, Exception) as ex:
+            if isinstance(ex, TarashException):
+                raise
+            raise self._handle_tts_error(config, request_id, ex)
+
+    @handle_audio_generation_errors
+    def generate_tts(
+        self,
+        config: AudioGenerationConfig,
+        request: TTSRequest,
+        on_progress: TTSProgressCallback | None = None,
+    ) -> TTSResponse:
+        """Generate speech from text synchronously via Fal queue API."""
+        client = self._get_client(
+            VideoGenerationConfig(
+                model=config.model,
+                provider=config.provider,
+                api_key=config.api_key,
+                timeout=config.timeout,
+            ),
+            "sync",
+        )
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+
+        fal_kwargs = self._convert_tts_request(config, request)
+
+        logger.info(
+            "Mapped TTS request to provider format",
+            {"converted_request": fal_kwargs},
+            redact=True,
+        )
+
+        request_id = "unknown"
+        try:
+            handle: SyncRequestHandle[AnyDict] = client.submit(
+                config.model,
+                arguments=fal_kwargs,
+            )
+
+            request_id = handle.request_id
+            logger = logger.with_request_id(request_id)
+            logger.debug("TTS request submitted")
+
+            # Poll for completion with progress callbacks
+            start_time = time.time()
+            for event in handle.iter_events(with_logs=True, interval=2):
+                update = parse_fal_tts_status(request_id, event)
+                elapsed = round(time.time() - start_time, 2)
+
+                logger.info(
+                    "TTS progress update",
+                    {"status": update.status, "time_elapsed_seconds": elapsed},
+                )
+
+                if on_progress:
+                    on_progress(update)
+
+            # Get final result
+            fal_result = cast(AnyDict, handle.get())
+            logger.debug("TTS request complete", {"response": fal_result}, redact=True)
+
+            # Download audio from URL
+            audio_url = _extract_tts_audio_url(fal_result)
+            audio_bytes, _ = download_media_from_url(audio_url, provider="fal")
+
+            response = self._convert_tts_response(
+                config, request, request_id, fal_result, audio_bytes
+            )
+
+            logger.info(
+                "TTS generation completed",
+                {"audio_size_bytes": len(audio_bytes), "duration": response.duration},
+            )
+
+            return response
+
+        except (TarashException, Exception) as ex:
+            if isinstance(ex, TarashException):
+                raise
+            raise self._handle_tts_error(config, request_id, ex)
+
+
+def _extract_tts_duration(fal_result: AnyDict) -> float | None:
+    """Extract audio duration in seconds from a Fal TTS response.
+
+    Probes known response locations in priority order:
+    1. ``audio.duration`` — seconds (e.g. Qwen)
+    2. ``duration_ms`` — milliseconds, converted to seconds (e.g. MiniMax)
+    3. ``duration`` — seconds, top-level fallback
+
+    Returns None if no duration field is found.
+    """
+    # Nested inside audio dict (Qwen returns seconds here)
+    audio_info = fal_result.get("audio")
+    if isinstance(audio_info, dict):
+        dur = audio_info.get("duration")
+        if dur is not None:
+            return float(dur)
+
+    # Top-level milliseconds (MiniMax)
+    duration_ms = fal_result.get("duration_ms")
+    if duration_ms is not None:
+        return float(cast(int, duration_ms)) / 1000.0
+
+    # Top-level seconds (generic fallback)
+    duration = fal_result.get("duration")
+    if duration is not None:
+        return float(duration)
+
+    return None
+
+
+def _extract_tts_audio_url(fal_result: AnyDict) -> str:
+    """Extract audio URL from Fal TTS response.
+
+    Fal returns: {"audio": {"url": "...", "content_type": "..."}, "duration_ms": 1234}
+    """
+    audio = fal_result.get("audio")
+    if isinstance(audio, dict):
+        url = audio.get("url")
+        if url:
+            return str(url)
+    raise GenerationFailedError(
+        f"No audio URL found in Fal TTS response: {fal_result}",
+        provider="fal",
+        raw_response=fal_result,
+    )
+
+
+def parse_fal_tts_status(request_id: str, status: Status) -> TTSUpdate:
+    """Convert a Fal polling status event into a TTSUpdate.
+
+    Args:
+        request_id: Tarash request ID for correlation.
+        status: Fal status object (Queued, InProgress, or Completed).
+
+    Returns:
+        Normalised TTSUpdate with status, progress, and raw event payload.
+    """
+    if isinstance(status, Completed):
+        return TTSUpdate(
+            request_id=request_id,
+            status="completed",
+            progress_percent=100,
+            update={"metrics": status.metrics, "logs": status.logs},
+        )
+    elif isinstance(status, Queued):
+        return TTSUpdate(
+            request_id=request_id,
+            status="queued",
+            progress_percent=None,
+            update={"position": status.position},
+        )
+    elif isinstance(status, InProgress):
+        return TTSUpdate(
+            request_id=request_id,
+            status="processing",
+            progress_percent=None,
+            update={"logs": status.logs},
+        )
+    else:
+        raise ValueError(f"Unknown status: {status}")

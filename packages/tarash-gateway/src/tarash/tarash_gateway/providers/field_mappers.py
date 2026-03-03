@@ -12,12 +12,16 @@ from tarash.tarash_gateway.image_format import ImageInputFormat, ensure_image_fo
 from tarash.tarash_gateway.models import (
     ImageGenerationRequest,
     MediaContent,
+    STSRequest,
+    TTSRequest,
     VideoGenerationRequest,
 )
 from tarash.tarash_gateway.utils import convert_to_data_url, validate_duration
 
 # Union type for request types that field mappers can handle
-GenerationRequest = Union[VideoGenerationRequest, ImageGenerationRequest]
+GenerationRequest = Union[
+    VideoGenerationRequest, ImageGenerationRequest, TTSRequest, STSRequest
+]
 
 
 # Type alias for image list items

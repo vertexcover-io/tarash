@@ -143,3 +143,15 @@ response = await generate_video_async(config, request)  # async
 | **Z-Image Turbo** | `fal-ai/z-image/turbo` | [Fal.ai](providers/fal/index.md) |
 
 </div>
+
+### Audio Generation (TTS)
+
+<div class="provider-table" markdown="1">
+
+| Model | Variants | Provider(s) |
+|---|---|---|
+| **MiniMax Speech** | `fal-ai/minimax/speech-2.8-hd`<br>`fal-ai/minimax/speech-2.8-turbo`<br>`fal-ai/minimax/speech-2.6-hd`<br>`fal-ai/minimax/speech-2.6-turbo` | [Fal.ai](providers/fal/index.md) |
+| **ElevenLabs** | `eleven_multilingual_v2`<br>`eleven_flash_v2_5`<br>`eleven_turbo_v2_5` | [ElevenLabs](providers/elevenlabs.md) |
+| **Cartesia** | `sonic-3`<br>`sonic-turbo` | [Cartesia](providers/cartesia.md) |
+
+</div>
