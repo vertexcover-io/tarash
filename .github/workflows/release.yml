@@ -27,7 +27,7 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Build all packages
-        run: uv build --all-packages
+        run: uv build --tarash-gateway
 
       - name: Generate changelog
         id: changelog
