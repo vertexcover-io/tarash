@@ -810,6 +810,23 @@ REVE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "output_format": extra_params_field_mapper("output_format"),  # "png", "jpeg", "webp"
 }
 
+# Grok Imagine Image (xAI) - Unified mapper for all variants:
+# - xai/grok-imagine-image: text-to-image generation (prompt, aspect_ratio, num_images)
+# - xai/grok-imagine-image/edit: image editing with up to 3 reference images
+# Both variants share the same parameter schema; the API enforces which fields are required per variant
+GROK_IMAGINE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "num_images": passthrough_field_mapper("n"),  # n → num_images (1-4 outputs)
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),  # text-to-image only
+    # Edit variant: list of up to 3 reference image URLs to edit
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "output_format": extra_params_field_mapper("output_format"),  # "jpeg", "png", "webp"
+}
+
 # Generic image field mappings (fallback)
 GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -834,6 +851,8 @@ FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/ideogram": IDEOGRAM_IMAGE_FIELD_MAPPERS,
     # Reve - Unified mapper for all variants (edit, fast/edit, remix, fast/remix, text-to-image)
     "fal-ai/reve": REVE_FIELD_MAPPERS,
+    # Grok Imagine Image (xAI) - Unified mapper for text-to-image and image editing variants
+    "xai/grok-imagine-image": GROK_IMAGINE_FIELD_MAPPERS,
 }
 
 

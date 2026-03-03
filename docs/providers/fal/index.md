@@ -86,6 +86,7 @@ config = VideoGenerationConfig(
 | [Sora](sora.md) | Sora | `fal-ai/sora-2` | — |
 | [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | — |
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5` | — |
+| [Grok Imagine](grok-imagine.md) | Grok Imagine | — | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` |
 | Generic | — | Any other `fal-ai/*` | ✅ |
 
 ### Audio (TTS)
