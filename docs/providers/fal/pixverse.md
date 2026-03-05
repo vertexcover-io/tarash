@@ -38,11 +38,11 @@ print(response.video)
 
 ## Parameters
 
-| Parameter | Required | Supported | Notes |
-|---|:---:|:---:|---|
-| `prompt` | ✅ | ✅ | |
-| `duration_seconds` | — | ✅ | `5`, `8`, or `10` |
-| `image_list` (reference) | — | ✅ | Image-to-video |
+| Parameter | Required | Notes |
+|---|:---:|---|
+| `prompt` | ✅ | |
+| `duration_seconds` | — | `5`, `8`, or `10` |
+| `image_list` (reference) | — | Image-to-video |
 
 ---
 

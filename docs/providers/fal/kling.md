@@ -37,15 +37,15 @@ print(response.video)
 
 ## Parameters
 
-| Parameter | Required | Supported | Models | Notes |
-|---|:---:|:---:|---|---|
-| `prompt` | ✅ | ✅ | All | |
-| `duration_seconds` | — | ✅ | All | `5` or `10` |
-| `image_list` (reference) | — | ✅ | kling-o1 | Image-to-video |
-| `image_list` (first_frame) | — | ✅ | kling-o1 | First frame pinning |
-| `image_list` (last_frame) | — | ✅ | kling-v2.6, kling-o1 | Last frame pinning |
-| `negative_prompt` | — | ✅ | kling-v2.6 | |
-| `generate_audio` | — | ✅ | kling-v2.6 | |
+| Parameter | Required | Notes |
+|---|:---:|---|
+| `prompt` | ✅ | |
+| `duration_seconds` | — | `5` or `10` |
+| `image_list` (reference) | — | Image-to-video (kling-o1) |
+| `image_list` (first_frame) | — | First frame pinning (kling-o1) |
+| `image_list` (last_frame) | — | Last frame pinning (kling-v2.6, kling-o1) |
+| `negative_prompt` | — | kling-v2.6 only |
+| `generate_audio` | — | kling-v2.6 only |
 
 ---
 

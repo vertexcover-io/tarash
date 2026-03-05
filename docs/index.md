@@ -148,6 +148,8 @@ response = await generate_video_async(config, request)  # async
 | **Reve** | `fal-ai/reve/text-to-image`<br>`fal-ai/reve/edit`<br>`fal-ai/reve/remix` | [Fal.ai](providers/fal/index.md) |
 | **Grok Imagine** | `xai/grok-imagine-image`<br>`xai/grok-imagine-image/edit` | [Fal.ai](providers/fal/index.md) |
 | **Grok Imagine (native)** | `grok-imagine-image`<br>`grok-2-image` | [xAI](providers/xai.md) |
+| **Seedream** | `fal-ai/bytedance/seedream/v5/lite/text-to-image`<br>`fal-ai/bytedance/seedream/v5/lite/edit` | [Fal.ai](providers/fal/index.md) |
+| **Nano Banana 2** | `fal-ai/nano-banana-2`<br>`fal-ai/nano-banana-2/edit` | [Fal.ai](providers/fal/index.md) |
 
 </div>
 

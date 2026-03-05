@@ -347,6 +347,7 @@ async def test_zimage_turbo_fast_generation(fal_api_key):
     print(f"✓ Generated Z-Image-Turbo image (fast): {response.request_id}")
     print(f"  Image URL: {response.images[0][:80]}...")
 
+
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_reve_text_to_image_async(fal_api_key):
@@ -552,4 +553,227 @@ def test_grok_imagine_image_editing_sync(fal_api_key):
         assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
 
     print(f"✓ Generated Grok Imagine image edit: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+
+
+# ==================== Seedream V5 Lite Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_seedream_v5_lite_text_to_image_async(fal_api_key):
+    """
+    Test Seedream V5 Lite text-to-image generation (async).
+
+    This tests:
+    - Text-to-image with no image input
+    - Progress tracking
+    - num_images (n), image_size, max_images via extra_params
+    - Prefix matching: fal-ai/bytedance/seedream/v5/lite/text-to-image → SEEDREAM_V5_LITE_FIELD_MAPPERS
+    """
+    progress_updates = []
+
+    async def progress_callback(update: ImageGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = ImageGenerationConfig(
+        model="fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A serene Japanese garden with cherry blossoms and a koi pond, photorealistic",
+        seed=42,
+        n=1,
+        size="auto_2K",
+    )
+
+    response = await api.generate_image_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) >= 1
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    assert len(progress_updates) > 0
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Seedream V5 Lite text-to-image: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_seedream_v5_lite_edit_sync(fal_api_key):
+    """
+    Test Seedream V5 Lite image editing (sync).
+
+    This tests:
+    - Image editing with reference image input (image_urls mapping from image_list)
+    - Sync API path
+    - enable_safety_checker via extra_params
+    """
+    config = ImageGenerationConfig(
+        model="fal-ai/bytedance/seedream/v5/lite/edit",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="Add a colorful sunset sky with warm orange and pink clouds",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+                "type": "reference",
+            }
+        ],
+        n=1,
+        extra_params={"enable_safety_checker": True},
+    )
+
+    response = api.generate_image(config, request)
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    print(f"✓ Generated Seedream V5 Lite edit: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+
+
+# ==================== Nano Banana 2 Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_nano_banana_2_text_to_image_async(fal_api_key):
+    """
+    Test Nano Banana 2 text-to-image generation (async).
+
+    This tests:
+    - Text-to-image with no image input
+    - Progress tracking
+    - num_images (n), aspect_ratio, seed
+    - output_format, resolution, safety_tolerance via extra_params
+    - Prefix matching: fal-ai/nano-banana-2 → NANO_BANANA_2_FIELD_MAPPERS
+    """
+    progress_updates = []
+
+    async def progress_callback(update: ImageGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="A photorealistic mountain landscape at golden hour with dramatic clouds and a crystal clear lake reflection",
+        seed=42,
+        n=1,
+        aspect_ratio="16:9",
+        extra_params={
+            "output_format": "png",
+            "resolution": "1K",
+            "safety_tolerance": "4",
+        },
+    )
+
+    response = await api.generate_image_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) == 1
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    assert len(progress_updates) > 0
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Nano Banana 2 text-to-image: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_nano_banana_2_edit_sync(fal_api_key):
+    """
+    Test Nano Banana 2 image editing (sync).
+
+    This tests:
+    - Image editing with reference image input (image_urls mapping from image_list)
+    - Sync API path
+    - fal-ai/nano-banana-2/edit variant
+    - output_format, safety_tolerance via extra_params
+    """
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2/edit",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="Add a vibrant rainbow arching over the elephant against a dramatic sunset sky",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+                "type": "reference",
+            }
+        ],
+        extra_params={
+            "output_format": "jpeg",
+            "safety_tolerance": "4",
+        },
+    )
+
+    response = api.generate_image(config, request)
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) > 0
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    print(f"✓ Generated Nano Banana 2 edit: {response.request_id}")
     print(f"  Image URL: {response.images[0][:80]}...")

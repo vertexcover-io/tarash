@@ -37,13 +37,13 @@ print(response.images)  # → list of image URLs
 
 ## Parameters
 
-| Parameter | Required | Supported | Notes |
-|---|:---:|:---:|---|
-| `prompt` | ✅ | ✅ | Text description of desired image |
-| `n` | — | ✅ | Number of images (1–4), maps to `num_images` |
-| `aspect_ratio` | — | ✅ | Text-to-image only (e.g. `"16:9"`, `"1:1"`) |
-| `image_list` (reference) | — | ✅ | Image editing: up to 3 reference images |
-| `extra_params.output_format` | — | ✅ | `"jpeg"`, `"png"`, or `"webp"` |
+| Parameter | Required | Notes |
+|---|:---:|---|
+| `prompt` | ✅ | Text description of desired image |
+| `n` | — | Number of images (1–4), maps to `num_images` |
+| `aspect_ratio` | — | Text-to-image only (e.g. `"16:9"`, `"1:1"`) |
+| `image_list` (reference) | — | Image editing: up to 3 reference images |
+| `extra_params.output_format` | — | `"jpeg"`, `"png"`, or `"webp"` |
 
 ---
 

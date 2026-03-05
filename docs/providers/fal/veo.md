@@ -39,19 +39,19 @@ print(response.video)
 
 ## Parameters
 
-| Parameter | Required | Supported | Notes |
-|---|:---:|:---:|---|
-| `prompt` | ✅ | ✅ | |
-| `duration_seconds` | — | ✅ | `4`, `6`, `8` for veo3; `4`, `6`, `7`, `8` for veo3.1 |
-| `aspect_ratio` | — | ✅ | Passed through directly |
-| `resolution` | — | ✅ | e.g. `"720p"`, `"1080p"` |
-| `image_list` (reference) | — | ✅ | Image-to-video |
-| `image_list` (first_frame) | — | ✅ | First frame pinning |
-| `image_list` (last_frame) | — | ✅ | Last frame pinning |
-| `video` | — | ✅ | Video extend |
-| `seed` | — | ✅ | Reproducibility |
-| `negative_prompt` | — | ✅ | |
-| `generate_audio` | — | ✅ | |
+| Parameter | Required | Notes |
+|---|:---:|---|
+| `prompt` | ✅ | |
+| `duration_seconds` | — | `4`, `6`, `8` for veo3; `4`, `6`, `7`, `8` for veo3.1 |
+| `aspect_ratio` | — | Passed through directly |
+| `resolution` | — | e.g. `"720p"`, `"1080p"` |
+| `image_list` (reference) | — | Image-to-video |
+| `image_list` (first_frame) | — | First frame pinning |
+| `image_list` (last_frame) | — | Last frame pinning |
+| `video` | — | Video extend |
+| `seed` | — | Reproducibility |
+| `negative_prompt` | — | Elements to avoid in the output |
+| `generate_audio` | — | Generate audio track with the video |
 
 ---
 

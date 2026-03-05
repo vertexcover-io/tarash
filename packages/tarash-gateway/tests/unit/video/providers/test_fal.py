@@ -15,6 +15,7 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    ImageGenerationConfig,
     ImageGenerationRequest,
     VideoGenerationConfig,
     VideoGenerationRequest,
@@ -31,6 +32,7 @@ from tarash.tarash_gateway.providers.fal import (
     SYNC_LIPSYNC_FIELD_MAPPERS,
     PIXVERSE_LIPSYNC_FIELD_MAPPERS,
     OMNIHUMAN_FIELD_MAPPERS,
+    SEEDREAM_V5_LITE_FIELD_MAPPERS,
     parse_fal_status,
     parse_fal_image_status,
 )
@@ -3370,3 +3372,76 @@ def test_omnihuman_missing_image_raises(handler):
 
     with pytest.raises(ValueError, match="Required field 'image_url' cannot be None"):
         handler._convert_request(config, request)
+
+
+# ==================== Seedream V5 Lite Image Tests ====================
+
+
+def test_get_image_field_mappers_seedream_v5_lite_all_variants():
+    """Test unified mapper for all Seedream V5 Lite variants via prefix matching."""
+    variants = [
+        "fal-ai/bytedance/seedream/v5/lite",
+        "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        "fal-ai/bytedance/seedream/v5/lite/edit",
+    ]
+    for variant in variants:
+        mappers = get_image_field_mappers(variant)
+        assert mappers is SEEDREAM_V5_LITE_FIELD_MAPPERS, (
+            f"Expected SEEDREAM_V5_LITE_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_seedream_v5_lite_text_to_image_conversion(handler):
+    """Test Seedream V5 Lite text-to-image request conversion (prompt only, no images)."""
+    config = ImageGenerationConfig(
+        model="fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(
+        prompt="A beautiful sunset over mountains",
+        n=2,
+        size="landscape_16_9",
+        extra_params={
+            "max_images": 3,
+            "enable_safety_checker": False,
+        },
+    )
+
+    result = handler._convert_image_request(config, request)
+
+    assert result["prompt"] == "A beautiful sunset over mountains"
+    assert result["num_images"] == 2
+    assert result["image_size"] == "landscape_16_9"
+    assert result["max_images"] == 3
+    assert result["enable_safety_checker"] is False
+    # No image fields in text-to-image
+    assert "image_urls" not in result
+
+
+def test_seedream_v5_lite_edit_conversion(handler):
+    """Test Seedream V5 Lite edit request conversion with reference images."""
+    config = ImageGenerationConfig(
+        model="fal-ai/bytedance/seedream/v5/lite/edit",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(
+        prompt="Add a rainbow to the sky",
+        image_list=[
+            {"image": "https://example.com/photo1.jpg", "type": "reference"},
+            {"image": "https://example.com/photo2.jpg", "type": "reference"},
+        ],
+        n=1,
+        size="auto_2K",
+    )
+
+    result = handler._convert_image_request(config, request)
+
+    assert result["prompt"] == "Add a rainbow to the sky"
+    assert result["image_urls"] == [
+        "https://example.com/photo1.jpg",
+        "https://example.com/photo2.jpg",
+    ]
+    assert result["num_images"] == 1
+    assert result["image_size"] == "auto_2K"

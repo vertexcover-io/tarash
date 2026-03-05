@@ -35,12 +35,12 @@ print(response.video)
 
 ## Parameters
 
-| Parameter | Required | Supported | Notes |
-|---|:---:|:---:|---|
-| `prompt` | ✅ | ✅ | |
-| `duration_seconds` | — | ✅ | `6` or `10` |
-| `image_list` (reference) | — | ✅ | Image-to-video |
-| `enhance_prompt` | — | ✅ | Mapped to `prompt_optimizer` |
+| Parameter | Required | Notes |
+|---|:---:|---|
+| `prompt` | ✅ | |
+| `duration_seconds` | — | `6` or `10` |
+| `image_list` (reference) | — | Image-to-video |
+| `enhance_prompt` | — | Mapped to `prompt_optimizer` |
 
 ---
 

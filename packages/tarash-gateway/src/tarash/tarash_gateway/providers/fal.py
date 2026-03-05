@@ -888,6 +888,51 @@ GROK_IMAGINE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),  # "jpeg", "png", "webp"
 }
 
+# ByteDance Seedream v5 Lite - Unified mapper for all variants:
+# - fal-ai/bytedance/seedream/v5/lite/text-to-image: text-only generation
+# - fal-ai/bytedance/seedream/v5/lite/edit: image editing with up to 10 input images (image_urls required by API)
+SEEDREAM_V5_LITE_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Edit variant: list of up to 10 reference image URLs
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "image_size": passthrough_field_mapper(
+        "size"
+    ),  # "auto_2K", "auto_3K", "square_hd", etc.
+    "num_images": passthrough_field_mapper("n"),  # 1-6 separate generations
+    "max_images": extra_params_field_mapper("max_images"),  # 1-6 images per generation
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
+# Nano Banana 2 (Google Gemini 3.1 Flash Image) - Unified mapper for all variants:
+# - fal-ai/nano-banana-2: text-to-image generation
+# - fal-ai/nano-banana-2/edit: image editing with up to 14 reference images (image_urls required by API)
+NANO_BANANA_2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Edit variant: list of reference image URLs (up to 14)
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "num_images": passthrough_field_mapper("n"),  # 1-4 images per request
+    "seed": passthrough_field_mapper("seed"),
+    "aspect_ratio": passthrough_field_mapper(
+        "aspect_ratio"
+    ),  # "auto", "21:9", "16:9", etc.
+    # Model-specific params via extra_params
+    "output_format": extra_params_field_mapper(
+        "output_format"
+    ),  # "jpeg", "png", "webp"
+    "safety_tolerance": extra_params_field_mapper("safety_tolerance"),  # "1"-"6"
+    "resolution": extra_params_field_mapper("resolution"),  # "0.5K", "1K", "2K", "4K"
+    "enable_web_search": extra_params_field_mapper("enable_web_search"),
+    "limit_generations": extra_params_field_mapper("limit_generations"),
+}
+
 # Generic image field mappings (fallback)
 GENERIC_IMAGE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -914,6 +959,10 @@ FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/reve": REVE_FIELD_MAPPERS,
     # Grok Imagine Image (xAI) - Unified mapper for text-to-image and image editing variants
     "xai/grok-imagine-image": GROK_IMAGINE_FIELD_MAPPERS,
+    # ByteDance Seedream v5 Lite - Unified mapper for text-to-image and edit variants
+    "fal-ai/bytedance/seedream/v5/lite": SEEDREAM_V5_LITE_FIELD_MAPPERS,
+    # Nano Banana 2 (Google Gemini 3.1 Flash Image) - Unified mapper for text-to-image and edit variants
+    "fal-ai/nano-banana-2": NANO_BANANA_2_FIELD_MAPPERS,
 }
 
 

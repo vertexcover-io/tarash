@@ -87,27 +87,23 @@ config = VideoGenerationConfig(
 
 ## Supported Models
 
-| Family | Page | Video Models | Image |
-|---|---|---|:---:|
-| [Veo](veo.md) | Veo | `fal-ai/veo3`, `fal-ai/veo3.1` | — |
-| [Kling](kling.md) | Kling | `fal-ai/kling-video/v2.6`, `fal-ai/kling-video/o1` | — |
-| [Minimax](minimax.md) | Minimax | `fal-ai/minimax` | — |
-| [Wan](wan.md) | Wan | `wan/v2.6/`, `fal-ai/wan-25-preview/` | — |
-| [Sora](sora.md) | Sora | `fal-ai/sora-2` | — |
-| [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | — |
-| [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5`, `fal-ai/pixverse/lipsync` | — |
-| [OmniHuman](omnihuman.md) | OmniHuman | `fal-ai/bytedance/omnihuman`, `fal-ai/bytedance/omnihuman/v1.5` | — |
-| [Sync Lipsync](sync-lipsync.md) | Sync Lipsync | `fal-ai/sync-lipsync`, `fal-ai/sync-lipsync/v2`, `fal-ai/sync-lipsync/v2/pro` | — |
-| [Reve](reve.md) | Reve | — | `fal-ai/reve/text-to-image`, `fal-ai/reve/edit`, `fal-ai/reve/remix` |
-| [Grok Imagine](grok-imagine.md) | Grok Imagine | — | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` |
-| Generic | — | Any other `fal-ai/*` | ✅ |
-
-### Audio (TTS)
-
-| Family | Model prefix | Notes |
-|---|---|---|
-| [MiniMax Speech](minimax-speech.md) | `fal-ai/minimax/speech-2.8-hd` | HD quality TTS with interjection support |
-| [Qwen 3 TTS](qwen-tts.md) | `fal-ai/qwen-3-tts` | Voice customization, sampling control |
+| Family | Page | Models | Type |
+|---|---|---|---|
+| [Veo](veo.md) | Veo | `fal-ai/veo3`, `fal-ai/veo3.1` | Video |
+| [Kling](kling.md) | Kling | `fal-ai/kling-video/v2.6`, `fal-ai/kling-video/o1` | Video |
+| [Minimax](minimax.md) | Minimax | `fal-ai/minimax` | Video |
+| [Wan](wan.md) | Wan | `wan/v2.6/`, `fal-ai/wan-25-preview/` | Video |
+| [Sora](sora.md) | Sora | `fal-ai/sora-2` | Video |
+| [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | Video |
+| [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5`, `fal-ai/pixverse/lipsync` | Video |
+| [OmniHuman](omnihuman.md) | OmniHuman | `fal-ai/bytedance/omnihuman`, `fal-ai/bytedance/omnihuman/v1.5` | Video |
+| [Sync Lipsync](sync-lipsync.md) | Sync Lipsync | `fal-ai/sync-lipsync`, `fal-ai/sync-lipsync/v2`, `fal-ai/sync-lipsync/v2/pro` | Video |
+| [Reve](reve.md) | Reve | `fal-ai/reve/text-to-image`, `fal-ai/reve/edit`, `fal-ai/reve/remix` | Image |
+| [Grok Imagine](grok-imagine.md) | Grok Imagine | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` | Image |
+| [Seedream](seedream-image.md) | Seedream | `fal-ai/bytedance/seedream/v5/lite/text-to-image`, `fal-ai/bytedance/seedream/v5/lite/edit` | Image |
+| [Nano Banana 2](nano-banana-2.md) | Nano Banana 2 | `fal-ai/nano-banana-2`, `fal-ai/nano-banana-2/edit` | Image |
+| [MiniMax Speech](minimax-speech.md) | MiniMax Speech | `fal-ai/minimax/speech-2.8-hd` | Audio (TTS) |
+| [Qwen 3 TTS](qwen-tts.md) | Qwen 3 TTS | `fal-ai/qwen-3-tts` | Audio (TTS) |
 
 Model lookup uses **prefix matching**: `fal-ai/veo3.1/fast` matches the `fal-ai/veo3.1` registry entry, so any sub-variant automatically inherits the right field mappers.
 
