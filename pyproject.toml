@@ -8,11 +8,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "numpy>=2.4.2",
     "tarash-gateway[all]",
+    "tarash-silence-remover[all]",
 ]
 
 [tool.uv.sources]
 tarash-gateway = { workspace = true }
+tarash-silence-remover = { workspace = true }
 
 [project.scripts]
 tarash = "tarash.cli.cli:main"
