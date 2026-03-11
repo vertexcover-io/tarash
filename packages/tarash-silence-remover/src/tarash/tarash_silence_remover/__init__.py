@@ -21,11 +21,16 @@ from .exceptions import (
     SilenceRemoverException,
 )
 from .models import (
+    AsyncProgressCallback,
     MediaInfo,
+    ProcessingPhase,
+    ProcessingUpdate,
+    ProgressCallback,
     SilenceRemovalConfig,
     SilenceRemovalRequest,
     SilenceRemovalResponse,
     SpeechSegment,
+    SyncProgressCallback,
 )
 
 __all__ = [
@@ -40,6 +45,12 @@ __all__ = [
     "SilenceRemovalRequest",
     "SilenceRemovalResponse",
     "SpeechSegment",
+    # Progress reporting
+    "ProcessingUpdate",
+    "ProcessingPhase",
+    "ProgressCallback",
+    "SyncProgressCallback",
+    "AsyncProgressCallback",
     # Exceptions
     "SilenceRemoverException",
     "FFmpegNotFoundError",

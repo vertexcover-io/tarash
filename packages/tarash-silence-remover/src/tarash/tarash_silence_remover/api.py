@@ -7,12 +7,16 @@ from tarash.tarash_silence_remover.detectors.silero import SileroDetector
 from tarash.tarash_silence_remover.exceptions import InvalidInputError
 from tarash.tarash_silence_remover.logging import log_info
 from tarash.tarash_silence_remover.models import (
+    AsyncProgressCallback,
     SilenceRemovalConfig,
     SilenceRemovalRequest,
     SilenceRemovalResponse,
     SpeechSegment,
+    SyncProgressCallback,
 )
 from tarash.tarash_silence_remover.processor import (
+    _notify_progress,
+    _notify_progress_async,
     apply_padding,
     get_duration,
     get_duration_async,
@@ -94,12 +98,14 @@ async def detect_silence_async(
 def remove_silence(
     config: SilenceRemovalConfig,
     request: SilenceRemovalRequest,
+    on_progress: SyncProgressCallback | None = None,
 ) -> SilenceRemovalResponse:
     """Remove silence from a video or audio file (sync).
 
     Args:
         config: Silence removal configuration.
         request: Silence removal parameters.
+        on_progress: Optional sync callback for progress updates.
 
     Returns:
         SilenceRemovalResponse with output path and metrics.
@@ -114,10 +120,17 @@ def remove_silence(
         raise InvalidInputError(f"Input file does not exist: {request.input_path}")
 
     output_path = _resolve_output_path(request.input_path, request.output_path)
+
+    _notify_progress(
+        on_progress, "probing", 1, 1, "Probing media file", progress_percent=0
+    )
     media_info = probe_media_info(config.ffmpeg_path, request.input_path)
     original_duration = media_info.duration
 
     # Detect speech segments
+    _notify_progress(
+        on_progress, "detecting", 1, 1, "Detecting speech segments", progress_percent=5
+    )
     detector = _get_detector(config)
     raw_segments = detector.detect_speech_segments(
         request.input_path, config, duration=original_duration
@@ -129,7 +142,12 @@ def remove_silence(
 
     # Process (cut and concatenate)
     process_segments(
-        request.input_path, output_path, merged, config, media_info=media_info
+        request.input_path,
+        output_path,
+        merged,
+        config,
+        media_info=media_info,
+        on_progress=on_progress,
     )
 
     # Measure output duration
@@ -157,12 +175,14 @@ def remove_silence(
 async def remove_silence_async(
     config: SilenceRemovalConfig,
     request: SilenceRemovalRequest,
+    on_progress: AsyncProgressCallback | None = None,
 ) -> SilenceRemovalResponse:
     """Remove silence from a video or audio file (async).
 
     Args:
         config: Silence removal configuration.
         request: Silence removal parameters.
+        on_progress: Optional async callback for progress updates.
 
     Returns:
         SilenceRemovalResponse with output path and metrics.
@@ -177,10 +197,17 @@ async def remove_silence_async(
         raise InvalidInputError(f"Input file does not exist: {request.input_path}")
 
     output_path = _resolve_output_path(request.input_path, request.output_path)
+
+    await _notify_progress_async(
+        on_progress, "probing", 1, 1, "Probing media file", progress_percent=0
+    )
     media_info = await probe_media_info_async(config.ffmpeg_path, request.input_path)
     original_duration = media_info.duration
 
     # Detect speech segments
+    await _notify_progress_async(
+        on_progress, "detecting", 1, 1, "Detecting speech segments", progress_percent=5
+    )
     detector = _get_detector(config)
     raw_segments = await detector.detect_speech_segments_async(
         request.input_path, config, duration=original_duration
@@ -192,7 +219,12 @@ async def remove_silence_async(
 
     # Process async
     await process_segments_async(
-        request.input_path, output_path, merged, config, media_info=media_info
+        request.input_path,
+        output_path,
+        merged,
+        config,
+        media_info=media_info,
+        on_progress=on_progress,
     )
 
     # Measure output

@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+import logging
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from tarash.tarash_silence_remover.exceptions import (
@@ -13,12 +15,91 @@ from tarash.tarash_silence_remover.exceptions import (
 )
 from tarash.tarash_silence_remover.logging import log_info
 from tarash.tarash_silence_remover.models import (
+    AsyncProgressCallback,
     MediaInfo,
+    ProcessingPhase,
+    ProcessingUpdate,
     SilenceRemovalConfig,
     SpeechSegment,
+    SyncProgressCallback,
 )
 
 _LOGGER_NAME = "tarash.tarash_silence_remover.processor"
+_logger = logging.getLogger(_LOGGER_NAME)
+
+
+@dataclass(frozen=True)
+class SegmentJobs:
+    """Structured result from _prepare_segment_jobs."""
+
+    extract_cmds: list[list[str]]
+    silence_cmds: list[list[str]]
+    concat_text: str
+
+    @property
+    def total_commands(self) -> int:
+        """Total FFmpeg commands including concat."""
+        return len(self.extract_cmds) + len(self.silence_cmds) + 1  # +1 for concat
+
+
+def _notify_progress(
+    on_progress: SyncProgressCallback | None,
+    phase: ProcessingPhase,
+    current_step: int,
+    total_steps: int,
+    message: str,
+    *,
+    progress_percent: int | None = None,
+) -> None:
+    """Fire sync progress callback, catching and logging errors."""
+    if on_progress is None:
+        return
+    try:
+        pct = (
+            progress_percent
+            if progress_percent is not None
+            else int((current_step / total_steps) * 100)
+        )
+        update = ProcessingUpdate(
+            phase=phase,
+            progress_percent=pct,
+            current_step=current_step,
+            total_steps=total_steps,
+            message=message,
+        )
+        on_progress(update)
+    except Exception:
+        _logger.warning("Progress callback error", exc_info=True)
+
+
+async def _notify_progress_async(
+    on_progress: AsyncProgressCallback | None,
+    phase: ProcessingPhase,
+    current_step: int,
+    total_steps: int,
+    message: str,
+    *,
+    progress_percent: int | None = None,
+) -> None:
+    """Fire async progress callback, catching and logging errors."""
+    if on_progress is None:
+        return
+    try:
+        pct = (
+            progress_percent
+            if progress_percent is not None
+            else int((current_step / total_steps) * 100)
+        )
+        update = ProcessingUpdate(
+            phase=phase,
+            progress_percent=pct,
+            current_step=current_step,
+            total_steps=total_steps,
+            message=message,
+        )
+        await on_progress(update)
+    except Exception:
+        _logger.warning("Progress callback error", exc_info=True)
 
 
 def derive_ffprobe_path(ffmpeg_path: str) -> str:
@@ -375,12 +456,11 @@ def _prepare_segment_jobs(
     config: SilenceRemovalConfig,
     media_info: MediaInfo,
     tmp: Path,
-) -> tuple[list[list[str]], str]:
+) -> SegmentJobs:
     """Prepare segment extraction commands and concat file content.
 
     Returns:
-        (list of extraction commands, concat file text).
-        Silence commands are included inline in the command list.
+        SegmentJobs with separate extract/silence commands and concat text.
     """
     part_paths: list[Path] = []
     extract_cmds: list[list[str]] = []
@@ -414,9 +494,11 @@ def _prepare_segment_jobs(
                 )
                 lines.append(f"file '{silence_path}'")
 
-    all_cmds = list(extract_cmds) + silence_cmds
-
-    return all_cmds, "\n".join(lines)
+    return SegmentJobs(
+        extract_cmds=extract_cmds,
+        silence_cmds=silence_cmds,
+        concat_text="\n".join(lines),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +512,7 @@ def process_segments(
     segments: list[SpeechSegment],
     config: SilenceRemovalConfig,
     media_info: MediaInfo | None = None,
+    on_progress: SyncProgressCallback | None = None,
 ) -> None:
     """Cut and concatenate segments using FFmpeg.
 
@@ -442,6 +525,7 @@ def process_segments(
         segments: Speech segments to keep.
         config: Silence removal configuration.
         media_info: Pre-probed media info. If None, probes the file.
+        on_progress: Optional sync callback for progress updates.
 
     Raises:
         ProcessingError: If FFmpeg processing fails.
@@ -456,7 +540,7 @@ def process_segments(
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        all_cmds, concat_text = _prepare_segment_jobs(
+        jobs = _prepare_segment_jobs(
             input_path,
             output_path,
             segments,
@@ -465,14 +549,46 @@ def process_segments(
             tmp,
         )
 
-        for cmd in all_cmds:
+        total = jobs.total_commands
+        step = 0
+
+        for i, cmd in enumerate(jobs.extract_cmds):
+            step += 1
+            _notify_progress(
+                on_progress,
+                "extracting",
+                step,
+                total,
+                f"Extracting segment {i + 1}/{len(jobs.extract_cmds)}",
+            )
+            rc, _, stderr = _run_sync(cmd)
+            if rc != 0:
+                raise ProcessingError(f"FFmpeg processing failed: {stderr.strip()}")
+
+        for j, cmd in enumerate(jobs.silence_cmds):
+            step += 1
+            _notify_progress(
+                on_progress,
+                "generating_silence",
+                step,
+                total,
+                f"Generating silence gap {j + 1}/{len(jobs.silence_cmds)}",
+            )
             rc, _, stderr = _run_sync(cmd)
             if rc != 0:
                 raise ProcessingError(f"FFmpeg processing failed: {stderr.strip()}")
 
         concat_list = tmp / "concat.txt"
-        concat_list.write_text(concat_text)
+        concat_list.write_text(jobs.concat_text)
 
+        step += 1
+        _notify_progress(
+            on_progress,
+            "concatenating",
+            step,
+            total,
+            "Concatenating segments",
+        )
         rc, _, stderr = _run_sync(
             _concat_cmd(config.ffmpeg_path, concat_list, output_path)
         )
@@ -492,6 +608,7 @@ async def process_segments_async(
     segments: list[SpeechSegment],
     config: SilenceRemovalConfig,
     media_info: MediaInfo | None = None,
+    on_progress: AsyncProgressCallback | None = None,
 ) -> None:
     """Async version of process_segments using asyncio.subprocess.
 
@@ -501,6 +618,7 @@ async def process_segments_async(
         segments: Speech segments to keep.
         config: Silence removal configuration.
         media_info: Pre-probed media info. If None, probes the file.
+        on_progress: Optional async callback for progress updates.
 
     Raises:
         ProcessingError: If FFmpeg processing fails.
@@ -515,7 +633,7 @@ async def process_segments_async(
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        all_cmds, concat_text = _prepare_segment_jobs(
+        jobs = _prepare_segment_jobs(
             input_path,
             output_path,
             segments,
@@ -524,14 +642,46 @@ async def process_segments_async(
             tmp,
         )
 
-        for cmd in all_cmds:
+        total = jobs.total_commands
+        step = 0
+
+        for i, cmd in enumerate(jobs.extract_cmds):
+            step += 1
+            await _notify_progress_async(
+                on_progress,
+                "extracting",
+                step,
+                total,
+                f"Extracting segment {i + 1}/{len(jobs.extract_cmds)}",
+            )
+            rc, _, stderr = await _run_async(cmd)
+            if rc != 0:
+                raise ProcessingError(f"FFmpeg processing failed: {stderr.strip()}")
+
+        for j, cmd in enumerate(jobs.silence_cmds):
+            step += 1
+            await _notify_progress_async(
+                on_progress,
+                "generating_silence",
+                step,
+                total,
+                f"Generating silence gap {j + 1}/{len(jobs.silence_cmds)}",
+            )
             rc, _, stderr = await _run_async(cmd)
             if rc != 0:
                 raise ProcessingError(f"FFmpeg processing failed: {stderr.strip()}")
 
         concat_list = tmp / "concat.txt"
-        concat_list.write_text(concat_text)
+        concat_list.write_text(jobs.concat_text)
 
+        step += 1
+        await _notify_progress_async(
+            on_progress,
+            "concatenating",
+            step,
+            total,
+            "Concatenating segments",
+        )
         rc, _, stderr = await _run_async(
             _concat_cmd(config.ffmpeg_path, concat_list, output_path)
         )
