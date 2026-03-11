@@ -1,9 +1,31 @@
 """Core data models for silence removal."""
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+ProcessingPhase = Literal[
+    "probing", "detecting", "extracting", "generating_silence", "concatenating"
+]
+
+
+class ProcessingUpdate(BaseModel):
+    """Progress update fired during silence removal processing."""
+
+    phase: ProcessingPhase
+    progress_percent: int = Field(ge=0, le=100, description="Overall progress 0-100.")
+    current_step: int = Field(ge=1, description="Current step number (1-based).")
+    total_steps: int = Field(ge=1, description="Total number of steps.")
+    message: str = Field(description="Human-readable status message for CLI display.")
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+SyncProgressCallback = Callable[[ProcessingUpdate], None]
+AsyncProgressCallback = Callable[[ProcessingUpdate], Awaitable[None]]
+ProgressCallback = SyncProgressCallback | AsyncProgressCallback
 
 
 class SilenceRemovalConfig(BaseModel):
