@@ -1,0 +1,1 @@
+"""Silence detection backends."""
