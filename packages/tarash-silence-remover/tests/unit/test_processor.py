@@ -328,3 +328,339 @@ def test_parse_media_info_error():
     """Raises InvalidInputError on non-zero returncode."""
     with pytest.raises(InvalidInputError, match="Cannot read file"):
         _parse_media_info(1, "", "No such file", Path("/tmp/test.mp4"))
+
+
+# ==================== _notify_progress / _notify_progress_async ====================
+
+
+def test_notify_progress_fires_callback_with_correct_update():
+    """_notify_progress calls the callback with a well-formed ProcessingUpdate."""
+    from tarash.tarash_silence_remover.processor import _notify_progress
+
+    received = []
+    _notify_progress(received.append, "extracting", 2, 4, "Extracting segment 2/4")
+
+    assert len(received) == 1
+    update = received[0]
+    assert update.phase == "extracting"
+    assert update.current_step == 2
+    assert update.total_steps == 4
+    assert update.progress_percent == 50
+    assert update.message == "Extracting segment 2/4"
+
+
+def test_notify_progress_none_callback_is_noop():
+    """_notify_progress with None callback does nothing."""
+    from tarash.tarash_silence_remover.processor import _notify_progress
+
+    # Should not raise
+    _notify_progress(None, "extracting", 1, 1, "test")
+
+
+def test_notify_progress_catches_callback_exception(caplog):
+    """_notify_progress catches callback errors and logs a warning."""
+    import logging
+
+    from tarash.tarash_silence_remover.processor import _notify_progress
+
+    def bad_callback(update):
+        raise RuntimeError("callback broke")
+
+    with caplog.at_level(logging.WARNING):
+        _notify_progress(bad_callback, "extracting", 1, 1, "test")
+
+    assert "Progress callback error" in caplog.text
+
+
+async def test_notify_progress_async_fires_callback():
+    """_notify_progress_async calls the async callback correctly."""
+    from tarash.tarash_silence_remover.processor import _notify_progress_async
+
+    received = []
+
+    async def cb(update):
+        received.append(update)
+
+    await _notify_progress_async(cb, "concatenating", 5, 5, "Concatenating segments")
+
+    assert len(received) == 1
+    assert received[0].phase == "concatenating"
+    assert received[0].progress_percent == 100
+
+
+async def test_notify_progress_async_none_callback_is_noop():
+    """_notify_progress_async with None callback does nothing."""
+    from tarash.tarash_silence_remover.processor import _notify_progress_async
+
+    await _notify_progress_async(None, "extracting", 1, 1, "test")
+
+
+async def test_notify_progress_async_catches_callback_exception(caplog):
+    """_notify_progress_async catches callback errors and logs a warning."""
+    import logging
+
+    from tarash.tarash_silence_remover.processor import _notify_progress_async
+
+    async def bad_callback(update):
+        raise RuntimeError("async callback broke")
+
+    with caplog.at_level(logging.WARNING):
+        await _notify_progress_async(bad_callback, "extracting", 1, 1, "test")
+
+    assert "Progress callback error" in caplog.text
+
+
+# ==================== SegmentJobs ====================
+
+
+def test_segment_jobs_total_commands():
+    """SegmentJobs.total_commands returns extract + silence + 1 (concat)."""
+    from tarash.tarash_silence_remover.processor import SegmentJobs
+
+    jobs = SegmentJobs(
+        extract_cmds=[["cmd1"], ["cmd2"], ["cmd3"]],
+        silence_cmds=[["s1"], ["s2"]],
+        concat_text="file 'a'\nfile 'b'",
+    )
+    assert jobs.total_commands == 6  # 3 + 2 + 1
+
+
+def test_segment_jobs_no_silence_commands():
+    """SegmentJobs with no silence commands: total = extract + 1."""
+    from tarash.tarash_silence_remover.processor import SegmentJobs
+
+    jobs = SegmentJobs(
+        extract_cmds=[["cmd1"]],
+        silence_cmds=[],
+        concat_text="file 'a'",
+    )
+    assert jobs.total_commands == 2  # 1 + 0 + 1
+
+
+# ==================== process_segments with on_progress ====================
+
+
+def test_process_segments_fires_progress_callbacks_in_order():
+    """process_segments fires callbacks in order: extracting -> generating_silence -> concatenating."""
+    from unittest.mock import MagicMock
+
+    from tarash.tarash_silence_remover.models import MediaInfo, SilenceRemovalConfig
+    from tarash.tarash_silence_remover.processor import process_segments
+
+    config = SilenceRemovalConfig(
+        detector="ffmpeg",
+        min_silence_duration=0.5,
+        target_silence_duration=0.3,
+    )
+    segments = [
+        SpeechSegment(start=0.0, end=2.0),
+        SpeechSegment(start=4.0, end=6.0),
+    ]
+    media_info = MediaInfo(duration=10.0)
+
+    received = []
+
+    def on_progress(update):
+        received.append(update)
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = ""
+    mock_result.stderr = ""
+
+    with patch("subprocess.run", return_value=mock_result):
+        process_segments(
+            Path("/tmp/input.mp4"),
+            Path("/tmp/output.mp4"),
+            segments,
+            config,
+            media_info=media_info,
+            on_progress=on_progress,
+        )
+
+    # Should have: 2 extract + 1 silence + 1 concat = 4 updates
+    assert len(received) == 4
+    assert received[0].phase == "extracting"
+    assert received[1].phase == "extracting"
+    assert received[2].phase == "generating_silence"
+    assert received[3].phase == "concatenating"
+
+    # progress_percent should be monotonically increasing
+    percents = [u.progress_percent for u in received]
+    assert percents == sorted(percents)
+
+    # current_step should increment and total_steps should be consistent
+    steps = [u.current_step for u in received]
+    assert steps == [1, 2, 3, 4]
+    assert all(u.total_steps == 4 for u in received)
+
+
+def test_process_segments_no_callback_works():
+    """process_segments works with no callback (backward compatible)."""
+    from unittest.mock import MagicMock
+
+    from tarash.tarash_silence_remover.models import MediaInfo, SilenceRemovalConfig
+    from tarash.tarash_silence_remover.processor import process_segments
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    segments = [SpeechSegment(start=0.0, end=2.0)]
+    media_info = MediaInfo(duration=10.0)
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = ""
+    mock_result.stderr = ""
+
+    with patch("subprocess.run", return_value=mock_result):
+        # Should not raise — on_progress defaults to None
+        process_segments(
+            Path("/tmp/input.mp4"),
+            Path("/tmp/output.mp4"),
+            segments,
+            config,
+            media_info=media_info,
+        )
+
+
+def test_process_segments_callback_error_does_not_crash():
+    """process_segments continues even when callback raises."""
+    from unittest.mock import MagicMock
+
+    from tarash.tarash_silence_remover.models import MediaInfo, SilenceRemovalConfig
+    from tarash.tarash_silence_remover.processor import process_segments
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    segments = [SpeechSegment(start=0.0, end=2.0)]
+    media_info = MediaInfo(duration=10.0)
+
+    def bad_callback(update):
+        raise RuntimeError("callback error")
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = ""
+    mock_result.stderr = ""
+
+    with patch("subprocess.run", return_value=mock_result):
+        # Should not raise despite callback error
+        process_segments(
+            Path("/tmp/input.mp4"),
+            Path("/tmp/output.mp4"),
+            segments,
+            config,
+            media_info=media_info,
+            on_progress=bad_callback,
+        )
+
+
+def test_process_segments_single_segment_no_silence():
+    """Single segment produces only extracting + concatenating updates."""
+    from unittest.mock import MagicMock
+
+    from tarash.tarash_silence_remover.models import MediaInfo, SilenceRemovalConfig
+    from tarash.tarash_silence_remover.processor import process_segments
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    segments = [SpeechSegment(start=0.0, end=5.0)]
+    media_info = MediaInfo(duration=10.0)
+
+    received = []
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = ""
+    mock_result.stderr = ""
+
+    with patch("subprocess.run", return_value=mock_result):
+        process_segments(
+            Path("/tmp/input.mp4"),
+            Path("/tmp/output.mp4"),
+            segments,
+            config,
+            media_info=media_info,
+            on_progress=received.append,
+        )
+
+    assert len(received) == 2  # 1 extract + 1 concat
+    assert received[0].phase == "extracting"
+    assert received[1].phase == "concatenating"
+
+
+def test_process_segments_message_contains_segment_indices():
+    """Progress messages include segment indices like 'Extracting segment 1/2'."""
+    from unittest.mock import MagicMock
+
+    from tarash.tarash_silence_remover.models import MediaInfo, SilenceRemovalConfig
+    from tarash.tarash_silence_remover.processor import process_segments
+
+    config = SilenceRemovalConfig(
+        detector="ffmpeg",
+        min_silence_duration=0.5,
+        target_silence_duration=0.3,
+    )
+    segments = [
+        SpeechSegment(start=0.0, end=2.0),
+        SpeechSegment(start=4.0, end=6.0),
+    ]
+    media_info = MediaInfo(duration=10.0)
+
+    received = []
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = ""
+    mock_result.stderr = ""
+
+    with patch("subprocess.run", return_value=mock_result):
+        process_segments(
+            Path("/tmp/input.mp4"),
+            Path("/tmp/output.mp4"),
+            segments,
+            config,
+            media_info=media_info,
+            on_progress=received.append,
+        )
+
+    assert "1/2" in received[0].message
+    assert "2/2" in received[1].message
+    assert "1/1" in received[2].message
+    assert "Concatenating" in received[3].message
+
+
+async def test_process_segments_async_fires_callbacks_in_order():
+    """Async variant fires callbacks in correct order."""
+    from tarash.tarash_silence_remover.models import MediaInfo, SilenceRemovalConfig
+    from tarash.tarash_silence_remover.processor import process_segments_async
+
+    config = SilenceRemovalConfig(
+        detector="ffmpeg",
+        min_silence_duration=0.5,
+        target_silence_duration=0.3,
+    )
+    segments = [
+        SpeechSegment(start=0.0, end=2.0),
+        SpeechSegment(start=4.0, end=6.0),
+    ]
+    media_info = MediaInfo(duration=10.0)
+
+    received = []
+
+    async def on_progress(update):
+        received.append(update)
+
+    proc = make_async_proc(returncode=0, stdout=b"", stderr=b"")
+    with patch("asyncio.create_subprocess_exec", return_value=proc):
+        await process_segments_async(
+            Path("/tmp/input.mp4"),
+            Path("/tmp/output.mp4"),
+            segments,
+            config,
+            media_info=media_info,
+            on_progress=on_progress,
+        )
+
+    assert len(received) == 4
+    assert received[0].phase == "extracting"
+    assert received[1].phase == "extracting"
+    assert received[2].phase == "generating_silence"
+    assert received[3].phase == "concatenating"

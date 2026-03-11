@@ -221,3 +221,243 @@ async def test_remove_silence_async_full_pipeline(tmp_path):
     # Verify media_info was passed through to process_segments_async
     _, kwargs = mock_process.call_args
     assert kwargs.get("media_info") == mock_media_info
+
+
+# ==================== remove_silence with on_progress ====================
+
+
+def test_remove_silence_fires_probing_and_detecting_callbacks(tmp_path):
+    """remove_silence fires probing and detecting updates before those steps."""
+    input_file = tmp_path / "input.mp4"
+    input_file.touch()
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    request = SilenceRemovalRequest(input_path=input_file)
+
+    mock_segments = [SpeechSegment(start=0.0, end=3.0)]
+    mock_media_info = MediaInfo(duration=10.0)
+
+    received = []
+
+    with (
+        patch("tarash.tarash_silence_remover.api._get_detector") as mock_get_det,
+        patch(
+            "tarash.tarash_silence_remover.api.probe_media_info",
+            return_value=mock_media_info,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.get_duration",
+            return_value=7.8,
+        ),
+        patch("tarash.tarash_silence_remover.api.process_segments"),
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect_speech_segments.return_value = mock_segments
+        mock_get_det.return_value = mock_detector
+
+        remove_silence(config, request, on_progress=received.append)
+
+    # Should have at least probing and detecting updates
+    phases = [u.phase for u in received]
+    assert "probing" in phases
+    assert "detecting" in phases
+    # Probing should come before detecting
+    assert phases.index("probing") < phases.index("detecting")
+
+
+def test_remove_silence_passes_callback_to_process_segments(tmp_path):
+    """remove_silence passes on_progress through to process_segments."""
+    input_file = tmp_path / "input.mp4"
+    input_file.touch()
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    request = SilenceRemovalRequest(input_path=input_file)
+
+    mock_segments = [SpeechSegment(start=0.0, end=3.0)]
+    mock_media_info = MediaInfo(duration=10.0)
+
+    def my_callback(update):
+        pass
+
+    with (
+        patch("tarash.tarash_silence_remover.api._get_detector") as mock_get_det,
+        patch(
+            "tarash.tarash_silence_remover.api.probe_media_info",
+            return_value=mock_media_info,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.get_duration",
+            return_value=7.8,
+        ),
+        patch("tarash.tarash_silence_remover.api.process_segments") as mock_process,
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect_speech_segments.return_value = mock_segments
+        mock_get_det.return_value = mock_detector
+
+        remove_silence(config, request, on_progress=my_callback)
+
+    _, kwargs = mock_process.call_args
+    assert kwargs.get("on_progress") is my_callback
+
+
+def test_remove_silence_no_callback_backward_compatible(tmp_path):
+    """remove_silence works with no callback (default None)."""
+    input_file = tmp_path / "input.mp4"
+    input_file.touch()
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    request = SilenceRemovalRequest(input_path=input_file)
+
+    mock_segments = [SpeechSegment(start=0.0, end=3.0)]
+    mock_media_info = MediaInfo(duration=10.0)
+
+    with (
+        patch("tarash.tarash_silence_remover.api._get_detector") as mock_get_det,
+        patch(
+            "tarash.tarash_silence_remover.api.probe_media_info",
+            return_value=mock_media_info,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.get_duration",
+            return_value=7.8,
+        ),
+        patch("tarash.tarash_silence_remover.api.process_segments") as mock_process,
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect_speech_segments.return_value = mock_segments
+        mock_get_det.return_value = mock_detector
+
+        response = remove_silence(config, request)
+
+    assert isinstance(response, SilenceRemovalResponse)
+    _, kwargs = mock_process.call_args
+    assert kwargs.get("on_progress") is None
+
+
+def test_remove_silence_callback_error_does_not_crash(tmp_path):
+    """remove_silence continues when callback raises during probing."""
+    input_file = tmp_path / "input.mp4"
+    input_file.touch()
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    request = SilenceRemovalRequest(input_path=input_file)
+
+    mock_segments = [SpeechSegment(start=0.0, end=3.0)]
+    mock_media_info = MediaInfo(duration=10.0)
+
+    def bad_callback(update):
+        raise RuntimeError("callback broke")
+
+    with (
+        patch("tarash.tarash_silence_remover.api._get_detector") as mock_get_det,
+        patch(
+            "tarash.tarash_silence_remover.api.probe_media_info",
+            return_value=mock_media_info,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.get_duration",
+            return_value=7.8,
+        ),
+        patch("tarash.tarash_silence_remover.api.process_segments"),
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect_speech_segments.return_value = mock_segments
+        mock_get_det.return_value = mock_detector
+
+        # Should not raise
+        response = remove_silence(config, request, on_progress=bad_callback)
+
+    assert isinstance(response, SilenceRemovalResponse)
+
+
+# ==================== remove_silence_async with on_progress ====================
+
+
+async def test_remove_silence_async_fires_probing_and_detecting(tmp_path):
+    """remove_silence_async fires probing and detecting updates."""
+    input_file = tmp_path / "input.mp4"
+    input_file.touch()
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    request = SilenceRemovalRequest(input_path=input_file)
+
+    mock_segments = [SpeechSegment(start=0.0, end=3.0)]
+    mock_media_info = MediaInfo(duration=10.0)
+
+    received = []
+
+    async def on_progress(update):
+        received.append(update)
+
+    with (
+        patch("tarash.tarash_silence_remover.api._get_detector") as mock_get_det,
+        patch(
+            "tarash.tarash_silence_remover.api.probe_media_info_async",
+            new_callable=AsyncMock,
+            return_value=mock_media_info,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.get_duration_async",
+            new_callable=AsyncMock,
+            return_value=7.8,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.process_segments_async",
+            new_callable=AsyncMock,
+        ),
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect_speech_segments_async = AsyncMock(
+            return_value=mock_segments
+        )
+        mock_get_det.return_value = mock_detector
+
+        await remove_silence_async(config, request, on_progress=on_progress)
+
+    phases = [u.phase for u in received]
+    assert "probing" in phases
+    assert "detecting" in phases
+
+
+async def test_remove_silence_async_passes_callback_through(tmp_path):
+    """remove_silence_async passes on_progress to process_segments_async."""
+    input_file = tmp_path / "input.mp4"
+    input_file.touch()
+
+    config = SilenceRemovalConfig(detector="ffmpeg")
+    request = SilenceRemovalRequest(input_path=input_file)
+
+    mock_segments = [SpeechSegment(start=0.0, end=3.0)]
+    mock_media_info = MediaInfo(duration=10.0)
+
+    async def my_callback(update):
+        pass
+
+    with (
+        patch("tarash.tarash_silence_remover.api._get_detector") as mock_get_det,
+        patch(
+            "tarash.tarash_silence_remover.api.probe_media_info_async",
+            new_callable=AsyncMock,
+            return_value=mock_media_info,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.get_duration_async",
+            new_callable=AsyncMock,
+            return_value=7.8,
+        ),
+        patch(
+            "tarash.tarash_silence_remover.api.process_segments_async",
+            new_callable=AsyncMock,
+        ) as mock_process,
+    ):
+        mock_detector = MagicMock()
+        mock_detector.detect_speech_segments_async = AsyncMock(
+            return_value=mock_segments
+        )
+        mock_get_det.return_value = mock_detector
+
+        await remove_silence_async(config, request, on_progress=my_callback)
+
+    _, kwargs = mock_process.call_args
+    assert kwargs.get("on_progress") is my_callback
