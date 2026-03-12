@@ -11,6 +11,7 @@ from tarash.tarash_silence_remover.models import (
     ProcessingUpdate,
     ProgressCallback,
     SilenceRemovalConfig,
+    SilenceRemovalPreview,
     SilenceRemovalRequest,
     SilenceRemovalResponse,
     SpeechSegment,
@@ -295,3 +296,103 @@ def test_progress_types_in_package_all():
     ]
     for name in expected:
         assert name in pkg.__all__, f"{name} not in __all__"
+
+
+# ==================== SilenceRemovalPreview ====================
+
+
+def test_preview_construction_with_valid_fields():
+    """SilenceRemovalPreview can be constructed with all required fields."""
+    segments = [
+        SpeechSegment(start=0.0, end=3.0),
+        SpeechSegment(start=5.0, end=8.0),
+    ]
+    preview = SilenceRemovalPreview(
+        original_duration=10.0,
+        estimated_output_duration=6.3,
+        segments_to_keep=segments,
+        silence_gaps_to_insert=1,
+        detector_used="silero",
+    )
+    assert preview.original_duration == 10.0
+    assert preview.estimated_output_duration == 6.3
+    assert len(preview.segments_to_keep) == 2
+    assert preview.silence_gaps_to_insert == 1
+    assert preview.detector_used == "silero"
+
+
+def test_preview_estimated_removed_duration():
+    """estimated_removed_duration returns original minus estimated output."""
+    preview = SilenceRemovalPreview(
+        original_duration=10.0,
+        estimated_output_duration=6.0,
+        segments_to_keep=[SpeechSegment(start=0.0, end=6.0)],
+        silence_gaps_to_insert=0,
+        detector_used="ffmpeg",
+    )
+    assert preview.estimated_removed_duration == 4.0
+
+
+def test_preview_reduction_percent():
+    """reduction_percent returns correct percentage."""
+    preview = SilenceRemovalPreview(
+        original_duration=10.0,
+        estimated_output_duration=7.0,
+        segments_to_keep=[SpeechSegment(start=0.0, end=7.0)],
+        silence_gaps_to_insert=0,
+        detector_used="silero",
+    )
+    assert preview.reduction_percent == pytest.approx(30.0)
+
+
+def test_preview_reduction_percent_zero_duration():
+    """reduction_percent returns 0.0 when original_duration is 0."""
+    preview = SilenceRemovalPreview(
+        original_duration=0.0,
+        estimated_output_duration=0.0,
+        segments_to_keep=[],
+        silence_gaps_to_insert=0,
+        detector_used="silero",
+    )
+    assert preview.reduction_percent == 0.0
+
+
+def test_preview_is_frozen():
+    """SilenceRemovalPreview is immutable."""
+    preview = SilenceRemovalPreview(
+        original_duration=10.0,
+        estimated_output_duration=7.0,
+        segments_to_keep=[],
+        silence_gaps_to_insert=0,
+        detector_used="silero",
+    )
+    with pytest.raises(ValidationError):
+        preview.original_duration = 20.0
+
+
+def test_preview_accepts_empty_segments():
+    """segments_to_keep accepts an empty list (all silence case)."""
+    preview = SilenceRemovalPreview(
+        original_duration=5.0,
+        estimated_output_duration=0.0,
+        segments_to_keep=[],
+        silence_gaps_to_insert=0,
+        detector_used="ffmpeg",
+    )
+    assert preview.segments_to_keep == []
+    assert preview.estimated_removed_duration == 5.0
+    assert preview.reduction_percent == 100.0
+
+
+def test_preview_exported_from_package():
+    """SilenceRemovalPreview is importable from tarash.tarash_silence_remover."""
+    from tarash.tarash_silence_remover import SilenceRemovalPreview as Imported
+
+    assert Imported is SilenceRemovalPreview
+
+
+def test_preview_in_package_all():
+    """SilenceRemovalPreview is listed in __all__."""
+    import tarash.tarash_silence_remover as pkg
+
+    assert "SilenceRemovalPreview" in pkg.__all__

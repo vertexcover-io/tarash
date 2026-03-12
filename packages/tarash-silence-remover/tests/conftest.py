@@ -24,7 +24,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="session")
-def ffmpeg_available():
+def _ffmpeg_available():
     """Check FFmpeg is available, skip if not."""
     try:
         result = subprocess.run(

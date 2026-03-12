@@ -9,6 +9,7 @@ from tarash.tarash_silence_remover.logging import log_info
 from tarash.tarash_silence_remover.models import (
     AsyncProgressCallback,
     SilenceRemovalConfig,
+    SilenceRemovalPreview,
     SilenceRemovalRequest,
     SilenceRemovalResponse,
     SpeechSegment,
@@ -247,3 +248,140 @@ async def remove_silence_async(
         segments_kept=merged,
         detector_used=config.detector,
     )
+
+
+def _estimate_output_duration(
+    merged: list[SpeechSegment],
+    config: SilenceRemovalConfig,
+) -> tuple[float, int]:
+    """Estimate output duration and count silence gaps.
+
+    Args:
+        merged: Merged speech segments after padding.
+        config: Silence removal configuration.
+
+    Returns:
+        Tuple of (estimated_duration, silence_gaps_count).
+    """
+    speech_duration = sum(seg.end - seg.start for seg in merged)
+
+    silence_gap_count = sum(
+        1
+        for prev, nxt in zip(merged, merged[1:])
+        if (nxt.start - prev.end) > config.min_silence_duration
+        and config.target_silence_duration > 0
+    )
+
+    estimated_output = speech_duration + (
+        silence_gap_count * config.target_silence_duration
+    )
+    return estimated_output, silence_gap_count
+
+
+def _build_preview(
+    config: SilenceRemovalConfig,
+    raw_segments: list[SpeechSegment],
+    original_duration: float,
+) -> SilenceRemovalPreview:
+    """Build a preview from raw detected segments (pure function).
+
+    Applies padding, merges overlapping segments, estimates output duration,
+    logs the result, and constructs the preview model.
+
+    Args:
+        config: Silence removal configuration.
+        raw_segments: Raw speech segments from the detector.
+        original_duration: Original file duration in seconds.
+
+    Returns:
+        SilenceRemovalPreview with estimated metrics.
+    """
+    padded = apply_padding(raw_segments, config.padding, original_duration)
+    merged = merge_overlapping_segments(padded)
+
+    estimated_output, gaps = _estimate_output_duration(merged, config)
+
+    log_info(
+        "Silence removal preview complete",
+        context={
+            "original_duration": round(original_duration, 5),
+            "estimated_output_duration": round(estimated_output, 5),
+            "segments_to_keep": len(merged),
+            "silence_gaps_to_insert": gaps,
+        },
+        logger_name=_LOGGER_NAME,
+    )
+
+    return SilenceRemovalPreview(
+        original_duration=original_duration,
+        estimated_output_duration=estimated_output,
+        segments_to_keep=merged,
+        silence_gaps_to_insert=gaps,
+        detector_used=config.detector,
+    )
+
+
+def preview_silence(
+    config: SilenceRemovalConfig,
+    input_path: Path,
+) -> SilenceRemovalPreview:
+    """Preview silence removal without processing (sync).
+
+    Runs detection + padding + merging pipeline but stops before FFmpeg
+    processing, returning estimated metrics.
+
+    Args:
+        config: Silence removal configuration.
+        input_path: Path to the input file.
+
+    Returns:
+        SilenceRemovalPreview with estimated metrics.
+
+    Raises:
+        InvalidInputError: If input file doesn't exist.
+        FFmpegNotFoundError: If FFmpeg is not found (for probing).
+        DetectionError: If silence detection fails.
+    """
+    if not input_path.exists():
+        raise InvalidInputError(f"Input file does not exist: {input_path}")
+
+    media_info = probe_media_info(config.ffmpeg_path, input_path)
+    detector = _get_detector(config)
+    raw_segments = detector.detect_speech_segments(
+        input_path, config, duration=media_info.duration
+    )
+
+    return _build_preview(config, raw_segments, media_info.duration)
+
+
+async def preview_silence_async(
+    config: SilenceRemovalConfig,
+    input_path: Path,
+) -> SilenceRemovalPreview:
+    """Preview silence removal without processing (async).
+
+    Runs detection + padding + merging pipeline but stops before FFmpeg
+    processing, returning estimated metrics.
+
+    Args:
+        config: Silence removal configuration.
+        input_path: Path to the input file.
+
+    Returns:
+        SilenceRemovalPreview with estimated metrics.
+
+    Raises:
+        InvalidInputError: If input file doesn't exist.
+        FFmpegNotFoundError: If FFmpeg is not found (for probing).
+        DetectionError: If silence detection fails.
+    """
+    if not input_path.exists():
+        raise InvalidInputError(f"Input file does not exist: {input_path}")
+
+    media_info = await probe_media_info_async(config.ffmpeg_path, input_path)
+    detector = _get_detector(config)
+    raw_segments = await detector.detect_speech_segments_async(
+        input_path, config, duration=media_info.duration
+    )
+
+    return _build_preview(config, raw_segments, media_info.duration)
