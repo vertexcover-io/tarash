@@ -11,23 +11,24 @@ from tarash.tarash_gateway.exceptions import TarashException, ValidationError
 from tarash.tarash_gateway.logging import log_warning
 from tarash.tarash_gateway.models import (
     BatchCompletionUpdate,
+    BatchConfigT,
     BatchItem,
     BatchItemResult,
+    BatchRequestT,
     BatchResponse,
-    ConfigT,
-    RequestT,
-    ResponseT,
+    BatchResponseT,
 )
 
 
 async def _execute_batch_async(
-    items: list[BatchItem[ConfigT, RequestT]],
-    default_config: ConfigT,
-    execute_fn: Callable[..., Awaitable[ResponseT]],
+    items: list[BatchItem[BatchConfigT, BatchRequestT]],
+    default_config: BatchConfigT,
+    execute_fn: Callable[..., Awaitable[BatchResponseT]],
     max_concurrent: int = 5,
     on_item_progress: object | None = None,  # Modality-specific progress callback
-    on_batch_progress: Callable[[BatchCompletionUpdate[ResponseT]], None] | None = None,
-) -> BatchResponse[ResponseT]:
+    on_batch_progress: Callable[[BatchCompletionUpdate[BatchResponseT]], None]
+    | None = None,
+) -> BatchResponse[BatchResponseT]:
     """Execute a batch of generation requests concurrently.
 
     Args:
@@ -60,15 +61,17 @@ async def _execute_batch_async(
     # Shared mutable state for tracking completion
     completed_count = 0
     count_lock = asyncio.Lock()
-    results_by_index: dict[int, BatchItemResult[ResponseT]] = {}
+    results_by_index: dict[int, BatchItemResult[BatchResponseT]] = {}
 
-    async def _execute_single(index: int, item: BatchItem[ConfigT, RequestT]) -> None:
+    async def _execute_single(
+        index: int, item: BatchItem[BatchConfigT, BatchRequestT]
+    ) -> None:
         nonlocal completed_count
 
         # REQ-12: Resolve config
         effective_config = item.config if item.config is not None else default_config
 
-        item_result: BatchItemResult[ResponseT]
+        item_result: BatchItemResult[BatchResponseT]
 
         async with semaphore:
             try:

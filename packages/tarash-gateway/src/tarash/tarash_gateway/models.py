@@ -20,6 +20,7 @@ from collections.abc import Awaitable
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 if TYPE_CHECKING:
+    from tarash.tarash_gateway.exceptions import TarashException
     from tarash.tarash_gateway.mock import MockConfig
 
 # ==================== Type Aliases ====================
@@ -742,22 +743,22 @@ class STSUpdate(BaseModel):
 
 # ==================== Batch Generation Models ====================
 
-ConfigT = TypeVar("ConfigT")
-RequestT = TypeVar("RequestT")
-ResponseT = TypeVar("ResponseT")
+BatchConfigT = TypeVar("BatchConfigT")
+BatchRequestT = TypeVar("BatchRequestT")
+BatchResponseT = TypeVar("BatchResponseT")
 
 
-class BatchItem(BaseModel, Generic[ConfigT, RequestT]):
+class BatchItem(BaseModel, Generic[BatchConfigT, BatchRequestT]):
     """A single item in a batch generation request.
 
     Generic over the config and request types for the target modality.
     """
 
-    request: RequestT
-    config: ConfigT | None = None
+    request: BatchRequestT
+    config: BatchConfigT | None = None
 
 
-class BatchItemResult(BaseModel, Generic[ResponseT]):
+class BatchItemResult(BaseModel, Generic[BatchResponseT]):
     """Result of a single item in a batch generation request.
 
     Fields:
@@ -771,12 +772,11 @@ class BatchItemResult(BaseModel, Generic[ResponseT]):
 
     index: int
     status: Literal["completed", "failed"]
-    response: ResponseT | None = None
-    # TarashException is not a Pydantic model, so use Any with annotation
-    error: Any = None  # TarashException | None
+    response: BatchResponseT | None = None
+    error: "TarashException | None" = None
 
 
-class BatchResponse(BaseModel, Generic[ResponseT]):
+class BatchResponse(BaseModel, Generic[BatchResponseT]):
     """Aggregated response for a batch generation request.
 
     Fields:
@@ -788,13 +788,13 @@ class BatchResponse(BaseModel, Generic[ResponseT]):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    results: list[BatchItemResult[ResponseT]]
+    results: list[BatchItemResult[BatchResponseT]]
     total: int
     succeeded: int
     failed: int
 
 
-class BatchCompletionUpdate(BaseModel, Generic[ResponseT]):
+class BatchCompletionUpdate(BaseModel, Generic[BatchResponseT]):
     """Progress update emitted after each batch item completes.
 
     Fields:
@@ -807,7 +807,7 @@ class BatchCompletionUpdate(BaseModel, Generic[ResponseT]):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     index: int
-    item_result: BatchItemResult[ResponseT]
+    item_result: BatchItemResult[BatchResponseT]
     completed_count: int
     total_count: int
 
@@ -1133,7 +1133,11 @@ class ProviderHandler(Protocol):
 # models above to avoid a circular import (mock.py imports from models.py).
 # By this point all classes are defined, so mock.py can safely import them.
 from tarash.tarash_gateway.mock import MockConfig  # noqa: E402, F811
+from tarash.tarash_gateway.exceptions import TarashException  # noqa: E402, F811
 
 VideoGenerationConfig.model_rebuild()
 ImageGenerationConfig.model_rebuild()
 AudioGenerationConfig.model_rebuild()
+BatchItemResult.model_rebuild()
+BatchResponse.model_rebuild()
+BatchCompletionUpdate.model_rebuild()
