@@ -7,6 +7,7 @@ from typing import (
     Any,
     Callable,
     ClassVar,
+    Generic,
     Literal,
     Protocol,
     TypeAlias,
@@ -737,6 +738,105 @@ class STSUpdate(BaseModel):
     error: str | None = Field(
         default=None, description="Error message if status is 'failed'."
     )
+
+
+# ==================== Batch Generation Models ====================
+
+ConfigT = TypeVar("ConfigT")
+RequestT = TypeVar("RequestT")
+ResponseT = TypeVar("ResponseT")
+
+
+class BatchItem(BaseModel, Generic[ConfigT, RequestT]):
+    """A single item in a batch generation request.
+
+    Generic over the config and request types for the target modality.
+    """
+
+    request: RequestT
+    config: ConfigT | None = None
+
+
+class BatchItemResult(BaseModel, Generic[ResponseT]):
+    """Result of a single item in a batch generation request.
+
+    Fields:
+        index: 0-based position in the original batch.
+        status: "completed" or "failed".
+        response: Populated on success, None on failure.
+        error: TarashException on failure, None on success.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    index: int
+    status: Literal["completed", "failed"]
+    response: ResponseT | None = None
+    # TarashException is not a Pydantic model, so use Any with annotation
+    error: Any = None  # TarashException | None
+
+
+class BatchResponse(BaseModel, Generic[ResponseT]):
+    """Aggregated response for a batch generation request.
+
+    Fields:
+        results: List of BatchItemResult in submission order.
+        total: Total number of items in the batch.
+        succeeded: Count of items with status "completed".
+        failed: Count of items with status "failed".
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    results: list[BatchItemResult[ResponseT]]
+    total: int
+    succeeded: int
+    failed: int
+
+
+class BatchCompletionUpdate(BaseModel, Generic[ResponseT]):
+    """Progress update emitted after each batch item completes.
+
+    Fields:
+        index: 0-based position of the completed item.
+        item_result: The BatchItemResult for this item.
+        completed_count: Running count of completed items (including this one).
+        total_count: Total number of items in the batch.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    index: int
+    item_result: BatchItemResult[ResponseT]
+    completed_count: int
+    total_count: int
+
+
+# Concrete type aliases per modality
+
+# Video
+VideoBatchItem = BatchItem[VideoGenerationConfig, VideoGenerationRequest]
+VideoBatchItemResult = BatchItemResult[VideoGenerationResponse]
+VideoBatchResponse = BatchResponse[VideoGenerationResponse]
+VideoBatchCompletionUpdate = BatchCompletionUpdate[VideoGenerationResponse]
+
+# Image
+ImageBatchItem = BatchItem[ImageGenerationConfig, ImageGenerationRequest]
+ImageBatchItemResult = BatchItemResult[ImageGenerationResponse]
+ImageBatchResponse = BatchResponse[ImageGenerationResponse]
+ImageBatchCompletionUpdate = BatchCompletionUpdate[ImageGenerationResponse]
+
+# TTS
+TTSBatchItem = BatchItem[AudioGenerationConfig, TTSRequest]
+TTSBatchItemResult = BatchItemResult[TTSResponse]
+TTSBatchResponse = BatchResponse[TTSResponse]
+TTSBatchCompletionUpdate = BatchCompletionUpdate[TTSResponse]
+
+# STS
+STSBatchItem = BatchItem[AudioGenerationConfig, STSRequest]
+STSBatchItemResult = BatchItemResult[STSResponse]
+STSBatchResponse = BatchResponse[STSResponse]
+STSBatchCompletionUpdate = BatchCompletionUpdate[STSResponse]
 
 
 # ==================== Model-Specific Parameters ====================
