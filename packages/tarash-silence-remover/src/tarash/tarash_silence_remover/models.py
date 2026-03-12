@@ -10,6 +10,8 @@ ProcessingPhase = Literal[
     "probing", "detecting", "extracting", "generating_silence", "concatenating"
 ]
 
+DetectorBackend = Literal["silero", "ffmpeg"]
+
 
 class ProcessingUpdate(BaseModel):
     """Progress update fired during silence removal processing."""
@@ -31,7 +33,7 @@ ProgressCallback = SyncProgressCallback | AsyncProgressCallback
 class SilenceRemovalConfig(BaseModel):
     """Configuration for silence removal."""
 
-    detector: Literal["silero", "ffmpeg"] = Field(
+    detector: DetectorBackend = Field(
         default="silero",
         description="Detection backend: 'silero' (VAD, more accurate) or 'ffmpeg' (lightweight).",
     )
@@ -119,7 +121,9 @@ class SilenceRemovalResponse(BaseModel):
     segments_kept: list[SpeechSegment] = Field(
         description="Speech segments that were kept."
     )
-    detector_used: str = Field(description="Which detector backend was used.")
+    detector_used: DetectorBackend = Field(
+        description="Which detector backend was used."
+    )
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
@@ -127,3 +131,35 @@ class SilenceRemovalResponse(BaseModel):
     def removed_duration(self) -> float:
         """Total silence removed in seconds."""
         return self.original_duration - self.output_duration
+
+
+class SilenceRemovalPreview(BaseModel):
+    """Estimated result of silence removal without processing."""
+
+    original_duration: float = Field(description="Original file duration in seconds.")
+    estimated_output_duration: float = Field(
+        description="Estimated output duration in seconds."
+    )
+    segments_to_keep: list[SpeechSegment] = Field(
+        description="Speech segments after padding + merge."
+    )
+    silence_gaps_to_insert: int = Field(
+        description="Number of shortened silence gaps that would be inserted."
+    )
+    detector_used: DetectorBackend = Field(
+        description="Which detector backend was used."
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    @property
+    def estimated_removed_duration(self) -> float:
+        """Estimated silence removed in seconds."""
+        return self.original_duration - self.estimated_output_duration
+
+    @property
+    def reduction_percent(self) -> float:
+        """Estimated file duration reduction as a percentage."""
+        if self.original_duration == 0:
+            return 0.0
+        return (self.estimated_removed_duration / self.original_duration) * 100

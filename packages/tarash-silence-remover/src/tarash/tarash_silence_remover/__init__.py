@@ -10,6 +10,8 @@ except importlib.metadata.PackageNotFoundError:
 from .api import (
     detect_silence,
     detect_silence_async,
+    preview_silence,
+    preview_silence_async,
     remove_silence,
     remove_silence_async,
 )
@@ -22,11 +24,13 @@ from .exceptions import (
 )
 from .models import (
     AsyncProgressCallback,
+    DetectorBackend,
     MediaInfo,
     ProcessingPhase,
     ProcessingUpdate,
     ProgressCallback,
     SilenceRemovalConfig,
+    SilenceRemovalPreview,
     SilenceRemovalRequest,
     SilenceRemovalResponse,
     SpeechSegment,
@@ -39,9 +43,13 @@ __all__ = [
     "remove_silence_async",
     "detect_silence",
     "detect_silence_async",
+    "preview_silence",
+    "preview_silence_async",
     # Models
+    "DetectorBackend",
     "MediaInfo",
     "SilenceRemovalConfig",
+    "SilenceRemovalPreview",
     "SilenceRemovalRequest",
     "SilenceRemovalResponse",
     "SpeechSegment",
