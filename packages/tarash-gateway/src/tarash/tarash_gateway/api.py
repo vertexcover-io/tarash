@@ -1,20 +1,35 @@
 """Public API for video and image generation."""
 
+import asyncio
+from collections.abc import Callable
+
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    ImageBatchCompletionUpdate,
+    ImageBatchItem,
+    ImageBatchResponse,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
     ImageProgressCallback,
-    ProviderHandler,
     ProgressCallback,
+    ProviderHandler,
+    STSBatchCompletionUpdate,
+    STSBatchItem,
+    STSBatchResponse,
     STSProgressCallback,
     STSRequest,
     STSResponse,
+    TTSBatchCompletionUpdate,
+    TTSBatchItem,
+    TTSBatchResponse,
     TTSProgressCallback,
     TTSRequest,
     TTSResponse,
+    VideoBatchCompletionUpdate,
+    VideoBatchItem,
+    VideoBatchResponse,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -541,3 +556,246 @@ def generate_sts(
     )
 
     return _ORCHESTRATOR.execute_sts_sync(config, request, on_progress=on_progress)
+
+
+# ==================== Batch Generation API ====================
+
+
+async def generate_video_batch_async(
+    config: VideoGenerationConfig,
+    items: list[VideoBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: ProgressCallback | None = None,
+    on_batch_progress: Callable[[VideoBatchCompletionUpdate], None] | None = None,
+) -> VideoBatchResponse:
+    """Generate multiple videos concurrently as a batch.
+
+    Args:
+        config: Default provider configuration for all items.
+        items: List of VideoBatchItem objects to process.
+        max_concurrent: Maximum concurrent requests (1-50, default 5).
+        on_item_progress: Progress callback forwarded to each single request.
+        on_batch_progress: Callback invoked after each item completes.
+
+    Returns:
+        VideoBatchResponse with results in original submission order.
+    """
+    from tarash.tarash_gateway.batch import _execute_batch_async
+
+    log_info(
+        "Video batch generation request received (async)",
+        context={"num_items": len(items), "max_concurrent": max_concurrent},
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    return await _execute_batch_async(
+        items=items,
+        default_config=config,
+        execute_fn=generate_video_async,
+        max_concurrent=max_concurrent,
+        on_item_progress=on_item_progress,
+        on_batch_progress=on_batch_progress,
+    )
+
+
+def generate_video_batch(
+    config: VideoGenerationConfig,
+    items: list[VideoBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: ProgressCallback | None = None,
+    on_batch_progress: Callable[[VideoBatchCompletionUpdate], None] | None = None,
+) -> VideoBatchResponse:
+    """Generate multiple videos concurrently as a batch (sync).
+
+    Blocking version of generate_video_batch_async.
+    """
+    return asyncio.run(
+        generate_video_batch_async(
+            config=config,
+            items=items,
+            max_concurrent=max_concurrent,
+            on_item_progress=on_item_progress,
+            on_batch_progress=on_batch_progress,
+        )
+    )
+
+
+async def generate_image_batch_async(
+    config: ImageGenerationConfig,
+    items: list[ImageBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: ImageProgressCallback | None = None,
+    on_batch_progress: Callable[[ImageBatchCompletionUpdate], None] | None = None,
+) -> ImageBatchResponse:
+    """Generate multiple images concurrently as a batch.
+
+    Args:
+        config: Default provider configuration for all items.
+        items: List of ImageBatchItem objects to process.
+        max_concurrent: Maximum concurrent requests (1-50, default 5).
+        on_item_progress: Progress callback forwarded to each single request.
+        on_batch_progress: Callback invoked after each item completes.
+
+    Returns:
+        ImageBatchResponse with results in original submission order.
+    """
+    from tarash.tarash_gateway.batch import _execute_batch_async
+
+    log_info(
+        "Image batch generation request received (async)",
+        context={"num_items": len(items), "max_concurrent": max_concurrent},
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    return await _execute_batch_async(
+        items=items,
+        default_config=config,
+        execute_fn=generate_image_async,
+        max_concurrent=max_concurrent,
+        on_item_progress=on_item_progress,
+        on_batch_progress=on_batch_progress,
+    )
+
+
+def generate_image_batch(
+    config: ImageGenerationConfig,
+    items: list[ImageBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: ImageProgressCallback | None = None,
+    on_batch_progress: Callable[[ImageBatchCompletionUpdate], None] | None = None,
+) -> ImageBatchResponse:
+    """Generate multiple images concurrently as a batch (sync).
+
+    Blocking version of generate_image_batch_async.
+    """
+    return asyncio.run(
+        generate_image_batch_async(
+            config=config,
+            items=items,
+            max_concurrent=max_concurrent,
+            on_item_progress=on_item_progress,
+            on_batch_progress=on_batch_progress,
+        )
+    )
+
+
+async def generate_tts_batch_async(
+    config: AudioGenerationConfig,
+    items: list[TTSBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: TTSProgressCallback | None = None,
+    on_batch_progress: Callable[[TTSBatchCompletionUpdate], None] | None = None,
+) -> TTSBatchResponse:
+    """Generate multiple TTS audio files concurrently as a batch.
+
+    Args:
+        config: Default provider configuration for all items.
+        items: List of TTSBatchItem objects to process.
+        max_concurrent: Maximum concurrent requests (1-50, default 5).
+        on_item_progress: Progress callback forwarded to each single request.
+        on_batch_progress: Callback invoked after each item completes.
+
+    Returns:
+        TTSBatchResponse with results in original submission order.
+    """
+    from tarash.tarash_gateway.batch import _execute_batch_async
+
+    log_info(
+        "TTS batch generation request received (async)",
+        context={"num_items": len(items), "max_concurrent": max_concurrent},
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    return await _execute_batch_async(
+        items=items,
+        default_config=config,
+        execute_fn=generate_tts_async,
+        max_concurrent=max_concurrent,
+        on_item_progress=on_item_progress,
+        on_batch_progress=on_batch_progress,
+    )
+
+
+def generate_tts_batch(
+    config: AudioGenerationConfig,
+    items: list[TTSBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: TTSProgressCallback | None = None,
+    on_batch_progress: Callable[[TTSBatchCompletionUpdate], None] | None = None,
+) -> TTSBatchResponse:
+    """Generate multiple TTS audio files concurrently as a batch (sync).
+
+    Blocking version of generate_tts_batch_async.
+    """
+    return asyncio.run(
+        generate_tts_batch_async(
+            config=config,
+            items=items,
+            max_concurrent=max_concurrent,
+            on_item_progress=on_item_progress,
+            on_batch_progress=on_batch_progress,
+        )
+    )
+
+
+async def generate_sts_batch_async(
+    config: AudioGenerationConfig,
+    items: list[STSBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: STSProgressCallback | None = None,
+    on_batch_progress: Callable[[STSBatchCompletionUpdate], None] | None = None,
+) -> STSBatchResponse:
+    """Convert multiple speech-to-speech files concurrently as a batch.
+
+    Args:
+        config: Default provider configuration for all items.
+        items: List of STSBatchItem objects to process.
+        max_concurrent: Maximum concurrent requests (1-50, default 5).
+        on_item_progress: Progress callback forwarded to each single request.
+        on_batch_progress: Callback invoked after each item completes.
+
+    Returns:
+        STSBatchResponse with results in original submission order.
+    """
+    from tarash.tarash_gateway.batch import _execute_batch_async
+
+    log_info(
+        "STS batch generation request received (async)",
+        context={"num_items": len(items), "max_concurrent": max_concurrent},
+        logger_name="tarash.tarash_gateway.api",
+        redact=True,
+    )
+
+    return await _execute_batch_async(
+        items=items,
+        default_config=config,
+        execute_fn=generate_sts_async,
+        max_concurrent=max_concurrent,
+        on_item_progress=on_item_progress,
+        on_batch_progress=on_batch_progress,
+    )
+
+
+def generate_sts_batch(
+    config: AudioGenerationConfig,
+    items: list[STSBatchItem],
+    max_concurrent: int = 5,
+    on_item_progress: STSProgressCallback | None = None,
+    on_batch_progress: Callable[[STSBatchCompletionUpdate], None] | None = None,
+) -> STSBatchResponse:
+    """Convert multiple speech-to-speech files concurrently as a batch (sync).
+
+    Blocking version of generate_sts_batch_async.
+    """
+    return asyncio.run(
+        generate_sts_batch_async(
+            config=config,
+            items=items,
+            max_concurrent=max_concurrent,
+            on_item_progress=on_item_progress,
+            on_batch_progress=on_batch_progress,
+        )
+    )
