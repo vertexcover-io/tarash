@@ -6,7 +6,6 @@ generation requests concurrently, gated by an asyncio.Semaphore.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar
 
 from tarash.tarash_gateway.exceptions import TarashException, ValidationError
 from tarash.tarash_gateway.logging import log_warning
@@ -15,11 +14,10 @@ from tarash.tarash_gateway.models import (
     BatchItem,
     BatchItemResult,
     BatchResponse,
+    ConfigT,
+    RequestT,
+    ResponseT,
 )
-
-ConfigT = TypeVar("ConfigT")
-RequestT = TypeVar("RequestT")
-ResponseT = TypeVar("ResponseT")
 
 
 async def _execute_batch_async(
@@ -27,7 +25,7 @@ async def _execute_batch_async(
     default_config: ConfigT,
     execute_fn: Callable[..., Awaitable[ResponseT]],
     max_concurrent: int = 5,
-    on_item_progress: Any | None = None,  # Modality-specific progress callback
+    on_item_progress: object | None = None,  # Modality-specific progress callback
     on_batch_progress: Callable[[BatchCompletionUpdate[ResponseT]], None] | None = None,
 ) -> BatchResponse[ResponseT]:
     """Execute a batch of generation requests concurrently.
@@ -62,7 +60,7 @@ async def _execute_batch_async(
     # Shared mutable state for tracking completion
     completed_count = 0
     count_lock = asyncio.Lock()
-    results: list[BatchItemResult[ResponseT]] = [None] * len(items)  # type: ignore[list-item]
+    results_by_index: dict[int, BatchItemResult[ResponseT]] = {}
 
     async def _execute_single(index: int, item: BatchItem[ConfigT, RequestT]) -> None:
         nonlocal completed_count
@@ -93,7 +91,7 @@ async def _execute_batch_async(
                 )
 
         # REQ-20: Record result before calling on_batch_progress
-        results[index] = item_result
+        results_by_index[index] = item_result
 
         # Update completed count
         async with count_lock:
@@ -123,13 +121,15 @@ async def _execute_batch_async(
     ]
     await asyncio.gather(*tasks)
 
-    # REQ-22: Results already ordered by index
+    # REQ-22: Build ordered results list from dict
+    ordered_results = [results_by_index[i] for i in range(len(items))]
+
     # REQ-23, REQ-24, REQ-25, REQ-26: Compute aggregates
-    succeeded = sum(1 for r in results if r.status == "completed")
-    failed = sum(1 for r in results if r.status == "failed")
+    succeeded = sum(1 for r in ordered_results if r.status == "completed")
+    failed = sum(1 for r in ordered_results if r.status == "failed")
 
     return BatchResponse(
-        results=results,
+        results=ordered_results,
         total=len(items),
         succeeded=succeeded,
         failed=failed,

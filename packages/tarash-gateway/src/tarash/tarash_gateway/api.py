@@ -34,6 +34,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
+from tarash.tarash_gateway import batch as _batch
 from tarash.tarash_gateway.orchestrator import ExecutionOrchestrator
 from tarash.tarash_gateway.providers.fal import FAL_MODEL_REGISTRY
 from tarash.tarash_gateway.providers.field_mappers import FieldMapper
@@ -580,8 +581,6 @@ async def generate_video_batch_async(
     Returns:
         VideoBatchResponse with results in original submission order.
     """
-    from tarash.tarash_gateway.batch import _execute_batch_async
-
     log_info(
         "Video batch generation request received (async)",
         context={"num_items": len(items), "max_concurrent": max_concurrent},
@@ -589,7 +588,7 @@ async def generate_video_batch_async(
         redact=True,
     )
 
-    return await _execute_batch_async(
+    return await _batch._execute_batch_async(
         items=items,
         default_config=config,
         execute_fn=generate_video_async,
@@ -640,8 +639,6 @@ async def generate_image_batch_async(
     Returns:
         ImageBatchResponse with results in original submission order.
     """
-    from tarash.tarash_gateway.batch import _execute_batch_async
-
     log_info(
         "Image batch generation request received (async)",
         context={"num_items": len(items), "max_concurrent": max_concurrent},
@@ -649,7 +646,7 @@ async def generate_image_batch_async(
         redact=True,
     )
 
-    return await _execute_batch_async(
+    return await _batch._execute_batch_async(
         items=items,
         default_config=config,
         execute_fn=generate_image_async,
@@ -700,8 +697,6 @@ async def generate_tts_batch_async(
     Returns:
         TTSBatchResponse with results in original submission order.
     """
-    from tarash.tarash_gateway.batch import _execute_batch_async
-
     log_info(
         "TTS batch generation request received (async)",
         context={"num_items": len(items), "max_concurrent": max_concurrent},
@@ -709,7 +704,7 @@ async def generate_tts_batch_async(
         redact=True,
     )
 
-    return await _execute_batch_async(
+    return await _batch._execute_batch_async(
         items=items,
         default_config=config,
         execute_fn=generate_tts_async,
@@ -760,8 +755,6 @@ async def generate_sts_batch_async(
     Returns:
         STSBatchResponse with results in original submission order.
     """
-    from tarash.tarash_gateway.batch import _execute_batch_async
-
     log_info(
         "STS batch generation request received (async)",
         context={"num_items": len(items), "max_concurrent": max_concurrent},
@@ -769,7 +762,7 @@ async def generate_sts_batch_async(
         redact=True,
     )
 
-    return await _execute_batch_async(
+    return await _batch._execute_batch_async(
         items=items,
         default_config=config,
         execute_fn=generate_sts_async,
