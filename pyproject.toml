@@ -11,11 +11,13 @@ dependencies = [
     "numpy>=2.4.2",
     "tarash-gateway[all]",
     "tarash-silence-remover[all]",
+    "tarash-audio-mixer[all]",
 ]
 
 [tool.uv.sources]
 tarash-gateway = { workspace = true }
 tarash-silence-remover = { workspace = true }
+tarash-audio-mixer = { workspace = true }
 
 [project.scripts]
 tarash = "tarash.cli.cli:main"
