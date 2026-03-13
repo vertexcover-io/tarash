@@ -8,7 +8,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from tarash.tarash_gateway.exceptions import TarashException, ValidationError
-from tarash.tarash_gateway.logging import log_warning
+from tarash.tarash_gateway.logging import log_debug, log_error, log_info, log_warning
 from tarash.tarash_gateway.models import (
     BatchCompletionUpdate,
     BatchConfigT,
@@ -18,6 +18,8 @@ from tarash.tarash_gateway.models import (
     BatchResponse,
     BatchResponseT,
 )
+
+_LOGGER_NAME = "tarash.tarash_gateway.batch"
 
 
 async def _execute_batch_async(
@@ -53,7 +55,17 @@ async def _execute_batch_async(
 
     # EDGE-1: Empty batch
     if not items:
+        log_debug(
+            "Batch called with empty items list, returning empty response",
+            logger_name=_LOGGER_NAME,
+        )
         return BatchResponse(results=[], total=0, succeeded=0, failed=0)
+
+    log_info(
+        "Starting batch execution",
+        context={"total_items": len(items), "max_concurrent": max_concurrent},
+        logger_name=_LOGGER_NAME,
+    )
 
     # REQ-9: Create semaphore for concurrency control
     semaphore = asyncio.Semaphore(max_concurrent)
@@ -74,6 +86,11 @@ async def _execute_batch_async(
         item_result: BatchItemResult[BatchResponseT]
 
         async with semaphore:
+            log_debug(
+                f"Executing batch item {index}",
+                context={"index": index},
+                logger_name=_LOGGER_NAME,
+            )
             try:
                 # REQ-14, REQ-18: Call execute_fn with config, request, on_progress
                 response = await execute_fn(
@@ -83,14 +100,30 @@ async def _execute_batch_async(
                 item_result = BatchItemResult(
                     index=index, status="completed", response=response
                 )
+                log_debug(
+                    f"Batch item {index} completed",
+                    context={"index": index},
+                    logger_name=_LOGGER_NAME,
+                )
             except TarashException as e:
                 # REQ-16: TarashException -> failed result
                 item_result = BatchItemResult(index=index, status="failed", error=e)
+                log_error(
+                    f"Batch item {index} failed: {e}",
+                    context={"index": index, "error_type": type(e).__name__},
+                    logger_name=_LOGGER_NAME,
+                )
             except Exception as e:
                 # REQ-17: Wrap non-TarashException
                 wrapped = TarashException(str(e))
                 item_result = BatchItemResult(
                     index=index, status="failed", error=wrapped
+                )
+                log_error(
+                    f"Batch item {index} failed with unexpected error: {e}",
+                    context={"index": index, "error_type": type(e).__name__},
+                    logger_name=_LOGGER_NAME,
+                    exc_info=True,
                 )
 
         # REQ-20: Record result before calling on_batch_progress
@@ -115,7 +148,7 @@ async def _execute_batch_async(
                 log_warning(
                     f"on_batch_progress callback raised an exception: {cb_err}",
                     context={"index": index, "error": str(cb_err)},
-                    logger_name="tarash.tarash_gateway.batch",
+                    logger_name=_LOGGER_NAME,
                 )
 
     # REQ-13: Dispatch all items as concurrent tasks
@@ -130,6 +163,16 @@ async def _execute_batch_async(
     # REQ-23, REQ-24, REQ-25, REQ-26: Compute aggregates
     succeeded = sum(1 for r in ordered_results if r.status == "completed")
     failed = sum(1 for r in ordered_results if r.status == "failed")
+
+    log_info(
+        "Batch execution completed",
+        context={
+            "total": len(items),
+            "succeeded": succeeded,
+            "failed": failed,
+        },
+        logger_name=_LOGGER_NAME,
+    )
 
     return BatchResponse(
         results=ordered_results,
