@@ -1,0 +1,56 @@
+[project]
+name = "tarash-audio-mixer"
+dynamic = ["version"]
+description = "Mix foreground speech with background music using intelligent ducking"
+readme = "README.md"
+authors = [
+    { name = "Ritesh Kadmawala", email = "ritesh@vertexcover.io" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+silero = ["silero-vad>=6.0.0", "torchcodec>=0.1.0"]
+all = ["tarash-audio-mixer[silero]"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tarash"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "unit: Unit tests that use mocks and don't make real API calls",
+    "e2e: End-to-end tests that require FFmpeg installed (run with '--e2e')",
+]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
