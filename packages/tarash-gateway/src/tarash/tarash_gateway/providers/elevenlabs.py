@@ -7,7 +7,6 @@ import uuid
 from typing import Any, Literal
 
 from tarash.tarash_gateway.logging import log_info
-from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -29,6 +28,7 @@ from tarash.tarash_gateway.exceptions import (
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
     AudioOutputFormat,
+    GenerationCost,
     STSProgressCallback,
     STSRequest,
     STSResponse,
@@ -199,7 +199,9 @@ class ElevenLabsProviderHandler:
         """Convert raw audio bytes to TTSResponse."""
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         content_type = format_to_content_type(request.output_format.format)
-        cost = resolve_cost(config.provider, config.model, None, len(request.text))
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, len(request.text)
+        )
 
         return TTSResponse(
             request_id=request_id,

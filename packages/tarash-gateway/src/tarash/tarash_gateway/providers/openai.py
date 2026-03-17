@@ -22,6 +22,7 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -34,7 +35,6 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.pricing import compute_openai_image_cost, resolve_cost
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     get_filename_from_url,
@@ -485,7 +485,9 @@ class OpenAIProviderHandler:
             float(getattr(video, "seconds", 0)) if hasattr(video, "seconds") else None
         )
         quantity = duration_seconds if duration_seconds else 1.0
-        cost = resolve_cost(config.provider, config.model, None, quantity)
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, quantity
+        )
 
         return VideoGenerationResponse(
             request_id=request_id,
@@ -1111,9 +1113,9 @@ class OpenAIProviderHandler:
         # Token-based cost for gpt-image-1/1.5/mini, flat-rate fallback
         # for dall-e-3/dall-e-2 (which don't report token usage).
         usage = getattr(provider_response, "usage", None)
-        cost = compute_openai_image_cost(config.model, usage)
+        cost = GenerationCost.from_token_usage(config.model, usage)
         if cost is None:
-            cost = resolve_cost(config.provider, config.model, None, 1.0)
+            cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
         return ImageGenerationResponse(
             request_id=request_id,

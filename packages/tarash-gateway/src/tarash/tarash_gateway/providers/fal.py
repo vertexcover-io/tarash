@@ -45,7 +45,6 @@ from tarash.tarash_gateway.models import (
     VideoGenerationUpdate,
     format_to_content_type,
 )
-from tarash.tarash_gateway.pricing import PRICING_TABLE, resolve_cost
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     download_media_from_url_async,
@@ -1381,6 +1380,8 @@ class FalProviderHandler:
         - seconds/minutes: use output duration from provider_response
         - videos: use quantity=1.0
         """
+        from tarash.tarash_gateway.pricing import PRICING_TABLE
+
         entry = PRICING_TABLE.get((config.provider, config.model))
         if entry is None:
             return None
@@ -1389,19 +1390,21 @@ class FalProviderHandler:
             # Extract compute time from metrics
             if metrics and "inference_time" in metrics:
                 quantity = float(metrics["inference_time"])
-                return resolve_cost(config.provider, config.model, None, quantity)
+                return GenerationCost.from_pricing_table(
+                    config.provider, config.model, quantity
+                )
             # No metrics available for compute_seconds model
             return None
         elif entry.unit in ("seconds", "minutes"):
             duration = provider_response.get("duration")
             if duration is not None:
-                return resolve_cost(
-                    config.provider, config.model, None, float(duration)
+                return GenerationCost.from_pricing_table(
+                    config.provider, config.model, float(duration)
                 )
-            return resolve_cost(config.provider, config.model, None, 1.0)
+            return GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
         else:
             # per-video or other fixed-price
-            return resolve_cost(config.provider, config.model, None, 1.0)
+            return GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
     def _handle_error(
         self,
@@ -1747,6 +1750,8 @@ class FalProviderHandler:
         metrics: dict[str, Any] | None,
     ) -> GenerationCost | None:
         """Resolve cost for a Fal image response."""
+        from tarash.tarash_gateway.pricing import PRICING_TABLE
+
         entry = PRICING_TABLE.get((config.provider, config.model))
         if entry is None:
             return None
@@ -1754,11 +1759,13 @@ class FalProviderHandler:
         if entry.unit == "compute_seconds":
             if metrics and "inference_time" in metrics:
                 quantity = float(metrics["inference_time"])
-                return resolve_cost(config.provider, config.model, None, quantity)
+                return GenerationCost.from_pricing_table(
+                    config.provider, config.model, quantity
+                )
             return None
         else:
             # per-image, per-megapixel, etc.
-            return resolve_cost(config.provider, config.model, None, 1.0)
+            return GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
     def _handle_image_error(
         self,
@@ -2015,8 +2022,8 @@ class FalProviderHandler:
         duration = _extract_tts_duration(fal_result)
 
         # Resolve cost using character count
-        cost = resolve_cost(
-            config.provider, config.model, None, float(len(request.text))
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, float(len(request.text))
         )
 
         return TTSResponse(

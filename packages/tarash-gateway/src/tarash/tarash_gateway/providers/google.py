@@ -30,6 +30,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -51,7 +52,6 @@ from tarash.tarash_gateway.providers.field_mappers import (
     get_field_mappers_from_registry,
     passthrough_field_mapper,
 )
-from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.utils import validate_model_params
 
 has_genai = True
@@ -552,7 +552,7 @@ class GoogleProviderHandler:
 
         # Resolve cost - for Veo, use quantity=1.0 as output duration
         # is not readily available from the operation response
-        cost = resolve_cost(config.provider, config.model, None, 1.0)
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
         return VideoGenerationResponse(
             request_id=request_id,
@@ -761,7 +761,7 @@ class GoogleProviderHandler:
             image_urls.append(_bytes_to_data_uri(img_bytes, mime_type))
 
         # Resolve cost with quantity=1 per image
-        cost = resolve_cost(config.provider, config.model, None, 1.0)
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
         return ImageGenerationResponse(
             request_id=request_id,
@@ -813,7 +813,7 @@ class GoogleProviderHandler:
             raw_response = {"response": str(response)}
 
         # Resolve cost with quantity=1 per image
-        cost = resolve_cost(config.provider, config.model, None, 1.0)
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
         return ImageGenerationResponse(
             request_id=request_id,

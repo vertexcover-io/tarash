@@ -19,6 +19,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    GenerationCost,
     MediaType,
     ProgressCallback,
     VideoGenerationConfig,
@@ -26,7 +27,6 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
-from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.utils import validate_duration, validate_model_params
 
 try:
@@ -464,7 +464,9 @@ class RunwayProviderHandler:
         # Resolve cost - use request duration_seconds if available, else fallback to 1.0
         duration = request.duration_seconds
         quantity = float(duration) if duration is not None else 1.0
-        cost = resolve_cost(config.provider, config.model, None, quantity)
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, quantity
+        )
 
         return VideoGenerationResponse(
             request_id=request_id,

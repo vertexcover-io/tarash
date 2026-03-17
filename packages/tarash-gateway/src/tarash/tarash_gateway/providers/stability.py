@@ -22,6 +22,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.logging import ProviderLogger
 from tarash.tarash_gateway.models import (
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -31,7 +32,6 @@ from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -331,7 +331,7 @@ class StabilityProviderHandler:
         data_url = f"data:{content_type};base64,{base64_image}"
 
         # Resolve cost with quantity=1 per image
-        cost = resolve_cost(config.provider, config.model, None, 1.0)
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
 
         return ImageGenerationResponse(
             request_id=request_id,

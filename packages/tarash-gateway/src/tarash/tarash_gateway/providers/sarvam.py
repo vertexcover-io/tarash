@@ -6,7 +6,6 @@ from typing import Any, Literal
 import httpx
 
 from tarash.tarash_gateway.logging import log_info
-from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -24,6 +23,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    GenerationCost,
     TTSProgressCallback,
     TTSRequest,
     TTSResponse,
@@ -154,7 +154,9 @@ class SarvamProviderHandler:
         # Use Sarvam's request_id if available, otherwise use our generated one
         result_request_id = getattr(sarvam_result, "request_id", None) or request_id
 
-        cost = resolve_cost(config.provider, config.model, None, len(request.text))
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, len(request.text)
+        )
 
         return TTSResponse(
             request_id=result_request_id,
