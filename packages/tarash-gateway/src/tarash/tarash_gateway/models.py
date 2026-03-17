@@ -125,6 +125,18 @@ class TokenUsage:
 
 
 @dataclass(frozen=True)
+class CostComponent:
+    """A single cost component within a compound generation."""
+
+    amount_usd: Decimal | None
+    """Estimated cost in USD for this component, or ``None`` if unknown."""
+    raw_amount: float
+    """Raw quantity used for cost calculation."""
+    raw_unit: str
+    """Unit of the raw quantity (e.g. ``"tokens"``, ``"images"``)."""
+
+
+@dataclass(frozen=True)
 class GenerationCost:
     """Cost information for a single generation request.
 
@@ -140,6 +152,8 @@ class GenerationCost:
     """Unit of the raw quantity (e.g. ``"seconds"``, ``"characters"``, ``"images"``)."""
     token_usage: TokenUsage | None = None
     """Token breakdown when cost is computed from per-token rates."""
+    breakdown: tuple[CostComponent, ...] = ()
+    """Per-component cost breakdown. Empty for single-modality responses."""
 
     @classmethod
     def from_pricing_table(
