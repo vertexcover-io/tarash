@@ -150,6 +150,8 @@ class AttemptMetadata:
     """Whether the error was classified as retryable (triggers next fallback)."""
     request_id: str | None
     """Provider-assigned request ID if available before failure."""
+    cost: GenerationCost | None = None
+    """Cost information for this attempt, populated from the provider response."""
 
     @property
     def elapsed_seconds(self) -> float | None:
@@ -178,6 +180,8 @@ class ExecutionMetadata:
     """``True`` if at least one fallback was triggered due to a retryable error."""
     configs_in_chain: int
     """Total number of configs in the fallback chain (primary + fallbacks)."""
+    total_cost_usd: float | None = None
+    """Sum of all attempt costs in USD, or ``None`` if any attempt lacks cost data."""
 
     @property
     def total_elapsed_seconds(self) -> float:
@@ -347,6 +351,10 @@ class VideoGenerationResponse(BaseModel):
         default=False,
         description="True if the response was produced by the mock provider.",
     )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="Cost information for this generation request.",
+    )
     raw_response: dict[str, object] = Field(
         description="Unmodified provider response, preserved for debugging."
     )
@@ -512,6 +520,10 @@ class ImageGenerationResponse(BaseModel):
         default=None,
         description="Prompt as revised by the provider (e.g. OpenAI may modify for safety).",
     )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="Cost information for this generation request.",
+    )
     raw_response: dict[str, object] = Field(
         description="Unmodified provider response, preserved for debugging."
     )
@@ -676,6 +688,10 @@ class TTSResponse(BaseModel):
         default=False,
         description="True if the response was produced by the mock provider.",
     )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="Cost information for this generation request.",
+    )
     raw_response: dict[str, object] = Field(
         description="Unmodified provider response, preserved for debugging."
     )
@@ -704,6 +720,10 @@ class STSResponse(BaseModel):
     is_mock: bool = Field(
         default=False,
         description="True if the response was produced by the mock provider.",
+    )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="Cost information for this generation request.",
     )
     raw_response: dict[str, object] = Field(
         description="Unmodified provider response, preserved for debugging."
