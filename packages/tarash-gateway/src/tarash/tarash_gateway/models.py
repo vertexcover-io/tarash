@@ -100,6 +100,25 @@ SyncSTSProgressCallback = Callable[["STSUpdate"], None]
 AsyncSTSProgressCallback = Callable[["STSUpdate"], Awaitable[None]]
 STSProgressCallback = SyncSTSProgressCallback | AsyncSTSProgressCallback
 
+# ==================== Cost ====================
+
+
+@dataclass(frozen=True)
+class GenerationCost:
+    """Cost information for a single generation request.
+
+    Attached to provider responses and attempt metadata to track
+    per-request cost estimates.
+    """
+
+    amount_usd: float | None
+    """Estimated cost in USD, or ``None`` if unknown."""
+    raw_amount: float
+    """Raw quantity used for cost calculation (e.g. seconds, characters)."""
+    raw_unit: str
+    """Unit of the raw quantity (e.g. ``"seconds"``, ``"characters"``, ``"images"``)."""
+
+
 # ==================== Execution Metadata ====================
 
 
