@@ -8,6 +8,10 @@ from tarash.tarash_gateway.exceptions import is_retryable_error
 from tarash.tarash_gateway.models import (
     AttemptMetadata,
     AudioGenerationConfig,
+    CompoundGenerationConfig,
+    CompoundGenerationRequest,
+    CompoundGenerationResponse,
+    CompoundProgressCallback,
     ExecutionMetadata,
     ImageGenerationConfig,
     ImageGenerationRequest,
@@ -843,3 +847,164 @@ class ExecutionOrchestrator:
         if last_exception:
             raise last_exception
         raise RuntimeError("STS fallback chain execution failed")
+
+    # ==================== Compound Generation ====================
+
+    @staticmethod
+    def collect_compound_fallback_chain(
+        config: CompoundGenerationConfig,
+    ) -> list[CompoundGenerationConfig]:
+        """Collect fallback chain for compound generation."""
+        chain = [config]
+        if config.fallback_configs:
+            for fallback in config.fallback_configs:
+                chain.extend(
+                    ExecutionOrchestrator.collect_compound_fallback_chain(fallback)
+                )
+        return chain
+
+    async def execute_compound_async(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+        on_progress: CompoundProgressCallback | None = None,
+    ) -> CompoundGenerationResponse:
+        """Execute compound generation with fallback support (async)."""
+        fallback_chain = self.collect_compound_fallback_chain(config)
+        attempts: list[AttemptMetadata] = []
+        last_exception: Exception | None = None
+
+        for attempt_number, cfg in enumerate(fallback_chain, start=1):
+            started_at = datetime.now()
+            attempt_metadata = AttemptMetadata(
+                provider=cfg.provider,
+                model=cfg.model,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=None,
+                status="failed",
+                error_type=None,
+                error_message=None,
+                is_retryable=None,
+                request_id=None,
+            )
+
+            try:
+                handler = get_handler(cfg)
+                response = await handler.generate_compound_async(
+                    cfg, request, on_progress=on_progress
+                )
+
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.status = "success"
+                attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
+                attempts.append(attempt_metadata)
+
+                execution_metadata = ExecutionMetadata(
+                    total_attempts=len(attempts),
+                    successful_attempt=attempt_number,
+                    attempts=attempts,
+                    fallback_triggered=attempt_number > 1,
+                    configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
+                )
+
+                return response.model_copy(
+                    update={"execution_metadata": execution_metadata}
+                )
+
+            except NotImplementedError:
+                raise
+
+            except Exception as ex:
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.error_type = type(ex).__name__
+                attempt_metadata.error_message = str(ex)
+                attempt_metadata.is_retryable = is_retryable_error(ex)
+                attempts.append(attempt_metadata)
+                last_exception = ex
+
+                if not attempt_metadata.is_retryable or attempt_number == len(
+                    fallback_chain
+                ):
+                    raise ex
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Compound fallback chain execution failed")
+
+    def execute_compound_sync(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+        on_progress: CompoundProgressCallback | None = None,
+    ) -> CompoundGenerationResponse:
+        """Execute compound generation with fallback support (sync)."""
+        fallback_chain = self.collect_compound_fallback_chain(config)
+        attempts: list[AttemptMetadata] = []
+        last_exception: Exception | None = None
+
+        for attempt_number, cfg in enumerate(fallback_chain, start=1):
+            started_at = datetime.now()
+            attempt_metadata = AttemptMetadata(
+                provider=cfg.provider,
+                model=cfg.model,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=None,
+                status="failed",
+                error_type=None,
+                error_message=None,
+                is_retryable=None,
+                request_id=None,
+            )
+
+            try:
+                handler = get_handler(cfg)
+                response = handler.generate_compound(
+                    cfg, request, on_progress=on_progress
+                )
+
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.status = "success"
+                attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
+                attempts.append(attempt_metadata)
+
+                execution_metadata = ExecutionMetadata(
+                    total_attempts=len(attempts),
+                    successful_attempt=attempt_number,
+                    attempts=attempts,
+                    fallback_triggered=attempt_number > 1,
+                    configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
+                )
+
+                return response.model_copy(
+                    update={"execution_metadata": execution_metadata}
+                )
+
+            except NotImplementedError:
+                raise
+
+            except Exception as ex:
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.error_type = type(ex).__name__
+                attempt_metadata.error_message = str(ex)
+                attempt_metadata.is_retryable = is_retryable_error(ex)
+                attempts.append(attempt_metadata)
+                last_exception = ex
+
+                if not attempt_metadata.is_retryable or attempt_number == len(
+                    fallback_chain
+                ):
+                    raise ex
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Compound fallback chain execution failed")
