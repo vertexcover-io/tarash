@@ -115,7 +115,7 @@ def test_image_convert_response_includes_cost(handler, image_config, image_reque
     entry = PRICING_TABLE[("google", "imagen-3.0-generate-001")]
     assert response.cost.raw_unit == entry.unit
     assert response.cost.raw_amount == 1.0
-    assert response.cost.amount_usd == pytest.approx(entry.usd_per_unit)
+    assert response.cost.amount_usd == entry.usd_per_unit
 
 
 def test_gemini_image_includes_cost(handler):

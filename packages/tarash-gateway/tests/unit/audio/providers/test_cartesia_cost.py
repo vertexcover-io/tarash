@@ -1,5 +1,7 @@
 """Unit tests for Cartesia provider cost resolution (REQ-021)."""
 
+from decimal import Decimal
+
 import pytest
 
 from tarash.tarash_gateway.models import (
@@ -39,8 +41,8 @@ def test_tts_response_cost_uses_text_length(handler, cartesia_config, tts_reques
     assert response.cost is not None
     assert response.cost.raw_amount == len(tts_request.text)
     assert response.cost.raw_unit == "characters"
-    expected_usd = 0.000011 * len(tts_request.text)
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = Decimal("0.000011") * len(tts_request.text)
+    assert response.cost.amount_usd == expected_usd
 
 
 # EDGE-001: Unknown model returns cost=None

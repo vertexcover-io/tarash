@@ -1,5 +1,6 @@
 """Tests for image provider cost resolution (REQ-025, REQ-026, REQ-029, REQ-030)."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,7 +55,7 @@ def test_stability_image_cost_per_image(
     entry = PRICING_TABLE[("stability", "sd3.5-large")]
     assert response.cost.raw_unit == entry.unit
     assert response.cost.raw_amount == 1.0
-    assert response.cost.amount_usd == pytest.approx(entry.usd_per_unit)
+    assert response.cost.amount_usd == entry.usd_per_unit
 
 
 def test_stability_medium_model_cost(stability_handler, base_image_request):
@@ -74,7 +75,7 @@ def test_stability_medium_model_cost(stability_handler, base_image_request):
 
     assert response.cost is not None
     entry = PRICING_TABLE[("stability", "sd3.5-medium")]
-    assert response.cost.amount_usd == pytest.approx(entry.usd_per_unit)
+    assert response.cost.amount_usd == entry.usd_per_unit
 
 
 def test_stability_unknown_model_no_cost(stability_handler, base_image_request):
@@ -131,7 +132,7 @@ def test_xai_image_cost_per_image(xai_handler, xai_image_config):
     entry = PRICING_TABLE[("xai", "grok-imagine-image")]
     assert response.cost.raw_unit == entry.unit
     assert response.cost.raw_amount == 1.0
-    assert response.cost.amount_usd == pytest.approx(entry.usd_per_unit)
+    assert response.cost.amount_usd == entry.usd_per_unit
 
 
 def test_xai_video_cost_uses_duration(xai_handler):
@@ -162,7 +163,7 @@ def test_xai_video_cost_uses_duration(xai_handler):
     entry = PRICING_TABLE[("xai", "grok-imagine-video")]
     assert response.cost.raw_unit == entry.unit
     assert response.cost.raw_amount == 10.0
-    assert response.cost.amount_usd == pytest.approx(entry.usd_per_unit * 10.0)
+    assert response.cost.amount_usd == entry.usd_per_unit * Decimal("10.0")
 
 
 def test_xai_video_no_duration_uses_fallback(xai_handler):

@@ -1,5 +1,7 @@
 """Tests for Fal provider cost resolution (REQ-013, REQ-018, REQ-019, EDGE-008)."""
 
+from decimal import Decimal
+
 import pytest
 
 from tarash.tarash_gateway.models import (
@@ -85,10 +87,9 @@ def test_compute_seconds_model_uses_metrics_inference_time(
     assert response.cost is not None
     assert response.cost.raw_unit == "compute_seconds"
     assert response.cost.raw_amount == 120.5
-    expected_usd = (
-        PRICING_TABLE[("fal", "fal-ai/kling-video/v2.6")].usd_per_unit * 120.5
-    )
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    entry = PRICING_TABLE[("fal", "fal-ai/kling-video/v2.6")]
+    expected_usd = entry.usd_per_unit * Decimal("120.5")
+    assert response.cost.amount_usd == expected_usd
 
 
 def test_fixed_per_second_model_uses_duration(
@@ -110,8 +111,8 @@ def test_fixed_per_second_model_uses_duration(
     assert response.cost is not None
     assert response.cost.raw_unit == "seconds"
     assert response.cost.raw_amount == 8.0
-    expected_usd = PRICING_TABLE[("fal", "fal-ai/veo3")].usd_per_unit * 8.0
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = PRICING_TABLE[("fal", "fal-ai/veo3")].usd_per_unit * Decimal("8.0")
+    assert response.cost.amount_usd == expected_usd
 
 
 def test_fixed_per_video_model_uses_quantity_one(
@@ -133,8 +134,10 @@ def test_fixed_per_video_model_uses_quantity_one(
     assert response.cost is not None
     assert response.cost.raw_unit == "videos"
     assert response.cost.raw_amount == 1.0
-    expected_usd = PRICING_TABLE[("fal", "fal-ai/minimax")].usd_per_unit * 1.0
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = PRICING_TABLE[("fal", "fal-ai/minimax")].usd_per_unit * Decimal(
+        "1.0"
+    )
+    assert response.cost.amount_usd == expected_usd
 
 
 def test_compute_seconds_model_missing_metrics_falls_back(

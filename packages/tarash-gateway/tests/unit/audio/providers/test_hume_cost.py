@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+from decimal import Decimal
+
 import pytest
 
 from tarash.tarash_gateway.models import (
@@ -51,8 +53,8 @@ def test_tts_response_cost_uses_text_length(handler, hume_config, tts_request):
     assert response.cost is not None
     assert response.cost.raw_amount == len(tts_request.text)
     assert response.cost.raw_unit == "characters"
-    expected_usd = 0.00015 * len(tts_request.text)
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = Decimal("0.00015") * len(tts_request.text)
+    assert response.cost.amount_usd == expected_usd
 
 
 # REQ-023: octave-v2 model
@@ -70,8 +72,8 @@ def test_tts_response_cost_octave_v2(handler, tts_request):
     )
     assert response.cost is not None
     assert response.cost.raw_amount == len(tts_request.text)
-    expected_usd = 0.0000076 * len(tts_request.text)
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = Decimal("0.0000076") * len(tts_request.text)
+    assert response.cost.amount_usd == expected_usd
 
 
 # EDGE-001: Unknown model returns cost=None

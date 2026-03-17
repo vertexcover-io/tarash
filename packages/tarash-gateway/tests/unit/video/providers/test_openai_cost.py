@@ -1,5 +1,6 @@
 """Tests for OpenAI provider cost resolution (REQ-027, REQ-030)."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
@@ -185,9 +186,17 @@ def test_image_gpt_image_1_token_based_cost(handler, image_config, image_request
 
     # Expected: text_input(80 * $5/1M) + image_input(20 * $10/1M) + output(4000 * $40/1M)
     expected = (
-        (80 * 5.0 / 1_000_000) + (20 * 10.0 / 1_000_000) + (4000 * 40.0 / 1_000_000)
+        Decimal("80") * Decimal("5.0") / Decimal("1000000")
+        + Decimal("20") * Decimal("10.0") / Decimal("1000000")
+        + Decimal("4000") * Decimal("40.0") / Decimal("1000000")
     )
-    assert response.cost.amount_usd == pytest.approx(expected)
+    assert response.cost.amount_usd == expected
+
+    # Verify token_usage breakdown
+    assert response.cost.token_usage is not None
+    assert response.cost.token_usage.text_input_tokens == 80
+    assert response.cost.token_usage.image_input_tokens == 20
+    assert response.cost.token_usage.cached_tokens == 0
 
 
 def test_image_gpt_image_1_with_cached_tokens(handler, image_config, image_request):
@@ -211,12 +220,18 @@ def test_image_gpt_image_1_with_cached_tokens(handler, image_config, image_reque
     # Cached tokens reduce cost — 30 cached from text (80 total text)
     # uncached_text=50, cached_text=30, uncached_image=20, cached_image=0
     expected = (
-        50 * 5.0 / 1_000_000  # uncached text
-        + 30 * 1.25 / 1_000_000  # cached text
-        + 20 * 10.0 / 1_000_000  # uncached image
-        + 4000 * 40.0 / 1_000_000  # output
+        Decimal("50") * Decimal("5.0") / Decimal("1000000")  # uncached text
+        + Decimal("30") * Decimal("1.25") / Decimal("1000000")  # cached text
+        + Decimal("20") * Decimal("10.0") / Decimal("1000000")  # uncached image
+        + Decimal("4000") * Decimal("40.0") / Decimal("1000000")  # output
     )
-    assert response.cost.amount_usd == pytest.approx(expected)
+    assert response.cost.amount_usd == expected
+
+    # Verify token_usage breakdown
+    assert response.cost.token_usage is not None
+    assert response.cost.token_usage.text_input_tokens == 80
+    assert response.cost.token_usage.image_input_tokens == 20
+    assert response.cost.token_usage.cached_tokens == 30
 
 
 def test_image_gpt_image_15_with_text_output(handler, image_request):
@@ -245,12 +260,20 @@ def test_image_gpt_image_15_with_text_output(handler, image_request):
     assert response.cost is not None
     assert response.cost.raw_unit == "tokens"
     expected = (
-        150 * 5.0 / 1_000_000  # text input
-        + 50 * 8.0 / 1_000_000  # image input
-        + 4800 * 32.0 / 1_000_000  # image output
-        + 200 * 10.0 / 1_000_000  # text output
+        Decimal("150") * Decimal("5.0") / Decimal("1000000")  # text input
+        + Decimal("50") * Decimal("8.0") / Decimal("1000000")  # image input
+        + Decimal("4800") * Decimal("32.0") / Decimal("1000000")  # image output
+        + Decimal("200") * Decimal("10.0") / Decimal("1000000")  # text output
     )
-    assert response.cost.amount_usd == pytest.approx(expected)
+    assert response.cost.amount_usd == expected
+
+    # Verify token_usage breakdown
+    assert response.cost.token_usage is not None
+    assert response.cost.token_usage.text_input_tokens == 150
+    assert response.cost.token_usage.image_input_tokens == 50
+    assert response.cost.token_usage.cached_tokens == 0
+    assert response.cost.token_usage.image_output_tokens == 4800
+    assert response.cost.token_usage.text_output_tokens == 200
 
 
 def test_image_gpt_image_1_mini_cost(handler, image_request):
@@ -276,11 +299,17 @@ def test_image_gpt_image_1_mini_cost(handler, image_request):
 
     assert response.cost is not None
     expected = (
-        60 * 2.0 / 1_000_000  # text input
-        + 40 * 2.5 / 1_000_000  # image input
-        + 3000 * 8.0 / 1_000_000  # output
+        Decimal("60") * Decimal("2.0") / Decimal("1000000")  # text input
+        + Decimal("40") * Decimal("2.5") / Decimal("1000000")  # image input
+        + Decimal("3000") * Decimal("8.0") / Decimal("1000000")  # output
     )
-    assert response.cost.amount_usd == pytest.approx(expected)
+    assert response.cost.amount_usd == expected
+
+    # Verify token_usage breakdown
+    assert response.cost.token_usage is not None
+    assert response.cost.token_usage.text_input_tokens == 60
+    assert response.cost.token_usage.image_input_tokens == 40
+    assert response.cost.token_usage.cached_tokens == 0
 
 
 def test_image_gpt_image_1_no_usage_returns_none(handler, image_config, image_request):
@@ -313,7 +342,7 @@ def test_image_dalle3_flat_rate_from_pricing_table(handler, image_request):
 
     assert response.cost is not None
     assert response.cost.raw_unit == "images"
-    assert response.cost.amount_usd == pytest.approx(0.04)
+    assert response.cost.amount_usd == Decimal("0.04")
 
 
 def test_image_unknown_model_no_cost(handler, image_request):

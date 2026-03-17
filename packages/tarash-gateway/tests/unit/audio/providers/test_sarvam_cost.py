@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+from decimal import Decimal
+
 import pytest
 
 from tarash.tarash_gateway.models import (
@@ -45,8 +47,8 @@ def test_tts_response_cost_uses_text_length(handler, sarvam_config, tts_request)
     assert response.cost is not None
     assert response.cost.raw_amount == len(tts_request.text)
     assert response.cost.raw_unit == "characters"
-    expected_usd = 0.000018 * len(tts_request.text)
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = Decimal("0.000018") * len(tts_request.text)
+    assert response.cost.amount_usd == expected_usd
 
 
 # REQ-022: Different model (bulbul:v3)
@@ -64,8 +66,8 @@ def test_tts_response_cost_v3_model(handler, tts_request):
     )
     assert response.cost is not None
     assert response.cost.raw_amount == len(tts_request.text)
-    expected_usd = 0.000036 * len(tts_request.text)
-    assert response.cost.amount_usd == pytest.approx(expected_usd)
+    expected_usd = Decimal("0.000036") * len(tts_request.text)
+    assert response.cost.amount_usd == expected_usd
 
 
 # EDGE-001: Unknown model returns cost=None

@@ -1,5 +1,7 @@
 """Tests for mock cost passthrough (REQ-031, EDGE-010, EDGE-011)."""
 
+from decimal import Decimal
+
 import pytest
 
 from tarash.tarash_gateway.mock import (
@@ -28,7 +30,9 @@ def basic_request():
 # REQ-031, EDGE-010: MockResponse with explicit cost passes it through
 def test_mock_response_with_explicit_cost_sync(basic_request):
     """MockResponse with explicit cost passes it through to the response."""
-    cost = GenerationCost(amount_usd=0.50, raw_amount=4.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.50"), raw_amount=4.0, raw_unit="seconds"
+    )
     config = MockConfig(
         enabled=True,
         responses=[MockResponse(weight=1.0, cost=cost)],
@@ -38,7 +42,7 @@ def test_mock_response_with_explicit_cost_sync(basic_request):
 
     assert response.cost is not None
     assert response.cost == cost
-    assert response.cost.amount_usd == 0.50
+    assert response.cost.amount_usd == Decimal("0.50")
     assert response.cost.raw_amount == 4.0
     assert response.cost.raw_unit == "seconds"
 
@@ -59,7 +63,9 @@ def test_mock_response_with_default_cost_none_sync(basic_request):
 # REQ-031: Async handler also passes cost through
 async def test_mock_response_with_explicit_cost_async(basic_request):
     """Async handler passes explicit cost through to the response."""
-    cost = GenerationCost(amount_usd=1.25, raw_amount=10.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("1.25"), raw_amount=10.0, raw_unit="seconds"
+    )
     config = MockConfig(
         enabled=True,
         responses=[MockResponse(weight=1.0, cost=cost)],
@@ -69,6 +75,6 @@ async def test_mock_response_with_explicit_cost_async(basic_request):
 
     assert response.cost is not None
     assert response.cost == cost
-    assert response.cost.amount_usd == 1.25
+    assert response.cost.amount_usd == Decimal("1.25")
     assert response.cost.raw_amount == 10.0
     assert response.cost.raw_unit == "seconds"
