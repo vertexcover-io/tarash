@@ -5,6 +5,7 @@ Edge cases: EDGE-005, EDGE-006, EDGE-007
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -25,7 +26,9 @@ from tarash.tarash_gateway.models import (
 @pytest.fixture
 def sample_cost():
     """A typical GenerationCost instance."""
-    return GenerationCost(amount_usd=0.40, raw_amount=8.0, raw_unit="seconds")
+    return GenerationCost(
+        amount_usd=Decimal("0.40"), raw_amount=8.0, raw_unit="seconds"
+    )
 
 
 @pytest.fixture
@@ -57,7 +60,7 @@ def test_video_response_with_explicit_cost(sample_cost):
         cost=sample_cost,
     )
     assert resp.cost is sample_cost
-    assert resp.cost.amount_usd == 0.40
+    assert resp.cost.amount_usd == Decimal("0.40")
     assert resp.cost.raw_amount == 8.0
     assert resp.cost.raw_unit == "seconds"
 
@@ -178,7 +181,7 @@ def test_attempt_metadata_with_explicit_cost(now, sample_cost):
         cost=sample_cost,
     )
     assert am.cost is sample_cost
-    assert am.cost.amount_usd == 0.40
+    assert am.cost.amount_usd == Decimal("0.40")
 
 
 # ---- ExecutionMetadata (REQ-007, EDGE-006) ----
@@ -230,6 +233,6 @@ def test_execution_metadata_with_explicit_total_cost(now):
         attempts=[am],
         fallback_triggered=False,
         configs_in_chain=1,
-        total_cost_usd=1.50,
+        total_cost_usd=Decimal("1.50"),
     )
-    assert em.total_cost_usd == 1.50
+    assert em.total_cost_usd == Decimal("1.50")

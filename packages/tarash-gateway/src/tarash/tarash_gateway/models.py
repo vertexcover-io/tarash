@@ -1,7 +1,10 @@
 """Core data models for video, image, and audio generation."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -103,6 +106,24 @@ STSProgressCallback = SyncSTSProgressCallback | AsyncSTSProgressCallback
 # ==================== Cost ====================
 
 
+def _safe_int(val: Any) -> int:
+    """Safely extract an integer from a value, returning 0 for non-numeric types."""
+    if isinstance(val, (int, float)):
+        return int(val)
+    return 0
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """Token breakdown for multi-rate token-based pricing."""
+
+    text_input_tokens: int = 0
+    image_input_tokens: int = 0
+    cached_tokens: int = 0
+    image_output_tokens: int = 0
+    text_output_tokens: int = 0
+
+
 @dataclass(frozen=True)
 class GenerationCost:
     """Cost information for a single generation request.
@@ -111,12 +132,185 @@ class GenerationCost:
     per-request cost estimates.
     """
 
-    amount_usd: float | None
+    amount_usd: Decimal | None
     """Estimated cost in USD, or ``None`` if unknown."""
     raw_amount: float
     """Raw quantity used for cost calculation (e.g. seconds, characters)."""
     raw_unit: str
     """Unit of the raw quantity (e.g. ``"seconds"``, ``"characters"``, ``"images"``)."""
+    token_usage: TokenUsage | None = None
+    """Token breakdown when cost is computed from per-token rates."""
+
+    @classmethod
+    def from_pricing_table(
+        cls,
+        provider: str,
+        model: str,
+        quantity: float,
+    ) -> GenerationCost | None:
+        """Look up a (provider, model) pair in the pricing table and compute cost.
+
+        Args:
+            provider: Provider identifier (e.g. ``"fal"``).
+            model: Model name (e.g. ``"fal-ai/veo3"``).
+            quantity: The quantity to multiply by the per-unit price.
+
+        Returns:
+            A ``GenerationCost`` with computed ``amount_usd``, or ``None`` if the
+            pair is not found in the table.
+        """
+        from tarash.tarash_gateway.pricing import PRICING_TABLE
+
+        entry = PRICING_TABLE.get((provider, model))
+        if entry is None:
+            return None
+        return cls(
+            amount_usd=Decimal(str(entry.usd_per_unit)) * Decimal(str(quantity)),
+            raw_amount=quantity,
+            raw_unit=entry.unit,
+        )
+
+    @classmethod
+    def from_token_usage(
+        cls,
+        model: str,
+        usage: Any,
+    ) -> GenerationCost | None:
+        """Compute cost from OpenAI image API usage token breakdown.
+
+        Uses separate per-token rates for text input, image input, cached input,
+        and output tokens. Returns ``None`` if the model has no known rates or
+        usage data is not available.
+
+        Args:
+            model: Model name (e.g., ``"gpt-image-1"``, ``"gpt-image-1.5"``).
+            usage: OpenAI usage object with ``input_tokens``, ``output_tokens``,
+                   ``input_tokens_details``, and ``output_tokens_details``.
+
+        Returns:
+            A ``GenerationCost`` with exact token-based cost, or ``None``.
+        """
+        from tarash.tarash_gateway.pricing import OPENAI_IMAGE_TOKEN_RATES
+
+        rates = OPENAI_IMAGE_TOKEN_RATES.get(model)
+        if rates is None or usage is None:
+            return None
+
+        # Validate that usage has real numeric data (not a MagicMock)
+        total_tokens = _safe_int(getattr(usage, "total_tokens", 0))
+        if total_tokens == 0:
+            return None
+
+        total_cost = Decimal("0")
+
+        # --- Input token breakdown ---
+        input_details = getattr(usage, "input_tokens_details", None)
+        has_input_details = input_details is not None and isinstance(
+            getattr(input_details, "text_tokens", None), (int, float)
+        )
+
+        text_input = 0
+        image_input = 0
+        cached_tokens = 0
+
+        if has_input_details:
+            text_input = _safe_int(getattr(input_details, "text_tokens", 0))
+            image_input = _safe_int(getattr(input_details, "image_tokens", 0))
+            cached_tokens = _safe_int(getattr(input_details, "cached_tokens", 0))
+
+            # Cached tokens reduce cost — distribute proportionally
+            uncached_text = max(0, text_input - cached_tokens)
+            cached_text = min(text_input, cached_tokens)
+            remaining_cached = max(0, cached_tokens - cached_text)
+            uncached_image = max(0, image_input - remaining_cached)
+            cached_image = min(image_input, remaining_cached)
+
+            total_cost += Decimal(str(uncached_text)) * Decimal(
+                str(rates["text_input"])
+            )
+            total_cost += Decimal(str(cached_text)) * Decimal(
+                str(rates.get("cached_text_input", rates["text_input"]))
+            )
+            total_cost += Decimal(str(uncached_image)) * Decimal(
+                str(rates["image_input"])
+            )
+            total_cost += Decimal(str(cached_image)) * Decimal(
+                str(rates.get("cached_image_input", rates["image_input"]))
+            )
+        else:
+            # No detailed breakdown — use image_input rate for all input tokens
+            input_tokens = _safe_int(getattr(usage, "input_tokens", 0))
+            total_cost += Decimal(str(input_tokens)) * Decimal(
+                str(rates["image_input"])
+            )
+
+        # --- Output tokens ---
+        output_details = getattr(usage, "output_tokens_details", None)
+        has_output_details = output_details is not None and isinstance(
+            getattr(output_details, "image_tokens", None), (int, float)
+        )
+
+        image_output = 0
+        text_output = 0
+
+        if has_output_details:
+            image_output = _safe_int(getattr(output_details, "image_tokens", 0))
+            text_output = _safe_int(getattr(output_details, "text_tokens", 0))
+            total_cost += Decimal(str(image_output)) * Decimal(
+                str(rates["image_output"])
+            )
+            total_cost += Decimal(str(text_output)) * Decimal(
+                str(rates.get("text_output", rates["image_output"]))
+            )
+        else:
+            output_tokens = _safe_int(getattr(usage, "output_tokens", 0))
+            image_output = output_tokens
+            total_cost += Decimal(str(output_tokens)) * Decimal(
+                str(rates["image_output"])
+            )
+
+        return cls(
+            amount_usd=total_cost,
+            raw_amount=float(total_tokens),
+            raw_unit="tokens",
+            token_usage=TokenUsage(
+                text_input_tokens=text_input,
+                image_input_tokens=image_input,
+                cached_tokens=cached_tokens,
+                image_output_tokens=image_output,
+                text_output_tokens=text_output,
+            ),
+        )
+
+    @classmethod
+    def from_credits(
+        cls,
+        quantity: float,
+        credits_per_unit: float,
+        credit_to_usd: float,
+        raw_unit: str = "credits",
+    ) -> GenerationCost:
+        """Compute cost from a credits-based billing model.
+
+        Args:
+            quantity: Number of units consumed (e.g. seconds, images).
+            credits_per_unit: Credits charged per unit.
+            credit_to_usd: USD value of one credit.
+            raw_unit: Unit label for ``raw_unit`` field.
+
+        Returns:
+            A ``GenerationCost`` with the computed USD amount.
+        """
+        amount = (
+            Decimal(str(quantity))
+            * Decimal(str(credits_per_unit))
+            * Decimal(str(credit_to_usd))
+        )
+        return cls(
+            amount_usd=amount,
+            raw_amount=quantity,
+            raw_unit=raw_unit,
+        )
 
 
 # ==================== Execution Metadata ====================
@@ -180,7 +374,7 @@ class ExecutionMetadata:
     """``True`` if at least one fallback was triggered due to a retryable error."""
     configs_in_chain: int
     """Total number of configs in the fallback chain (primary + fallbacks)."""
-    total_cost_usd: float | None = None
+    total_cost_usd: Decimal | None = None
     """Sum of all attempt costs in USD, or ``None`` if any attempt lacks cost data."""
 
     @property
