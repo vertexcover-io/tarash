@@ -1,10 +1,12 @@
 """Tests for CostComponent and GenerationCost.breakdown field."""
 
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 import pytest
 
 from tarash.tarash_gateway.models import CostComponent, GenerationCost
+from tarash.tarash_gateway.pricing import OPENAI_COMPOUND_TOKEN_RATES
 
 
 def test_cost_component_creation():
@@ -68,3 +70,69 @@ def test_existing_cost_backwards_compatible():
     )
     assert cost.breakdown == ()
     assert cost.amount_usd == Decimal("0.40")
+
+
+def test_openai_compound_token_rates_exist():
+    """OPENAI_COMPOUND_TOKEN_RATES has entries for known models."""
+    assert "gpt-4o" in OPENAI_COMPOUND_TOKEN_RATES
+    rates = OPENAI_COMPOUND_TOKEN_RATES["gpt-4o"]
+    assert "text_input" in rates
+    assert "text_output" in rates
+
+
+def test_from_token_usage_with_custom_rates_table():
+    """from_token_usage accepts a custom rates_table parameter."""
+    custom_rates = {
+        "test-model": {
+            "text_input": Decimal("5.00") / 1_000_000,
+            "image_input": Decimal("10.00") / 1_000_000,
+            "image_output": Decimal("40.00") / 1_000_000,
+        }
+    }
+    usage = MagicMock()
+    usage.total_tokens = 100
+    usage.input_tokens = 50
+    usage.output_tokens = 50
+    usage.input_tokens_details = None
+    usage.output_tokens_details = None
+
+    cost = GenerationCost.from_token_usage(
+        "test-model", usage, rates_table=custom_rates
+    )
+    assert cost is not None
+    assert cost.amount_usd > Decimal("0")
+    assert cost.raw_unit == "tokens"
+
+
+def test_from_token_usage_default_rates_unchanged():
+    """from_token_usage without rates_table still uses OPENAI_IMAGE_TOKEN_RATES."""
+    usage = MagicMock()
+    usage.total_tokens = 100
+    usage.input_tokens = 50
+    usage.output_tokens = 50
+    usage.input_tokens_details = None
+    usage.output_tokens_details = None
+
+    # gpt-image-1 is in OPENAI_IMAGE_TOKEN_RATES (default)
+    cost = GenerationCost.from_token_usage("gpt-image-1", usage)
+    assert cost is not None
+
+    # gpt-4o is NOT in OPENAI_IMAGE_TOKEN_RATES
+    cost_none = GenerationCost.from_token_usage("gpt-4o", usage)
+    assert cost_none is None
+
+
+def test_from_token_usage_with_compound_rates():
+    """from_token_usage with OPENAI_COMPOUND_TOKEN_RATES works for gpt-4o."""
+    usage = MagicMock()
+    usage.total_tokens = 100
+    usage.input_tokens = 50
+    usage.output_tokens = 50
+    usage.input_tokens_details = None
+    usage.output_tokens_details = None
+
+    cost = GenerationCost.from_token_usage(
+        "gpt-4o", usage, rates_table=OPENAI_COMPOUND_TOKEN_RATES
+    )
+    assert cost is not None
+    assert cost.amount_usd > Decimal("0")

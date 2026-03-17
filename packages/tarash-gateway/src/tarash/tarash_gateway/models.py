@@ -194,6 +194,7 @@ class GenerationCost:
         cls,
         model: str,
         usage: Any,
+        rates_table: dict[str, dict[str, Decimal]] | None = None,
     ) -> GenerationCost | None:
         """Compute cost from OpenAI image API usage token breakdown.
 
@@ -209,9 +210,11 @@ class GenerationCost:
         Returns:
             A ``GenerationCost`` with exact token-based cost, or ``None``.
         """
-        from tarash.tarash_gateway.pricing import OPENAI_IMAGE_TOKEN_RATES
+        if rates_table is None:
+            from tarash.tarash_gateway.pricing import OPENAI_IMAGE_TOKEN_RATES
 
-        rates = OPENAI_IMAGE_TOKEN_RATES.get(model)
+            rates_table = OPENAI_IMAGE_TOKEN_RATES
+        rates = rates_table.get(model)
         if rates is None or usage is None:
             return None
 
@@ -258,10 +261,10 @@ class GenerationCost:
             )
         else:
             # No detailed breakdown — use image_input rate for all input tokens
+            # (fall back to text_input for models without image tokens)
             input_tokens = _safe_int(getattr(usage, "input_tokens", 0))
-            total_cost += Decimal(str(input_tokens)) * Decimal(
-                str(rates["image_input"])
-            )
+            input_rate = rates.get("image_input", rates.get("text_input", Decimal("0")))
+            total_cost += Decimal(str(input_tokens)) * Decimal(str(input_rate))
 
         # --- Output tokens ---
         output_details = getattr(usage, "output_tokens_details", None)
@@ -275,18 +278,20 @@ class GenerationCost:
         if has_output_details:
             image_output = _safe_int(getattr(output_details, "image_tokens", 0))
             text_output = _safe_int(getattr(output_details, "text_tokens", 0))
-            total_cost += Decimal(str(image_output)) * Decimal(
-                str(rates["image_output"])
+            image_output_rate = rates.get(
+                "image_output", rates.get("text_output", Decimal("0"))
             )
+            total_cost += Decimal(str(image_output)) * Decimal(str(image_output_rate))
             total_cost += Decimal(str(text_output)) * Decimal(
-                str(rates.get("text_output", rates["image_output"]))
+                str(rates.get("text_output", image_output_rate))
             )
         else:
             output_tokens = _safe_int(getattr(usage, "output_tokens", 0))
             image_output = output_tokens
-            total_cost += Decimal(str(output_tokens)) * Decimal(
-                str(rates["image_output"])
+            output_rate = rates.get(
+                "image_output", rates.get("text_output", Decimal("0"))
             )
+            total_cost += Decimal(str(output_tokens)) * Decimal(str(output_rate))
 
         return cls(
             amount_usd=total_cost,
