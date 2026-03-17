@@ -16,11 +16,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tarash.tarash_gateway.exceptions import TarashException
 from tarash.tarash_gateway.models import (
     AspectRatio,
+    CompoundGenerationConfig,
+    CompoundGenerationRequest,
+    CompoundGenerationResponse,
+    CompoundProgressCallback,
     GenerationCost,
+    ImageOutputItem,
     MediaContent,
     MediaType,
+    OutputItem,
     ProgressCallback,
     Resolution,
+    TextOutputItem,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -788,3 +795,44 @@ class MockProviderHandler:
             raise ValueError("MockProviderHandler requires mock config to be enabled")
 
         return handle_mock_request_sync(config.mock, request, on_progress)
+
+    async def generate_compound_async(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+        on_progress: CompoundProgressCallback | None = None,
+    ) -> CompoundGenerationResponse:
+        """Generate a mock compound response asynchronously."""
+        if not config.mock or not config.mock.enabled:
+            raise ValueError("MockProviderHandler requires mock config to be enabled")
+        return self._build_mock_compound_response(config, request)
+
+    def generate_compound(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+        on_progress: CompoundProgressCallback | None = None,
+    ) -> CompoundGenerationResponse:
+        """Generate a mock compound response synchronously."""
+        if not config.mock or not config.mock.enabled:
+            raise ValueError("MockProviderHandler requires mock config to be enabled")
+        return self._build_mock_compound_response(config, request)
+
+    def _build_mock_compound_response(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+    ) -> CompoundGenerationResponse:
+        """Build a mock compound response with text and optional image."""
+        items: list[OutputItem] = [
+            TextOutputItem(content=f"Mock response for: {request.prompt}"),
+        ]
+        if "image_generation" in config.allowed_tools:
+            items.append(ImageOutputItem(url="https://mock.tarash.dev/image.png"))
+        return CompoundGenerationResponse(
+            request_id=f"mock_{uuid.uuid4()}",
+            items=items,
+            status="completed",
+            is_mock=True,
+            raw_response={"mock": True},
+        )
