@@ -89,11 +89,8 @@ PRICING_TABLE: dict[tuple[str, str], PricingEntry] = {
     ("fal", "fal-ai/bytedance/seedream/v5/lite"): PricingEntry(
         usd_per_unit=0.00017, unit="compute_seconds"
     ),
-    # OpenAI
-    ("openai", "gpt-image-1"): PricingEntry(usd_per_unit=0.042, unit="images"),
-    ("openai", "gpt-image-1.5"): PricingEntry(usd_per_unit=0.04, unit="images"),
-    ("openai", "dall-e-3"): PricingEntry(usd_per_unit=0.04, unit="images"),
-    ("openai", "dall-e-2"): PricingEntry(usd_per_unit=0.02, unit="images"),
+    # OpenAI — image models use token-based cost computed in the provider,
+    # not the pricing table. Only Sora (per-second) is listed here.
     ("openai", "sora"): PricingEntry(usd_per_unit=0.10, unit="seconds"),
     # Google
     ("google", "gemini-2.5-flash-image"): PricingEntry(

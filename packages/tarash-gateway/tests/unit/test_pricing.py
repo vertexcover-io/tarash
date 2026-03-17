@@ -118,11 +118,11 @@ def test_pricing_table_spot_check_fal_minimax():
     assert entry.unit == "videos"
 
 
-def test_pricing_table_spot_check_openai_gpt_image_1():
-    """Spot-check: OpenAI gpt-image-1 entry."""
-    entry = PRICING_TABLE[("openai", "gpt-image-1")]
-    assert entry.usd_per_unit == 0.042
-    assert entry.unit == "images"
+def test_pricing_table_spot_check_openai_sora():
+    """Spot-check: OpenAI sora entry (only OpenAI model in pricing table)."""
+    entry = PRICING_TABLE[("openai", "sora")]
+    assert entry.usd_per_unit == 0.10
+    assert entry.unit == "seconds"
 
 
 def test_pricing_table_spot_check_runway_gen4_turbo():
@@ -196,9 +196,10 @@ def test_pricing_table_no_replicate_entries():
 
 def test_pricing_table_has_expected_count():
     """PRICING_TABLE has all entries from the design doc."""
-    # Count from the spec: 19 fal video + 11 fal image + 5 openai + 7 google + 4 runway
-    # + 3 stability + 3 xai + 2 elevenlabs + 1 cartesia + 3 sarvam + 2 hume = 60
-    assert len(PRICING_TABLE) == 60
+    # Count: 19 fal video + 11 fal image + 1 openai (sora only, images are token-based)
+    # + 7 google + 4 runway + 3 stability + 3 xai + 2 elevenlabs + 1 cartesia
+    # + 3 sarvam + 2 hume = 56
+    assert len(PRICING_TABLE) == 56
 
 
 # ==================== resolve_cost (REQ-010, REQ-011, REQ-012) ====================
@@ -253,13 +254,10 @@ def test_resolve_cost_large_quantity():
     assert result.raw_unit == "characters"
 
 
-def test_resolve_cost_openai_per_image():
-    """resolve_cost for OpenAI gpt-image-1 with quantity=1."""
+def test_resolve_cost_openai_image_not_in_pricing_table():
+    """OpenAI image models are not in pricing table (token-based in provider)."""
     result = resolve_cost("openai", "gpt-image-1", api_cost=None, quantity=1.0)
-    assert result is not None
-    assert result.amount_usd == pytest.approx(0.042)
-    assert result.raw_amount == 1.0
-    assert result.raw_unit == "images"
+    assert result is None
 
 
 # ==================== lookup_pricing_table ====================

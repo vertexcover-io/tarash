@@ -246,7 +246,7 @@ def test_replicate_image_cost_is_none(replicate_handler):
 
 
 def test_azure_openai_image_cost_matches_openai():
-    """REQ-030: Azure OpenAI cost matches OpenAI behavior."""
+    """REQ-030: Azure OpenAI cost matches OpenAI behavior — no usage means cost=None."""
     from tarash.tarash_gateway.providers.azure_openai import AzureOpenAIProviderHandler
 
     handler = AzureOpenAIProviderHandler()
@@ -262,13 +262,12 @@ def test_azure_openai_image_cost_matches_openai():
         MagicMock(url="https://example.com/img.png", revised_prompt=None)
     ]
     provider_response.model_dump.return_value = {}
-    provider_response.usage = None  # No token usage → falls back to pricing table
+    provider_response.usage = None  # No token usage → cost is None
 
     # Azure OpenAI inherits from OpenAI, so same _convert_image_response
     response = handler._convert_image_response(
         config, ImageGenerationRequest(prompt="A cat"), "req-123", provider_response
     )
 
-    assert response.cost is not None
-    entry = PRICING_TABLE[("openai", "gpt-image-1")]
-    assert response.cost.amount_usd == pytest.approx(entry.usd_per_unit)
+    # Without token usage data, cost should be None (no fallback)
+    assert response.cost is None
