@@ -196,10 +196,10 @@ def test_pricing_table_no_replicate_entries():
 
 def test_pricing_table_has_expected_count():
     """PRICING_TABLE has all entries from the design doc."""
-    # Count: 19 fal video + 11 fal image + 1 openai (sora only, images are token-based)
+    # Count: 19 fal video + 11 fal image + 3 openai (dall-e-3, dall-e-2, sora)
     # + 7 google + 4 runway + 3 stability + 3 xai + 2 elevenlabs + 1 cartesia
-    # + 3 sarvam + 2 hume = 56
-    assert len(PRICING_TABLE) == 56
+    # + 3 sarvam + 2 hume = 58
+    assert len(PRICING_TABLE) == 58
 
 
 # ==================== resolve_cost (REQ-010, REQ-011, REQ-012) ====================

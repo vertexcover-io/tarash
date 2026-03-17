@@ -1108,10 +1108,12 @@ class OpenAIProviderHandler:
         ):
             revised_prompt = provider_response.data[0].revised_prompt
 
-        # Compute cost from token usage. Returns None if usage data is
-        # not available (e.g., dall-e-3/dall-e-2 don't report tokens).
+        # Token-based cost for gpt-image-1/1.5/mini, flat-rate fallback
+        # for dall-e-3/dall-e-2 (which don't report token usage).
         usage = getattr(provider_response, "usage", None)
         cost = compute_openai_image_cost(config.model, usage)
+        if cost is None:
+            cost = resolve_cost(config.provider, config.model, None, 1.0)
 
         return ImageGenerationResponse(
             request_id=request_id,

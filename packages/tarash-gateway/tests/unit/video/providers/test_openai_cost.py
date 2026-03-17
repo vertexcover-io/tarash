@@ -284,7 +284,7 @@ def test_image_gpt_image_1_mini_cost(handler, image_request):
 
 
 def test_image_gpt_image_1_no_usage_returns_none(handler, image_config, image_request):
-    """gpt-image-1 without usage data returns cost=None (no fallback)."""
+    """gpt-image-1 without usage data returns cost=None (not in pricing table)."""
     provider_response = _make_image_response(usage=None)
 
     response = handler._convert_image_response(
@@ -294,11 +294,11 @@ def test_image_gpt_image_1_no_usage_returns_none(handler, image_config, image_re
     assert response.cost is None
 
 
-# ---- DALL-E (no token usage, cost=None) ----
+# ---- DALL-E (flat rate from pricing table) ----
 
 
-def test_image_dalle3_no_usage_returns_none(handler, image_request):
-    """DALL-E 3 without usage data returns cost=None."""
+def test_image_dalle3_flat_rate_from_pricing_table(handler, image_request):
+    """DALL-E 3 uses flat per-image rate from pricing table."""
     config = ImageGenerationConfig(
         model="dall-e-3",
         provider="openai",
@@ -311,7 +311,9 @@ def test_image_dalle3_no_usage_returns_none(handler, image_request):
         config, image_request, "req-456", provider_response
     )
 
-    assert response.cost is None
+    assert response.cost is not None
+    assert response.cost.raw_unit == "images"
+    assert response.cost.amount_usd == pytest.approx(0.04)
 
 
 def test_image_unknown_model_no_cost(handler, image_request):
