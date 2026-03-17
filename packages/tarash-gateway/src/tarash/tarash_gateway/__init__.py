@@ -45,6 +45,7 @@ from .models import (
     TTSRequest,
     TTSResponse,
     TTSUpdate,
+    TokenUsage,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -82,6 +83,7 @@ __all__ = [
     "STSUpdate",
     # Cost
     "GenerationCost",
+    "TokenUsage",
     # Types
     "Resolution",
     "AspectRatio",
