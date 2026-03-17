@@ -91,7 +91,10 @@ PRICING_TABLE: dict[tuple[str, str], PricingEntry] = {
         usd_per_unit=0.00017, unit="compute_seconds"
     ),
     # OpenAI — gpt-image-1/1.5/mini use token-based cost (OPENAI_IMAGE_TOKEN_RATES).
-    # dall-e-3/dall-e-2 are genuinely flat per-image pricing.
+    # dall-e-3/dall-e-2 are flat per-image pricing. Rates below are the base tier
+    # (standard quality, 1024x1024). Actual cost varies by quality and resolution:
+    #   dall-e-3: $0.04 (std 1024) / $0.08 (std 1792 or HD 1024) / $0.12 (HD 1792)
+    #   dall-e-2: $0.016 (256) / $0.018 (512) / $0.02 (1024)
     ("openai", "dall-e-3"): PricingEntry(usd_per_unit=0.04, unit="images"),
     ("openai", "dall-e-2"): PricingEntry(usd_per_unit=0.02, unit="images"),
     ("openai", "sora"): PricingEntry(usd_per_unit=0.10, unit="seconds"),
