@@ -1474,6 +1474,54 @@ class ProviderHandler(Protocol):
         """
         ...
 
+    # ==================== Compound Generation ====================
+
+    async def generate_compound_async(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+        on_progress: CompoundProgressCallback | None = None,
+    ) -> CompoundGenerationResponse:
+        """Generate compound (multi-modal) output asynchronously.
+
+        Args:
+            config: Provider configuration with API key, model, allowed tools,
+                and optional fallback chain.
+            request: Compound generation parameters (prompt or message array).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``CompoundGenerationResponse`` with ordered output items and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support compound generation.
+            TarashException: On any provider-level error.
+        """
+        ...
+
+    def generate_compound(
+        self,
+        config: CompoundGenerationConfig,
+        request: CompoundGenerationRequest,
+        on_progress: CompoundProgressCallback | None = None,
+    ) -> CompoundGenerationResponse:
+        """Generate compound (multi-modal) output synchronously (blocking).
+
+        Args:
+            config: Provider configuration with API key, model, allowed tools,
+                and optional fallback chain.
+            request: Compound generation parameters (prompt or message array).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``CompoundGenerationResponse`` with ordered output items and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support compound generation.
+            TarashException: On any provider-level error.
+        """
+        ...
+
 
 # ==================== Resolve Forward References ====================
 # MockConfig is used as a string annotation ("MockConfig | None") in the config
