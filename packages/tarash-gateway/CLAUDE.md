@@ -31,6 +31,7 @@ Tarash Gateway is a unified video generation SDK that provides a consistent inte
 - [video/exceptions.py](src/tarash/tarash_gateway/video/exceptions.py) - Exception hierarchy
 - [video/providers/](src/tarash/tarash_gateway/video/providers/) - Provider implementations
 - [video/providers/field_mappers.py](src/tarash/tarash_gateway/video/providers/field_mappers.py) - Field mapping framework
+- [pricing.py](src/tarash/tarash_gateway/pricing.py) - Cost estimation with `PRICING_TABLE` and `compute_cost()`
 
 ---
 
@@ -1040,6 +1041,42 @@ def _get_handler(provider: str) -> ProviderHandler:
 **Benefits:**
 - Reduced memory usage
 - Consistent state management
+
+---
+
+## Generation Cost Tracking
+
+### Overview
+
+Every response model (`VideoGenerationResponse`, `ImageGenerationResponse`, `TTSResponse`, `STSResponse`) has a `cost: GenerationCost | None` field. Cost is computed automatically by providers using the `compute_cost()` function from `pricing.py`.
+
+**Key Components:**
+
+- **`GenerationCost`** dataclass in `models.py` — holds `amount_usd`, `raw_amount`, and `raw_unit`
+- **`PRICING_TABLE`** in `pricing.py` — maps `(provider, model)` tuples to per-unit USD prices
+- **`compute_cost()`** in `pricing.py` — looks up the table and computes cost from raw usage
+- **`AttemptMetadata.cost`** — cost for each individual fallback attempt
+- **`ExecutionMetadata.total_cost_usd`** — aggregated cost across all attempts (computed by orchestrator)
+
+### How Cost Flows
+
+1. Provider's `_convert_response()` calls `compute_cost(provider, model, raw_amount)` to get a `GenerationCost`
+2. Provider sets `cost=generation_cost` on the response model
+3. Orchestrator copies `response.cost` into `AttemptMetadata.cost`
+4. Orchestrator computes `total_cost_usd` by summing all attempt costs (returns `None` if any attempt lacks cost data)
+
+### Adding Pricing for a New Model
+
+Add an entry to `PRICING_TABLE` in `pricing.py`:
+
+```python
+PRICING_TABLE: dict[tuple[str, str], PricingEntry] = {
+    # ... existing entries
+    ("provider", "provider/new-model"): PricingEntry(usd_per_unit=0.05, unit="seconds"),
+}
+```
+
+The `compute_cost()` function uses prefix matching, so `("fal", "fal-ai/minimax")` covers `fal-ai/minimax/video-01-live` etc.
 
 ---
 

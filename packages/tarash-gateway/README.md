@@ -193,6 +193,7 @@ response = generate_video(config, request)
 | **Type-Safe** | Pydantic v2 models with full IDE autocomplete |
 | **Rich Errors** | Every exception includes `provider`, `model`, `request_id`, and raw response |
 | **Mock Provider** | Deterministic fake responses for testing without API calls |
+| **Cost Tracking** | Automatic per-request cost estimates via `response.cost` and `execution_metadata.total_cost_usd` |
 | **Structured Logging** | Automatic credential redaction and request tracing |
 
 ---
@@ -205,6 +206,7 @@ tarash_gateway/
 ├── models.py               # Request/response models
 ├── exceptions.py           # Exception hierarchy
 ├── orchestrator.py         # Fallback and retry orchestration
+├── pricing.py              # Cost estimation (PRICING_TABLE + compute_cost)
 ├── mock.py                 # Mock provider for testing
 ├── logging.py              # Structured logging
 └── providers/              # Provider implementations + field mapper registry

@@ -71,6 +71,7 @@ Parameters for a video generation request. Unknown kwargs are automatically capt
 | `audio_url` | `str | None` | Generated audio URL if requested |
 | `is_mock` | `bool` | True if produced by mock provider |
 | `raw_response` | `dict` | Unmodified provider response |
+| `cost` | `GenerationCost | None` | Estimated cost for this generation request |
 | `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---
@@ -137,6 +138,7 @@ Passed to the `on_progress` callback on each polling cycle during video generati
 | `is_mock` | `bool` | True if produced by mock provider |
 | `revised_prompt` | `str | None` | Prompt as revised by provider (OpenAI) |
 | `raw_response` | `dict` | Unmodified provider response |
+| `cost` | `GenerationCost | None` | Estimated cost for this generation request |
 | `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---
@@ -156,6 +158,18 @@ Passed to the `on_progress` callback on each polling cycle during image generati
 
 ---
 
+## GenerationCost
+
+Cost information for a single generation request. Attached to provider responses and attempt metadata to track per-request cost estimates. This is a frozen dataclass.
+
+| Field | Type | Description |
+|---|---|---|
+| `amount_usd` | `float | None` | Estimated cost in USD, or `None` if the model is not in the pricing table |
+| `raw_amount` | `float` | Raw quantity used for cost calculation (e.g. seconds, characters) |
+| `raw_unit` | `str` | Unit of the raw quantity (e.g. `"seconds"`, `"characters"`, `"images"`) |
+
+---
+
 ## ExecutionMetadata
 
 Attached to every response by the orchestrator. Inspect it to understand which provider succeeded and how long each attempt took.
@@ -167,6 +181,7 @@ Attached to every response by the orchestrator. Inspect it to understand which p
 | `attempts` | `list[AttemptMetadata]` | Per-attempt details |
 | `fallback_triggered` | `bool` | True if any fallback ran |
 | `configs_in_chain` | `int` | Total configs in the fallback chain |
+| `total_cost_usd` | `float | None` | Sum of all attempt costs in USD, or `None` if any attempt lacks cost data |
 | `total_elapsed_seconds` | `float` | Wall-clock time across all attempts (computed property) |
 
 ---
@@ -187,6 +202,7 @@ One entry per provider tried. Accessible via `response.execution_metadata.attemp
 | `error_message` | `str | None` | Human-readable error if failed |
 | `is_retryable` | `bool | None` | Whether the error triggered the next fallback |
 | `request_id` | `str | None` | Provider-assigned request ID if available |
+| `cost` | `GenerationCost | None` | Cost information for this attempt, populated from the provider response |
 | `elapsed_seconds` | `float | None` | Duration of this attempt (computed property) |
 
 ---
@@ -259,6 +275,7 @@ Parameters for a speech-to-speech (voice conversion) request. Unknown kwargs are
 | `status` | `"completed" | "failed"` | Final status |
 | `is_mock` | `bool` | True if produced by mock provider |
 | `raw_response` | `dict` | Unmodified provider response |
+| `cost` | `GenerationCost | None` | Estimated cost for this generation request |
 | `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---
@@ -274,6 +291,7 @@ Parameters for a speech-to-speech (voice conversion) request. Unknown kwargs are
 | `status` | `"completed" | "failed"` | Final status |
 | `is_mock` | `bool` | True if produced by mock provider |
 | `raw_response` | `dict` | Unmodified provider response |
+| `cost` | `GenerationCost | None` | Estimated cost for this generation request |
 | `execution_metadata` | `ExecutionMetadata | None` | Timing and fallback details |
 
 ---

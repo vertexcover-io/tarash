@@ -96,6 +96,7 @@ response = generate_video(config, request)
 - **Swap providers by changing config** — your request code, response handling, and error logic stay identical
 - **Automatic fallback chains** — if a provider goes down, the next one picks up seamlessly
 - **Sync and async** — every function has both `generate_*` and `generate_*_async` variants
+- **Cost tracking** — automatic per-request cost estimates on every response
 - **Production-ready** — type-safe Pydantic v2 models, structured logging, and rich error context
 
 ---
