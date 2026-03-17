@@ -34,6 +34,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.models import GenerationCost
 from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
@@ -85,6 +86,119 @@ except ImportError:
 
 # Logger name constant
 _LOGGER_NAME = "tarash.tarash_gateway.providers.openai"
+
+
+# ==================== Token-Based Image Cost ====================
+
+# Per-token rates (USD per token) for OpenAI image models.
+# Source: https://openai.com/api/pricing/
+# Each model has separate rates for text and image tokens.
+_OPENAI_IMAGE_TOKEN_RATES: dict[str, dict[str, float]] = {
+    "gpt-image-1": {
+        "text_input": 5.00 / 1_000_000,
+        "image_input": 10.00 / 1_000_000,
+        "cached_text_input": 1.25 / 1_000_000,
+        "cached_image_input": 2.50 / 1_000_000,
+        "image_output": 40.00 / 1_000_000,
+    },
+    "gpt-image-1.5": {
+        "text_input": 5.00 / 1_000_000,
+        "image_input": 8.00 / 1_000_000,
+        "cached_text_input": 1.25 / 1_000_000,
+        "cached_image_input": 2.00 / 1_000_000,
+        "image_output": 32.00 / 1_000_000,
+        "text_output": 10.00 / 1_000_000,
+    },
+    "gpt-image-1-mini": {
+        "text_input": 2.00 / 1_000_000,
+        "image_input": 2.50 / 1_000_000,
+        "cached_text_input": 0.20 / 1_000_000,
+        "cached_image_input": 0.25 / 1_000_000,
+        "image_output": 8.00 / 1_000_000,
+    },
+}
+
+
+def _safe_int(val: Any) -> int:
+    """Safely extract an integer from a value, returning 0 for non-numeric types."""
+    if isinstance(val, (int, float)):
+        return int(val)
+    return 0
+
+
+def _compute_openai_image_cost(model: str, usage: Any) -> GenerationCost | None:
+    """Compute cost from OpenAI image API usage token breakdown.
+
+    Args:
+        model: Model name (e.g., "gpt-image-1", "gpt-image-1.5")
+        usage: OpenAI usage object with input_tokens, output_tokens,
+               input_tokens_details, and output_tokens_details.
+
+    Returns:
+        GenerationCost with exact token-based cost, or None if rates unknown
+        or usage data is not available.
+    """
+    rates = _OPENAI_IMAGE_TOKEN_RATES.get(model)
+    if rates is None or usage is None:
+        return None
+
+    # Validate that usage has real numeric data (not a MagicMock)
+    total_tokens = _safe_int(getattr(usage, "total_tokens", 0))
+    if total_tokens == 0:
+        return None
+
+    total_cost = 0.0
+
+    # Input token breakdown
+    input_details = getattr(usage, "input_tokens_details", None)
+    has_input_details = input_details is not None and isinstance(
+        getattr(input_details, "text_tokens", None), (int, float)
+    )
+
+    if has_input_details:
+        text_input = _safe_int(getattr(input_details, "text_tokens", 0))
+        image_input = _safe_int(getattr(input_details, "image_tokens", 0))
+        cached_tokens = _safe_int(getattr(input_details, "cached_tokens", 0))
+
+        # Cached tokens reduce cost — subtract from uncached counts
+        # The API reports cached_tokens as a total; distribute proportionally
+        uncached_text = max(0, text_input - cached_tokens)
+        cached_text = min(text_input, cached_tokens)
+        remaining_cached = max(0, cached_tokens - cached_text)
+        uncached_image = max(0, image_input - remaining_cached)
+        cached_image = min(image_input, remaining_cached)
+
+        total_cost += uncached_text * rates["text_input"]
+        total_cost += cached_text * rates.get("cached_text_input", rates["text_input"])
+        total_cost += uncached_image * rates["image_input"]
+        total_cost += cached_image * rates.get(
+            "cached_image_input", rates["image_input"]
+        )
+    else:
+        # No detailed breakdown — use image_input rate for all input tokens
+        input_tokens = _safe_int(getattr(usage, "input_tokens", 0))
+        total_cost += input_tokens * rates["image_input"]
+
+    # Output tokens
+    output_tokens = _safe_int(getattr(usage, "output_tokens", 0))
+    output_details = getattr(usage, "output_tokens_details", None)
+    has_output_details = output_details is not None and isinstance(
+        getattr(output_details, "image_tokens", None), (int, float)
+    )
+
+    if has_output_details:
+        image_out = _safe_int(getattr(output_details, "image_tokens", 0))
+        text_out = _safe_int(getattr(output_details, "text_tokens", 0))
+        total_cost += image_out * rates["image_output"]
+        total_cost += text_out * rates.get("text_output", rates["image_output"])
+    else:
+        total_cost += output_tokens * rates["image_output"]
+
+    return GenerationCost(
+        amount_usd=total_cost,
+        raw_amount=float(total_tokens),
+        raw_unit="tokens",
+    )
 
 
 # ==================== Image Field Mappers ====================
@@ -1108,8 +1222,12 @@ class OpenAIProviderHandler:
         ):
             revised_prompt = provider_response.data[0].revised_prompt
 
-        # Resolve cost with quantity=1 per image
-        cost = resolve_cost(config.provider, config.model, None, 1.0)
+        # Compute cost from token usage (gpt-image-1/1.5/mini) or fall back
+        # to pricing table (dall-e-3/dall-e-2).
+        usage = getattr(provider_response, "usage", None)
+        cost = _compute_openai_image_cost(config.model, usage)
+        if cost is None:
+            cost = resolve_cost(config.provider, config.model, None, 1.0)
 
         return ImageGenerationResponse(
             request_id=request_id,

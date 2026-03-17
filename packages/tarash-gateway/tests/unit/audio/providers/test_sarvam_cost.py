@@ -19,7 +19,7 @@ def handler():
 @pytest.fixture
 def sarvam_config():
     return AudioGenerationConfig(
-        model="bulbul-v2",
+        model="bulbul:v2",
         provider="sarvam",
         api_key="test-api-key",
         timeout=240,
@@ -49,11 +49,11 @@ def test_tts_response_cost_uses_text_length(handler, sarvam_config, tts_request)
     assert response.cost.amount_usd == pytest.approx(expected_usd)
 
 
-# REQ-022: Different model (bulbul-v3)
+# REQ-022: Different model (bulbul:v3)
 def test_tts_response_cost_v3_model(handler, tts_request):
-    """Sarvam bulbul-v3 model has correct cost."""
+    """Sarvam bulbul:v3 model has correct cost."""
     config = AudioGenerationConfig(
-        model="bulbul-v3",
+        model="bulbul:v3",
         provider="sarvam",
         api_key="test-api-key",
         timeout=240,

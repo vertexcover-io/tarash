@@ -140,8 +140,11 @@ PRICING_TABLE: dict[tuple[str, str], PricingEntry] = {
     # Cartesia
     ("cartesia", "sonic"): PricingEntry(usd_per_unit=0.000011, unit="characters"),
     # Sarvam
-    ("sarvam", "bulbul-v2"): PricingEntry(usd_per_unit=0.000018, unit="characters"),
-    ("sarvam", "bulbul-v3"): PricingEntry(usd_per_unit=0.000036, unit="characters"),
+    ("sarvam", "bulbul:v2"): PricingEntry(usd_per_unit=0.000018, unit="characters"),
+    ("sarvam", "bulbul:v3"): PricingEntry(usd_per_unit=0.000036, unit="characters"),
+    ("sarvam", "bulbul:v3-beta"): PricingEntry(
+        usd_per_unit=0.000036, unit="characters"
+    ),
     # Hume
     ("hume", "octave"): PricingEntry(usd_per_unit=0.00015, unit="characters"),
     ("hume", "octave-v2"): PricingEntry(usd_per_unit=0.0000076, unit="characters"),

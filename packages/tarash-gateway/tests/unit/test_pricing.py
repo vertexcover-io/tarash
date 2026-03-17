@@ -154,8 +154,8 @@ def test_pricing_table_spot_check_hume_octave():
 
 
 def test_pricing_table_spot_check_sarvam_bulbul_v2():
-    """Spot-check: Sarvam bulbul-v2 entry."""
-    entry = PRICING_TABLE[("sarvam", "bulbul-v2")]
+    """Spot-check: Sarvam bulbul:v2 entry."""
+    entry = PRICING_TABLE[("sarvam", "bulbul:v2")]
     assert entry.usd_per_unit == 0.000018
     assert entry.unit == "characters"
 
@@ -197,8 +197,8 @@ def test_pricing_table_no_replicate_entries():
 def test_pricing_table_has_expected_count():
     """PRICING_TABLE has all entries from the design doc."""
     # Count from the spec: 19 fal video + 11 fal image + 5 openai + 7 google + 4 runway
-    # + 3 stability + 3 xai + 2 elevenlabs + 1 cartesia + 2 sarvam + 2 hume = 59
-    assert len(PRICING_TABLE) == 59
+    # + 3 stability + 3 xai + 2 elevenlabs + 1 cartesia + 3 sarvam + 2 hume = 60
+    assert len(PRICING_TABLE) == 60
 
 
 # ==================== resolve_cost (REQ-010, REQ-011, REQ-012) ====================

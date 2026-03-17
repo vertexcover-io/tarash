@@ -262,6 +262,7 @@ def test_azure_openai_image_cost_matches_openai():
         MagicMock(url="https://example.com/img.png", revised_prompt=None)
     ]
     provider_response.model_dump.return_value = {}
+    provider_response.usage = None  # No token usage → falls back to pricing table
 
     # Azure OpenAI inherits from OpenAI, so same _convert_image_response
     response = handler._convert_image_response(
