@@ -5,6 +5,7 @@ Edge cases: EDGE-003, EDGE-004, EDGE-012
 """
 
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -144,7 +145,9 @@ def test_compute_total_cost_usd_single_attempt_with_cost():
     """Single successful attempt with known cost -> total equals that cost (EDGE-004)."""
     from tarash.tarash_gateway.models import AttemptMetadata
 
-    cost = GenerationCost(amount_usd=0.50, raw_amount=10.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.50"), raw_amount=10.0, raw_unit="seconds"
+    )
     attempt = AttemptMetadata(
         provider="fal",
         model="fal-ai/veo3",
@@ -159,15 +162,19 @@ def test_compute_total_cost_usd_single_attempt_with_cost():
         cost=cost,
     )
     result = _compute_total_cost_usd([attempt])
-    assert result == 0.50
+    assert result == Decimal("0.50")
 
 
 def test_compute_total_cost_usd_multiple_attempts_all_with_costs():
     """Multiple attempts all with costs -> total is sum (REQ-015)."""
     from tarash.tarash_gateway.models import AttemptMetadata
 
-    cost1 = GenerationCost(amount_usd=0.50, raw_amount=10.0, raw_unit="seconds")
-    cost2 = GenerationCost(amount_usd=1.00, raw_amount=20.0, raw_unit="seconds")
+    cost1 = GenerationCost(
+        amount_usd=Decimal("0.50"), raw_amount=10.0, raw_unit="seconds"
+    )
+    cost2 = GenerationCost(
+        amount_usd=Decimal("1.00"), raw_amount=20.0, raw_unit="seconds"
+    )
     attempts = [
         AttemptMetadata(
             provider="fal",
@@ -197,14 +204,16 @@ def test_compute_total_cost_usd_multiple_attempts_all_with_costs():
         ),
     ]
     result = _compute_total_cost_usd(attempts)
-    assert result == 1.50
+    assert result == Decimal("1.50")
 
 
 def test_compute_total_cost_usd_one_attempt_cost_none():
     """One attempt with cost=None -> total is None (REQ-016)."""
     from tarash.tarash_gateway.models import AttemptMetadata
 
-    cost = GenerationCost(amount_usd=0.50, raw_amount=10.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.50"), raw_amount=10.0, raw_unit="seconds"
+    )
     attempts = [
         AttemptMetadata(
             provider="fal",
@@ -241,7 +250,9 @@ def test_compute_total_cost_usd_one_attempt_amount_usd_none():
     """One attempt with cost.amount_usd=None -> total is None (REQ-017)."""
     from tarash.tarash_gateway.models import AttemptMetadata
 
-    cost_with = GenerationCost(amount_usd=0.50, raw_amount=10.0, raw_unit="seconds")
+    cost_with = GenerationCost(
+        amount_usd=Decimal("0.50"), raw_amount=10.0, raw_unit="seconds"
+    )
     cost_without = GenerationCost(amount_usd=None, raw_amount=10.0, raw_unit="seconds")
     attempts = [
         AttemptMetadata(
@@ -315,7 +326,9 @@ def test_compute_total_cost_usd_fallback_2_fail_1_succeed():
     """Fallback chain: 2 fail + 1 succeed -> total is None because failed have cost=None (EDGE-003)."""
     from tarash.tarash_gateway.models import AttemptMetadata
 
-    cost = GenerationCost(amount_usd=1.00, raw_amount=10.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("1.00"), raw_amount=10.0, raw_unit="seconds"
+    )
     attempts = [
         AttemptMetadata(
             provider="fal",
@@ -368,7 +381,9 @@ def test_compute_total_cost_usd_fallback_2_fail_1_succeed():
 
 def test_execute_sync_populates_cost(orchestrator, video_config, video_request):
     """Video sync: cost from response is set on attempt and total_cost_usd (REQ-014, REQ-032)."""
-    cost = GenerationCost(amount_usd=0.40, raw_amount=8.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.40"), raw_amount=8.0, raw_unit="seconds"
+    )
     response = _make_video_response(cost=cost)
 
     mock_handler = MagicMock()
@@ -381,13 +396,15 @@ def test_execute_sync_populates_cost(orchestrator, video_config, video_request):
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.40
+    assert result.execution_metadata.total_cost_usd == Decimal("0.40")
 
 
 @pytest.mark.asyncio
 async def test_execute_async_populates_cost(orchestrator, video_config, video_request):
     """Video async: cost from response is set on attempt and total_cost_usd (REQ-014, REQ-032)."""
-    cost = GenerationCost(amount_usd=0.40, raw_amount=8.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.40"), raw_amount=8.0, raw_unit="seconds"
+    )
     response = _make_video_response(cost=cost)
 
     mock_handler = AsyncMock()
@@ -400,12 +417,12 @@ async def test_execute_async_populates_cost(orchestrator, video_config, video_re
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.40
+    assert result.execution_metadata.total_cost_usd == Decimal("0.40")
 
 
 def test_execute_image_sync_populates_cost(orchestrator, image_config, image_request):
     """Image sync: cost from response is set on attempt and total_cost_usd (REQ-032)."""
-    cost = GenerationCost(amount_usd=0.08, raw_amount=1.0, raw_unit="image")
+    cost = GenerationCost(amount_usd=Decimal("0.08"), raw_amount=1.0, raw_unit="image")
     response = _make_image_response(cost=cost)
 
     mock_handler = MagicMock()
@@ -418,7 +435,7 @@ def test_execute_image_sync_populates_cost(orchestrator, image_config, image_req
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.08
+    assert result.execution_metadata.total_cost_usd == Decimal("0.08")
 
 
 @pytest.mark.asyncio
@@ -426,7 +443,7 @@ async def test_execute_image_async_populates_cost(
     orchestrator, image_config, image_request
 ):
     """Image async: cost from response is set on attempt and total_cost_usd (REQ-032)."""
-    cost = GenerationCost(amount_usd=0.08, raw_amount=1.0, raw_unit="image")
+    cost = GenerationCost(amount_usd=Decimal("0.08"), raw_amount=1.0, raw_unit="image")
     response = _make_image_response(cost=cost)
 
     mock_handler = AsyncMock()
@@ -439,12 +456,14 @@ async def test_execute_image_async_populates_cost(
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.08
+    assert result.execution_metadata.total_cost_usd == Decimal("0.08")
 
 
 def test_execute_tts_sync_populates_cost(orchestrator, tts_config, tts_request):
     """TTS sync: cost from response is set on attempt and total_cost_usd (REQ-032)."""
-    cost = GenerationCost(amount_usd=0.003, raw_amount=11.0, raw_unit="characters")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.003"), raw_amount=11.0, raw_unit="characters"
+    )
     response = _make_tts_response(cost=cost)
 
     mock_handler = MagicMock()
@@ -457,13 +476,15 @@ def test_execute_tts_sync_populates_cost(orchestrator, tts_config, tts_request):
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.003
+    assert result.execution_metadata.total_cost_usd == Decimal("0.003")
 
 
 @pytest.mark.asyncio
 async def test_execute_tts_async_populates_cost(orchestrator, tts_config, tts_request):
     """TTS async: cost from response is set on attempt and total_cost_usd (REQ-032)."""
-    cost = GenerationCost(amount_usd=0.003, raw_amount=11.0, raw_unit="characters")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.003"), raw_amount=11.0, raw_unit="characters"
+    )
     response = _make_tts_response(cost=cost)
 
     mock_handler = AsyncMock()
@@ -476,12 +497,14 @@ async def test_execute_tts_async_populates_cost(orchestrator, tts_config, tts_re
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.003
+    assert result.execution_metadata.total_cost_usd == Decimal("0.003")
 
 
 def test_execute_sts_sync_populates_cost(orchestrator, sts_config, sts_request):
     """STS sync: cost from response is set on attempt and total_cost_usd (REQ-032)."""
-    cost = GenerationCost(amount_usd=0.005, raw_amount=100.0, raw_unit="characters")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.005"), raw_amount=100.0, raw_unit="characters"
+    )
     response = _make_sts_response(cost=cost)
 
     mock_handler = MagicMock()
@@ -494,13 +517,15 @@ def test_execute_sts_sync_populates_cost(orchestrator, sts_config, sts_request):
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.005
+    assert result.execution_metadata.total_cost_usd == Decimal("0.005")
 
 
 @pytest.mark.asyncio
 async def test_execute_sts_async_populates_cost(orchestrator, sts_config, sts_request):
     """STS async: cost from response is set on attempt and total_cost_usd (REQ-032)."""
-    cost = GenerationCost(amount_usd=0.005, raw_amount=100.0, raw_unit="characters")
+    cost = GenerationCost(
+        amount_usd=Decimal("0.005"), raw_amount=100.0, raw_unit="characters"
+    )
     response = _make_sts_response(cost=cost)
 
     mock_handler = AsyncMock()
@@ -513,7 +538,7 @@ async def test_execute_sts_async_populates_cost(orchestrator, sts_config, sts_re
 
     assert result.execution_metadata is not None
     assert result.execution_metadata.attempts[0].cost == cost
-    assert result.execution_metadata.total_cost_usd == 0.005
+    assert result.execution_metadata.total_cost_usd == Decimal("0.005")
 
 
 def test_execute_sync_no_cost_on_response(orchestrator, video_config, video_request):
@@ -547,7 +572,9 @@ def test_execute_sync_fallback_cost_aggregation(orchestrator, video_request):
         fallback_configs=[fallback_config],
     )
 
-    cost = GenerationCost(amount_usd=1.00, raw_amount=10.0, raw_unit="seconds")
+    cost = GenerationCost(
+        amount_usd=Decimal("1.00"), raw_amount=10.0, raw_unit="seconds"
+    )
     success_response = _make_video_response(cost=cost, request_id="req-fallback")
 
     mock_handler_fail = MagicMock()

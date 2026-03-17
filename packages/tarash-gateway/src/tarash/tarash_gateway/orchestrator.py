@@ -1,6 +1,7 @@
 """Orchestrator for managing video and image generation execution with fallback support."""
 
 from datetime import datetime
+from decimal import Decimal
 
 from tarash.tarash_gateway.logging import log_error, log_info
 from tarash.tarash_gateway.exceptions import is_retryable_error
@@ -26,7 +27,7 @@ from tarash.tarash_gateway.models import (
 from tarash.tarash_gateway.registry import get_handler
 
 
-def _compute_total_cost_usd(attempts: list[AttemptMetadata]) -> float | None:
+def _compute_total_cost_usd(attempts: list[AttemptMetadata]) -> Decimal | None:
     """Compute total USD cost across all attempts.
 
     Returns ``None`` if any attempt lacks cost data or has
@@ -37,7 +38,7 @@ def _compute_total_cost_usd(attempts: list[AttemptMetadata]) -> float | None:
         return None
     if any(c.amount_usd is None for c in attempt_costs):  # type: ignore[union-attr]
         return None
-    return sum(c.amount_usd for c in attempt_costs)  # type: ignore[union-attr, misc]
+    return sum((c.amount_usd for c in attempt_costs), Decimal("0"))  # type: ignore[union-attr, misc]
 
 
 class ExecutionOrchestrator:
