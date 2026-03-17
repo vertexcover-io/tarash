@@ -34,6 +34,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     get_filename_from_url,
@@ -478,15 +479,22 @@ class OpenAIProviderHandler:
             "content": video_content,
             "content_type": content_type_value,
         }
+
+        # Resolve cost using output duration if available, else quantity=1.0
+        duration_seconds = (
+            float(getattr(video, "seconds", 0)) if hasattr(video, "seconds") else None
+        )
+        quantity = duration_seconds if duration_seconds else 1.0
+        cost = resolve_cost(config.provider, config.model, None, quantity)
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=video_media,
             content_type=content_type_value,
-            duration=float(getattr(video, "seconds", 0))
-            if hasattr(video, "seconds")
-            else None,
+            duration=duration_seconds,
             resolution=getattr(video, "size", None),
             status="completed",
+            cost=cost,
             raw_response=video.model_dump(),
         )
 
@@ -1100,12 +1108,16 @@ class OpenAIProviderHandler:
         ):
             revised_prompt = provider_response.data[0].revised_prompt
 
+        # Resolve cost with quantity=1 per image
+        cost = resolve_cost(config.provider, config.model, None, 1.0)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=images,
             content_type="image/png",
             status="completed",
             revised_prompt=revised_prompt,
+            cost=cost,
             raw_response=provider_response.model_dump()
             if hasattr(provider_response, "model_dump")
             else {},

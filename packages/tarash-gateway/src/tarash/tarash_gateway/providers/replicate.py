@@ -638,6 +638,7 @@ class ReplicateProviderHandler:
             request_id=prediction_id,
             video=video_url,
             status="completed",
+            cost=None,
             raw_response={"output": output_str},
         )
 
@@ -1033,6 +1034,7 @@ class ReplicateProviderHandler:
             request_id=prediction_id,
             images=image_urls,
             status="completed",
+            cost=None,
             raw_response={"output": output_str},
         )
 

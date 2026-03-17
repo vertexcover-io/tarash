@@ -26,6 +26,7 @@ from tarash.tarash_gateway.models import (
     AnyDict,
     AudioGenerationConfig,
     AudioOutputFormat,
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -44,6 +45,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationUpdate,
     format_to_content_type,
 )
+from tarash.tarash_gateway.pricing import PRICING_TABLE, resolve_cost
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     download_media_from_url_async,
@@ -1306,6 +1308,7 @@ class FalProviderHandler:
         _request: VideoGenerationRequest,
         request_id: str,
         provider_response: AnyDict,
+        metrics: dict[str, Any] | None = None,
     ) -> VideoGenerationResponse:
         """
         Convert Fal response to VideoGenerationResponse.
@@ -1315,6 +1318,7 @@ class FalProviderHandler:
             request: Original video generation request
             request_id: Our request ID
             provider_response: Raw Fal response
+            metrics: Optional metrics dict from Completed status (contains inference_time etc.)
 
         Returns:
             Normalized VideoGenerationResponse
@@ -1349,6 +1353,9 @@ class FalProviderHandler:
                 raw_response=provider_response,
             )
 
+        # Resolve cost based on pricing table unit type
+        cost = self._resolve_video_cost(config, provider_response, metrics)
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=video_url,
@@ -1357,8 +1364,44 @@ class FalProviderHandler:
             resolution=cast(str, provider_response.get("resolution")),
             aspect_ratio=cast(str, provider_response.get("aspect_ratio")),
             status="completed",
+            cost=cost,
             raw_response=provider_response,
         )
+
+    def _resolve_video_cost(
+        self,
+        config: VideoGenerationConfig,
+        provider_response: AnyDict,
+        metrics: dict[str, Any] | None,
+    ) -> GenerationCost | None:
+        """Resolve cost for a Fal video response.
+
+        Determines the correct quantity based on the pricing table unit:
+        - compute_seconds: use inference_time from metrics
+        - seconds/minutes: use output duration from provider_response
+        - videos: use quantity=1.0
+        """
+        entry = PRICING_TABLE.get((config.provider, config.model))
+        if entry is None:
+            return None
+
+        if entry.unit == "compute_seconds":
+            # Extract compute time from metrics
+            if metrics and "inference_time" in metrics:
+                quantity = float(metrics["inference_time"])
+                return resolve_cost(config.provider, config.model, None, quantity)
+            # No metrics available for compute_seconds model
+            return None
+        elif entry.unit in ("seconds", "minutes"):
+            duration = provider_response.get("duration")
+            if duration is not None:
+                return resolve_cost(
+                    config.provider, config.model, None, float(duration)
+                )
+            return resolve_cost(config.provider, config.model, None, 1.0)
+        else:
+            # per-video or other fixed-price
+            return resolve_cost(config.provider, config.model, None, 1.0)
 
     def _handle_error(
         self,
@@ -1666,6 +1709,7 @@ class FalProviderHandler:
         request: ImageGenerationRequest,
         request_id: str,
         fal_result: AnyDict,
+        metrics: dict[str, Any] | None = None,
     ) -> ImageGenerationResponse:
         """Convert Fal response to ImageGenerationResponse."""
         # Extract image URLs from Fal response
@@ -1683,6 +1727,9 @@ class FalProviderHandler:
         # Check for revised prompt (some models return this)
         revised_prompt = fal_result.get("revised_prompt")
 
+        # Resolve cost
+        cost = self._resolve_image_cost(config, metrics)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=image_urls,
@@ -1690,8 +1737,28 @@ class FalProviderHandler:
             status="completed",
             is_mock=False,
             revised_prompt=str(revised_prompt) if revised_prompt else None,
+            cost=cost,
             raw_response=fal_result,
         )
+
+    def _resolve_image_cost(
+        self,
+        config: ImageGenerationConfig,
+        metrics: dict[str, Any] | None,
+    ) -> GenerationCost | None:
+        """Resolve cost for a Fal image response."""
+        entry = PRICING_TABLE.get((config.provider, config.model))
+        if entry is None:
+            return None
+
+        if entry.unit == "compute_seconds":
+            if metrics and "inference_time" in metrics:
+                quantity = float(metrics["inference_time"])
+                return resolve_cost(config.provider, config.model, None, quantity)
+            return None
+        else:
+            # per-image, per-megapixel, etc.
+            return resolve_cost(config.provider, config.model, None, 1.0)
 
     def _handle_image_error(
         self,
@@ -1947,12 +2014,18 @@ class FalProviderHandler:
 
         duration = _extract_tts_duration(fal_result)
 
+        # Resolve cost using character count
+        cost = resolve_cost(
+            config.provider, config.model, None, float(len(request.text))
+        )
+
         return TTSResponse(
             request_id=request_id,
             audio=audio_b64,
             content_type=content_type,
             duration=duration,
             status="completed",
+            cost=cost,
             raw_response=fal_result,
         )
 

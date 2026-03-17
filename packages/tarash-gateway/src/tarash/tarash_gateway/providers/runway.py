@@ -26,6 +26,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
     VideoGenerationUpdate,
 )
+from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.utils import validate_duration, validate_model_params
 
 try:
@@ -460,11 +461,17 @@ class RunwayProviderHandler:
                 raw_response={"task_id": task.id, "output": str(output)},
             )
 
+        # Resolve cost - use request duration_seconds if available, else fallback to 1.0
+        duration = request.duration_seconds
+        quantity = float(duration) if duration is not None else 1.0
+        cost = resolve_cost(config.provider, config.model, None, quantity)
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=video_url,
             content_type="video/mp4",
             status="completed",
+            cost=cost,
             raw_response={
                 "task_id": task.id,
                 "status": task.status,

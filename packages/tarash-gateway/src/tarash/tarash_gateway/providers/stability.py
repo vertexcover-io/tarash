@@ -31,6 +31,7 @@ from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
+from tarash.tarash_gateway.pricing import resolve_cost
 from tarash.tarash_gateway.providers.field_mappers import (
     FieldMapper,
     apply_field_mappers,
@@ -329,12 +330,16 @@ class StabilityProviderHandler:
         base64_image = base64.b64encode(image_bytes).decode("utf-8")
         data_url = f"data:{content_type};base64,{base64_image}"
 
+        # Resolve cost with quantity=1 per image
+        cost = resolve_cost(config.provider, config.model, None, 1.0)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=[data_url],
             content_type=content_type,
             status="completed",
             is_mock=False,
+            cost=cost,
             raw_response={"content_length": len(image_bytes)},
         )
 
