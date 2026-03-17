@@ -103,6 +103,11 @@ SyncSTSProgressCallback = Callable[["STSUpdate"], None]
 AsyncSTSProgressCallback = Callable[["STSUpdate"], Awaitable[None]]
 STSProgressCallback = SyncSTSProgressCallback | AsyncSTSProgressCallback
 
+# Progress callback types (compound)
+SyncCompoundProgressCallback = Callable[["CompoundGenerationUpdate"], None]
+AsyncCompoundProgressCallback = Callable[["CompoundGenerationUpdate"], Awaitable[None]]
+CompoundProgressCallback = SyncCompoundProgressCallback | AsyncCompoundProgressCallback
+
 # ==================== Cost ====================
 
 
@@ -1075,6 +1080,201 @@ class KlingVideoParams(BaseVideoParams):
     camera_control: KlingCameraControl | None
 
 
+# ==================== Compound Generation ====================
+
+
+class OutputItem(BaseModel):
+    """Base class for items in a compound generation response."""
+
+    type: str = Field(description="Item type discriminator.")
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class TextOutputItem(OutputItem):
+    """A text segment in the compound output."""
+
+    type: Literal["text"] = "text"
+    content: str = Field(description="The text content.")
+
+
+class ImageOutputItem(OutputItem):
+    """A generated image in the compound output."""
+
+    type: Literal["image"] = "image"
+    url: str | None = Field(default=None, description="URL of the generated image.")
+    base64: str | None = Field(default=None, description="Base64-encoded image data.")
+    revised_prompt: str | None = Field(
+        default=None, description="Model's enhanced prompt used for generation."
+    )
+
+
+class ReasoningOutputItem(OutputItem):
+    """A reasoning trace in the compound output."""
+
+    type: Literal["reasoning"] = "reasoning"
+    summary: list[str] = Field(default_factory=list, description="Reasoning summaries.")
+
+
+class CodeOutputItem(OutputItem):
+    """Code execution result from code_interpreter."""
+
+    type: Literal["code_output"] = "code_output"
+    code: str = Field(description="The executed code.")
+    output: str | None = Field(default=None, description="Execution output.")
+
+
+class UnknownOutputItem(OutputItem):
+    """Pass-through for unrecognized output item types."""
+
+    type: Literal["unknown"] = "unknown"
+    raw: dict[str, object] = Field(description="Raw item data from provider.")
+
+
+class CompoundGenerationResponse(BaseModel):
+    """Normalized response returned by every compound generation call."""
+
+    request_id: str = Field(description="Tarash-assigned unique ID for this request.")
+    items: list[OutputItem] = Field(
+        description="Ordered list of output items (text, images, etc.)."
+    )
+    status: Literal["completed", "failed"] = Field(
+        description="Final generation status."
+    )
+    is_mock: bool = Field(
+        default=False,
+        description="True if the response was produced by the mock provider.",
+    )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="Cost information with optional per-component breakdown.",
+    )
+    raw_response: dict[str, object] = Field(
+        description="Unmodified provider response, preserved for debugging."
+    )
+    execution_metadata: ExecutionMetadata | None = Field(
+        default=None,
+        description="Timing and fallback attempt details captured by the orchestrator.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    @property
+    def text(self) -> str:
+        """All text items concatenated."""
+        return "\n".join(i.content for i in self.items if isinstance(i, TextOutputItem))
+
+    @property
+    def images(self) -> list[ImageOutputItem]:
+        """Just the image output items."""
+        return [i for i in self.items if isinstance(i, ImageOutputItem)]
+
+
+class CompoundGenerationUpdate(BaseModel):
+    """A progress event emitted during compound generation."""
+
+    request_id: str = Field(
+        description="Same ID as the originating request, for correlation."
+    )
+    status: StatusType = Field(description="Current generation status.")
+    progress_percent: int | None = Field(
+        None, ge=0, le=100, description="Estimated completion percentage (0-100)."
+    )
+    update: dict[str, object] = Field(
+        description="Raw event payload from the provider."
+    )
+    result: CompoundGenerationResponse | None = Field(
+        default=None,
+        description="Final response, set only when status is 'completed'.",
+    )
+    error: str | None = Field(
+        default=None, description="Error message if status is 'failed'."
+    )
+
+
+class CompoundGenerationConfig(BaseModel):
+    """Configuration for a compound (multi-modal) generation request."""
+
+    model: str = Field(description="Model identifier, e.g. 'gpt-5', 'gpt-4o'.")
+    provider: str = Field(description="Provider identifier: 'openai'.")
+    api_key: str | None = Field(
+        default=None,
+        description="API key for authenticating with the provider.",
+    )
+    base_url: str | None = Field(
+        default=None, description="Override the provider's base API URL."
+    )
+    api_version: str | None = Field(
+        default=None,
+        description="Azure OpenAI API version. When set, Azure endpoints are used.",
+    )
+    timeout: int = Field(
+        default=300,
+        description="Maximum seconds to wait for generation to complete.",
+    )
+    allowed_tools: list[str] = Field(
+        default_factory=lambda: ["image_generation"],
+        description="Built-in tools the model may use. Limited to media tools.",
+    )
+    instructions: str | None = Field(
+        default=None, description="System-level instructions for the model."
+    )
+    store: bool = Field(
+        default=True,
+        description="Whether to store the response for multi-turn statefulness.",
+    )
+    mock: "MockConfig | None" = Field(
+        default=None, description="If set, enables mock generation for testing."
+    )
+    fallback_configs: list["CompoundGenerationConfig"] | None = Field(
+        default=None,
+        description="Ordered list of fallback configs to try on retryable errors.",
+    )
+    provider_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional provider-specific configuration.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class CompoundGenerationRequest(BaseModel):
+    """Parameters for a compound (multi-modal) generation request."""
+
+    prompt: str = Field(
+        description="Natural language intent describing what to generate."
+    )
+    input: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Optional multi-turn message array (role/content dicts). Overrides prompt if set.",
+    )
+    previous_response_id: str | None = Field(
+        default=None,
+        description="ID of a previous response for multi-turn conversations.",
+    )
+    extra_params: dict[str, object] = Field(
+        default_factory=dict,
+        description="Provider- or model-specific parameters with no standard equivalent.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_extra_fields(cls, data: dict[str, object]) -> dict[str, object]:
+        """Capture unknown fields into extra_params."""
+        if not isinstance(data, dict):
+            return data
+        extra_params: dict[str, object] = cast(
+            dict[str, object], data.pop("extra_params", {})
+        )
+        known_fields = set(cls.model_fields.keys())
+        extra = {k: v for k, v in data.items() if k not in known_fields}
+        for k in extra.keys():
+            _ = data.pop(k)
+        extra_params.update(extra)
+        data["extra_params"] = extra_params
+        return data
+
+
 # ==================== Provider Handler Protocol ====================
 
 ClientT = TypeVar("ClientT", covariant=True)
@@ -1284,3 +1484,4 @@ from tarash.tarash_gateway.mock import MockConfig  # noqa: E402, F811
 VideoGenerationConfig.model_rebuild()
 ImageGenerationConfig.model_rebuild()
 AudioGenerationConfig.model_rebuild()
+CompoundGenerationConfig.model_rebuild()
