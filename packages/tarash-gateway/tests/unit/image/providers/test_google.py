@@ -217,3 +217,280 @@ def test_google_provider_registered_in_registry():
     with patch("tarash.tarash_gateway.providers.google.has_genai", True):
         handler = get_handler(config)
         assert isinstance(handler, GoogleProviderHandler)
+
+
+# ==================== _bytes_to_data_uri Tests ====================
+
+
+def test_bytes_to_data_uri_with_bytes():
+    """Test _bytes_to_data_uri encodes bytes to data URI."""
+    from tarash.tarash_gateway.providers.google import _bytes_to_data_uri
+    import base64
+
+    img_bytes = b"fake-image-data"
+    result = _bytes_to_data_uri(img_bytes, "image/png")
+
+    expected = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
+    assert result == expected
+
+
+def test_bytes_to_data_uri_with_string():
+    """Test _bytes_to_data_uri encodes string input to data URI."""
+    from tarash.tarash_gateway.providers.google import _bytes_to_data_uri
+    import base64
+
+    img_string = "fake-image-data"
+    result = _bytes_to_data_uri(img_string, "image/jpeg")
+
+    expected_bytes = img_string.encode()
+    expected = f"data:image/jpeg;base64,{base64.b64encode(expected_bytes).decode()}"
+    assert result == expected
+
+
+def test_bytes_to_data_uri_default_mime_type():
+    """Test _bytes_to_data_uri uses default image/png mime type."""
+    from tarash.tarash_gateway.providers.google import _bytes_to_data_uri
+
+    result = _bytes_to_data_uri(b"data")
+    assert result.startswith("data:image/png;base64,")
+
+
+# ==================== _is_gemini_image_model Tests ====================
+
+
+def test_is_gemini_image_model_true():
+    """Test _is_gemini_image_model returns True for Gemini image models."""
+    from tarash.tarash_gateway.providers.google import _is_gemini_image_model
+
+    assert _is_gemini_image_model("gemini-2.5-flash-image") is True
+    assert _is_gemini_image_model("gemini-3-pro-image-preview") is True
+
+
+def test_is_gemini_image_model_false():
+    """Test _is_gemini_image_model returns False for non-Gemini models."""
+    from tarash.tarash_gateway.providers.google import _is_gemini_image_model
+
+    assert _is_gemini_image_model("imagen-3.0-generate-001") is False
+    assert _is_gemini_image_model("gemini-2.5-flash") is False  # No 'image' in name
+
+
+# ==================== Imagen Response Conversion: inline_data ====================
+
+
+def test_convert_image_response_with_inline_data(handler, base_config):
+    """Test Imagen response conversion with inline_data (image_bytes)."""
+
+    request_id = "req-inline"
+
+    mock_image = MagicMock()
+    mock_image.image.gcs_uri = None
+    mock_image.image.image_bytes = b"fake-image-bytes"
+    mock_image.image.mime_type = "image/jpeg"
+
+    # gcs_uri is None, so it should use image_bytes path
+    mock_response = {
+        "generated_images": [mock_image],
+    }
+
+    result = handler._convert_image_response(base_config, request_id, mock_response)
+
+    assert result.request_id == request_id
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    # Should be a data URI
+    assert result.images[0].startswith("data:image/jpeg;base64,")
+
+
+def test_convert_image_response_empty_list(handler, base_config):
+    """Test Imagen response with no generated images."""
+    result = handler._convert_image_response(
+        base_config, "req-empty", {"generated_images": []}
+    )
+
+    assert result.images == []
+
+
+# ==================== Gemini Image Response Conversion ====================
+
+
+def test_convert_gemini_image_response_with_parts(handler, base_config):
+    """Test Gemini response conversion from parts with inline_data."""
+
+    mock_inline_data = MagicMock()
+    mock_inline_data.data = b"gemini-image-bytes"
+    mock_inline_data.mime_type = "image/png"
+
+    mock_part = MagicMock()
+    mock_part.inline_data = mock_inline_data
+
+    mock_response = MagicMock()
+    mock_response.parts = [mock_part]
+    mock_response.model_dump.return_value = {"parts": []}
+
+    result = handler._convert_gemini_image_response(
+        base_config, "req-gemini", mock_response
+    )
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    assert result.images[0].startswith("data:image/png;base64,")
+
+
+def test_convert_gemini_image_response_no_parts(handler, base_config):
+    """Test Gemini response with no parts returns empty images."""
+    mock_response = MagicMock()
+    mock_response.parts = []
+    mock_response.model_dump.return_value = {"parts": []}
+
+    result = handler._convert_gemini_image_response(
+        base_config, "req-no-parts", mock_response
+    )
+
+    assert result.images == []
+
+
+def test_convert_gemini_image_response_no_inline_data(handler, base_config):
+    """Test Gemini response with parts but no inline_data is skipped."""
+    mock_part = MagicMock()
+    mock_part.inline_data = None
+
+    mock_response = MagicMock()
+    mock_response.parts = [mock_part]
+    mock_response.model_dump.return_value = {}
+
+    result = handler._convert_gemini_image_response(
+        base_config, "req-no-inline", mock_response
+    )
+
+    assert result.images == []
+
+
+def test_convert_gemini_image_response_without_model_dump(handler, base_config):
+    """Test Gemini response without model_dump uses string fallback."""
+    mock_response = MagicMock(spec=[])  # No model_dump
+    mock_response.parts = []
+
+    result = handler._convert_gemini_image_response(
+        base_config, "req-no-dump", mock_response
+    )
+
+    assert result.images == []
+    assert "response" in result.raw_response
+
+
+# ==================== Image Generation: async/sync ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_imagen(handler, base_config, base_request):
+    """Test async image generation with Imagen model."""
+    mock_gen_image = MagicMock()
+    mock_gen_image.image.gcs_uri = "https://storage.googleapis.com/image.png"
+
+    mock_imagen_response = MagicMock()
+    mock_imagen_response.generated_images = [mock_gen_image]
+
+    mock_client = AsyncMock()
+    mock_client.models.generate_images = AsyncMock(return_value=mock_imagen_response)
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        result = await handler.generate_image_async(base_config, base_request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    assert result.images[0] == "https://storage.googleapis.com/image.png"
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_gemini(handler, nano_banana_config, base_request):
+    """Test async image generation with Gemini (Nano Banana) model."""
+    mock_inline_data = MagicMock()
+    mock_inline_data.data = b"gemini-image"
+    mock_inline_data.mime_type = "image/png"
+
+    mock_part = MagicMock()
+    mock_part.inline_data = mock_inline_data
+
+    mock_response = MagicMock()
+    mock_response.parts = [mock_part]
+    mock_response.model_dump.return_value = {}
+
+    mock_client = AsyncMock()
+    mock_client.models.generate_content = AsyncMock(return_value=mock_response)
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        result = await handler.generate_image_async(nano_banana_config, base_request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    assert result.images[0].startswith("data:image/png;base64,")
+
+
+def test_generate_image_sync_imagen(handler, base_config, base_request):
+    """Test sync image generation with Imagen model."""
+    mock_gen_image = MagicMock()
+    mock_gen_image.image.gcs_uri = "https://storage.googleapis.com/image.png"
+
+    mock_imagen_response = MagicMock()
+    mock_imagen_response.generated_images = [mock_gen_image]
+
+    mock_client = MagicMock()
+    mock_client.models.generate_images = MagicMock(return_value=mock_imagen_response)
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        result = handler.generate_image(base_config, base_request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+
+
+def test_generate_image_sync_gemini(handler, nano_banana_config, base_request):
+    """Test sync image generation with Gemini model."""
+    mock_inline_data = MagicMock()
+    mock_inline_data.data = b"gemini-image"
+    mock_inline_data.mime_type = "image/png"
+
+    mock_part = MagicMock()
+    mock_part.inline_data = mock_inline_data
+
+    mock_response = MagicMock()
+    mock_response.parts = [mock_part]
+    mock_response.model_dump.return_value = {}
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content = MagicMock(return_value=mock_response)
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        result = handler.generate_image(nano_banana_config, base_request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_error_handling(handler, base_config, base_request):
+    """Test async image generation error handling."""
+    from tarash.tarash_gateway.exceptions import GenerationFailedError
+
+    mock_client = AsyncMock()
+    mock_client.models.generate_images = AsyncMock(
+        side_effect=RuntimeError("API failure")
+    )
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        with pytest.raises(GenerationFailedError):
+            await handler.generate_image_async(base_config, base_request)
+
+
+def test_generate_image_sync_error_handling(handler, base_config, base_request):
+    """Test sync image generation error handling."""
+    from tarash.tarash_gateway.exceptions import GenerationFailedError
+
+    mock_client = MagicMock()
+    mock_client.models.generate_images = MagicMock(
+        side_effect=RuntimeError("API failure")
+    )
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        with pytest.raises(GenerationFailedError):
+            handler.generate_image(base_config, base_request)

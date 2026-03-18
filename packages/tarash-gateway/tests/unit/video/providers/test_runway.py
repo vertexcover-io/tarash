@@ -7,6 +7,8 @@ import pytest
 from runwayml import BadRequestError
 from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
+    HTTPError,
     TimeoutError,
     ValidationError,
 )
@@ -16,6 +18,8 @@ from tarash.tarash_gateway.models import (
 )
 from tarash.tarash_gateway.providers.runway import (
     RunwayProviderHandler,
+    _convert_media_to_file,
+    _extract_video_url,
     _get_endpoint_from_model,
     parse_runway_task_status,
 )
@@ -486,3 +490,228 @@ def test_handle_error_generic_error(handler, base_config, text_to_video_request)
 
     assert isinstance(result, GenerationFailedError)
     assert "Error while generating video" in str(result)
+
+
+def test_handle_error_api_timeout(handler, base_config, text_to_video_request):
+    """Test APITimeoutError maps to TimeoutError."""
+    from runwayml import APITimeoutError
+
+    ex = APITimeoutError.__new__(APITimeoutError)
+    ex.args = ("Request timed out",)
+
+    result = handler._handle_error(base_config, text_to_video_request, "test-id", ex)
+
+    assert isinstance(result, TimeoutError)
+    assert "timed out" in result.message
+    assert result.provider == "runway"
+    assert result.timeout_seconds == 600
+
+
+def test_handle_error_api_connection_error(handler, base_config, text_to_video_request):
+    """Test APIConnectionError maps to HTTPConnectionError."""
+    from runwayml import APIConnectionError
+
+    ex = APIConnectionError.__new__(APIConnectionError)
+    ex.args = ("Connection refused",)
+
+    result = handler._handle_error(base_config, text_to_video_request, "test-id", ex)
+
+    assert isinstance(result, HTTPConnectionError)
+    assert "Connection error" in result.message
+
+
+def test_handle_error_api_status_error_generic(
+    handler, base_config, text_to_video_request
+):
+    """Test generic APIStatusError (e.g. 500) maps to HTTPError."""
+    from runwayml import APIStatusError
+
+    ex = APIStatusError.__new__(APIStatusError)
+    ex.status_code = 500
+    ex.message = "Internal server error"
+    ex.body = {"error": "Internal server error"}
+    ex.args = ("Internal server error",)
+
+    result = handler._handle_error(base_config, text_to_video_request, "test-id", ex)
+
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 500
+
+
+# ==================== Helper Function Tests ====================
+
+
+def test_extract_video_url_from_string():
+    """Test _extract_video_url with string output."""
+    assert (
+        _extract_video_url("https://example.com/video.mp4")
+        == "https://example.com/video.mp4"
+    )
+
+
+def test_extract_video_url_from_list():
+    """Test _extract_video_url with list output."""
+    assert (
+        _extract_video_url(["https://example.com/video.mp4"])
+        == "https://example.com/video.mp4"
+    )
+
+
+def test_extract_video_url_from_empty_list():
+    """Test _extract_video_url with empty list returns None."""
+    assert _extract_video_url([]) is None
+
+
+def test_extract_video_url_from_dict():
+    """Test _extract_video_url with dict output."""
+    assert (
+        _extract_video_url({"url": "https://example.com/video.mp4"})
+        == "https://example.com/video.mp4"
+    )
+
+
+def test_extract_video_url_from_dict_no_url():
+    """Test _extract_video_url with dict without url key returns None."""
+    assert _extract_video_url({"other": "data"}) is None
+
+
+def test_extract_video_url_from_unknown_type():
+    """Test _extract_video_url with unknown type returns None."""
+    assert _extract_video_url(12345) is None
+
+
+def test_convert_media_to_file_string():
+    """Test _convert_media_to_file with string URL."""
+    result = _convert_media_to_file("https://example.com/image.jpg", "image")
+    assert result == "https://example.com/image.jpg"
+
+
+def test_convert_media_to_file_dict_bytes():
+    """Test _convert_media_to_file with MediaContent dict."""
+    import io
+
+    media = {"content": b"fake-image-data", "content_type": "image/jpeg"}
+    result = _convert_media_to_file(media, "prompt_image")
+
+    assert isinstance(result, io.BytesIO)
+    assert result.name == "prompt_image.jpeg"
+    assert result.read() == b"fake-image-data"
+
+
+def test_convert_media_to_file_other_type():
+    """Test _convert_media_to_file with HttpUrl-like type falls through to str()."""
+    from unittest.mock import MagicMock
+
+    mock_url = MagicMock()
+    mock_url.__str__ = lambda self: "https://example.com/fallback.jpg"
+
+    result = _convert_media_to_file(mock_url, "image")
+    assert result == "https://example.com/fallback.jpg"
+
+
+# ==================== Unknown Model Tests ====================
+
+
+def test_get_endpoint_unknown_model_rejects_video():
+    """Test unknown model rejects video input."""
+    with pytest.raises(ValidationError, match="does not support video input"):
+        _get_endpoint_from_model("unknown-model-v1", False, True)
+
+
+def test_get_endpoint_unknown_model_image_to_video():
+    """Test unknown model with image input routes to image_to_video."""
+    assert _get_endpoint_from_model("unknown-model-v1", True, False) == "image_to_video"
+
+
+def test_get_endpoint_unknown_model_text_to_video():
+    """Test unknown model without inputs routes to text_to_video."""
+    assert _get_endpoint_from_model("unknown-model-v1", False, False) == "text_to_video"
+
+
+# ==================== Request Conversion: audio flag, seed, content_moderation ====================
+
+
+def test_convert_request_text_to_video_with_audio(handler, base_config):
+    """Test audio flag is passed for text-to-video endpoint."""
+    request = VideoGenerationRequest(prompt="Test", generate_audio=True)
+    endpoint, params = handler._convert_request(base_config, request)
+
+    assert endpoint == "text_to_video"
+    assert params["audio"] is True
+
+
+def test_convert_request_image_to_video_no_reference_images_error(handler):
+    """Test image-to-video endpoint raises when no reference image found."""
+    config = VideoGenerationConfig(
+        model="gen4_turbo",
+        provider="runway",
+        api_key="test-api-key",
+        timeout=600,
+    )
+    request = VideoGenerationRequest(
+        prompt="Test",
+        image_list=[{"type": "last_frame", "image": "https://example.com/img.jpg"}],
+    )
+    with pytest.raises(ValidationError, match="No reference image found"):
+        handler._convert_request(config, request)
+
+
+def test_convert_request_v2v_with_reference_images(handler):
+    """Test v2v endpoint passes reference images."""
+    config = VideoGenerationConfig(
+        model="gen4_aleph",
+        provider="runway",
+        api_key="test-api-key",
+        timeout=600,
+    )
+    request = VideoGenerationRequest(
+        prompt="Add elements",
+        video="https://example.com/video.mp4",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/ref.jpg"},
+        ],
+        aspect_ratio="16:9",
+    )
+    endpoint, params = handler._convert_request(config, request)
+
+    assert endpoint == "video_to_video"
+    assert params["references"] == [
+        {"type": "image", "uri": "https://example.com/ref.jpg"}
+    ]
+
+
+def test_convert_request_v2v_seed_and_content_moderation(handler):
+    """Test v2v endpoint passes seed and content_moderation."""
+    config = VideoGenerationConfig(
+        model="gen4_aleph",
+        provider="runway",
+        api_key="test-api-key",
+        timeout=600,
+    )
+    request = VideoGenerationRequest(
+        prompt="Test",
+        video="https://example.com/video.mp4",
+        seed=99,
+        extra_params={"content_moderation": {"threshold": "low"}},
+    )
+    endpoint, params = handler._convert_request(config, request)
+
+    assert endpoint == "video_to_video"
+    assert params["seed"] == 99
+    assert params["content_moderation"] == {"threshold": "low"}
+
+
+# ==================== Image Generation: NotImplementedError ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_not_implemented(handler):
+    """Test async image generation raises NotImplementedError."""
+    with pytest.raises(NotImplementedError, match="does not support image generation"):
+        await handler.generate_image_async(None, None)
+
+
+def test_generate_image_sync_not_implemented(handler):
+    """Test sync image generation raises NotImplementedError."""
+    with pytest.raises(NotImplementedError, match="does not support image generation"):
+        handler.generate_image(None, None)
