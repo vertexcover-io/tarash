@@ -11,6 +11,7 @@ resolution-markers = [
 members = [
     "tarash",
     "tarash-gateway",
+    "tarash-lint",
 ]
 
 [[package]]
@@ -2372,6 +2373,21 @@ provides-extras = ["all", "cartesia", "dev", "elevenlabs", "fal", "google", "hum
 
 [package.metadata.requires-dev]
 dev = [{ name = "pyright", specifier = ">=1.1.407" }]
+
+[[package]]
+name = "tarash-lint"
+version = "0.1.0"
+source = { editable = "tools/linter" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0.0" }]
 
 [[package]]
 name = "tenacity"
