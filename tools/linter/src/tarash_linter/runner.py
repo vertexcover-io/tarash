@@ -91,15 +91,20 @@ def scan_test_files(test_root: Path, provider_names: list[str]) -> dict[str, lis
         return result
 
     all_test_files = list(test_root.rglob("test_*.py"))
-    for name in provider_names:
+    # Sort provider names longest-first so "openai_realtime" matches before "openai"
+    sorted_names = sorted(provider_names, key=len, reverse=True)
+    claimed: set[str] = set()
+    for name in sorted_names:
         prefix = f"test_{name}"
         matching = [
             str(f)
             for f in all_test_files
             if (f.name == f"{prefix}.py" or f.name.startswith(f"{prefix}_"))
+            and str(f) not in claimed
         ]
         if matching:
             result[name] = sorted(matching)
+            claimed.update(matching)
 
     return result
 

@@ -14,7 +14,6 @@ class Rule(ABC):
     """Base class for all lint rules."""
 
     code: str = ""
-    message_template: str = ""
 
     @abstractmethod
     def check(self, provider: ProviderInfo, context: RuleContext) -> list[Violation]:
