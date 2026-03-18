@@ -3,12 +3,38 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from tarash_linter.cli import (
     load_config,
     format_violations_text,
     format_violations_json,
+    main,
 )
 from tarash_linter.models import LintConfig, Violation
+
+
+# --- Helpers ---
+
+
+def _make_workspace_root(tmp_path: Path) -> Path:
+    """Create a minimal monorepo root with pyproject.toml workspace config."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["packages/*"]\n'
+    )
+    providers_dir = (
+        tmp_path
+        / "packages"
+        / "tarash-gateway"
+        / "src"
+        / "tarash"
+        / "tarash_gateway"
+        / "providers"
+    )
+    providers_dir.mkdir(parents=True)
+    (providers_dir / "__init__.py").write_text("")
+    (providers_dir / "field_mappers.py").write_text("")
+    return tmp_path
 
 
 def test_load_config_from_pyproject(tmp_path: Path):
@@ -80,3 +106,62 @@ def test_format_empty_violations_text():
 def test_format_empty_violations_json():
     """Empty violations produce empty JSON array."""
     assert format_violations_json([]) == "[]"
+
+
+# --- main() integration tests ---
+
+
+def test_main_select_override(tmp_path: Path, capsys):
+    """CLI --select overrides the select list from pyproject.toml."""
+    root = _make_workspace_root(tmp_path)
+    # Config file says TRH4, but CLI will say TRH1 — only TRH1 rules should run.
+    (root / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["packages/*"]\n\n[tool.tarash-lint]\nselect = ["TRH4"]\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--project-root", str(root), "--select", "TRH1"])
+
+    # exit 0 (no violations) or 1 (violations) — both mean the CLI ran correctly.
+    # The key assertion is that TRH4 rules were NOT used (no TRH4 codes in output).
+    captured = capsys.readouterr()
+    assert exc_info.value.code in (0, 1)
+    assert "TRH4" not in captured.out
+
+
+def test_main_ignore_merging(tmp_path: Path, capsys):
+    """CLI --ignore merges with config ignore list."""
+    root = _make_workspace_root(tmp_path)
+    # Config already ignores TRH201; CLI adds TRH101.
+    (root / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["packages/*"]\n\n[tool.tarash-lint]\nignore = ["TRH201"]\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--project-root", str(root), "--ignore", "TRH101"])
+
+    assert exc_info.value.code in (0, 1)
+    captured = capsys.readouterr()
+    # Neither TRH101 nor TRH201 should appear in output (both are ignored).
+    assert "TRH101" not in captured.out
+    assert "TRH201" not in captured.out
+
+
+def test_main_format_json(tmp_path: Path, capsys):
+    """--format json outputs valid JSON regardless of violations."""
+    root = _make_workspace_root(tmp_path)
+    # Minimal workspace pyproject without tarash-lint section.
+    (root / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["packages/*"]\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--project-root", str(root), "--format", "json"])
+
+    assert exc_info.value.code in (0, 1)
+    captured = capsys.readouterr()
+    # Output must be valid JSON (array), or empty (no violations -> no print).
+    stdout = captured.out.strip()
+    if stdout:
+        data = json.loads(stdout)
+        assert isinstance(data, list)

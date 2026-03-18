@@ -34,6 +34,12 @@ def test_parse_registry_mapping_empty():
     assert mapping == {}
 
 
+def test_parse_registry_mapping_syntax_error():
+    """Syntax errors in registry source return empty mapping."""
+    mapping = parse_registry_mapping("def broken(\n")
+    assert mapping == {}
+
+
 def test_scan_test_files(tmp_path: Path):
     """Finds test files matching test_{provider}*.py pattern."""
     test_dir = tmp_path / "tests" / "unit" / "video" / "providers"
@@ -63,6 +69,18 @@ def test_scan_test_functions(tmp_path: Path):
     functions = scan_test_functions(files)
     assert "test_convert_request_basic" in functions["fal"]
     assert "test_handle_error_timeout" in functions["fal"]
+
+
+def test_scan_test_functions_skips_syntax_error(tmp_path: Path):
+    """scan_test_functions skips test files with syntax errors without crashing."""
+    test_dir = tmp_path / "tests" / "unit" / "video" / "providers"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_broken.py").write_text("def test_foo(\n")  # invalid syntax
+
+    files = {"broken": [str(test_dir / "test_broken.py")]}
+    functions = scan_test_functions(files)
+    # Broken file is skipped; no functions collected means key absent
+    assert "broken" not in functions
 
 
 # --- Integration ---
@@ -193,3 +211,37 @@ def get_handler(config):
     codes = {v.code for v in violations if v.file.endswith("fakevideo.py")}
     assert "TRH101" not in codes, "TRH101 should be suppressed by # noqa"
     assert "TRH102" not in codes, "TRH102 should be suppressed by # noqa"
+
+
+def test_run_lint_provider_filter(tmp_gateway: Path):
+    """--provider filter restricts violations to only the specified provider."""
+    config = LintConfig()
+    violations = run_lint(tmp_gateway, config, provider_filter="fakevideo")
+
+    # All violations must reference fakevideo, not fakeaudio
+    assert all("fakevideo" in v.file for v in violations), (
+        f"All violations must be from fakevideo, got: {[v.file for v in violations]}"
+    )
+    assert not any("fakeaudio" in v.file for v in violations), (
+        "fakeaudio violations should not appear when filtering for fakevideo"
+    )
+
+
+def test_scan_test_files_overlapping_provider_names(tmp_path: Path):
+    """test_fal_ai.py must not be claimed by 'fal' when 'fal_ai' is also a provider."""
+    test_dir = tmp_path / "tests" / "unit" / "video" / "providers"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_fal.py").write_text("def test_foo(): pass")
+    (test_dir / "test_fal_ai.py").write_text("def test_bar(): pass")
+
+    result = scan_test_files(tmp_path / "tests" / "unit", ["fal", "fal_ai"])
+
+    assert "fal_ai" in result
+    assert any("test_fal_ai.py" in f for f in result["fal_ai"]), (
+        "test_fal_ai.py should be claimed by fal_ai"
+    )
+    # test_fal_ai.py must NOT appear under fal
+    fal_files = result.get("fal", [])
+    assert not any("test_fal_ai.py" in f for f in fal_files), (
+        "test_fal_ai.py must not be claimed by fal"
+    )

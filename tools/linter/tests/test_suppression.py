@@ -1,6 +1,8 @@
 """Tests for # noqa inline suppression."""
 
-from tarash_linter.suppression import parse_noqa_comments
+from pathlib import Path
+
+from tarash_linter.suppression import parse_noqa_comments, parse_noqa_comments_for_file
 
 
 def test_bare_noqa_suppresses_all():
@@ -57,3 +59,18 @@ def test_noqa_on_multiple_lines():
     assert result[1] == {"TRH101"}
     assert 2 not in result
     assert result[3] is None
+
+
+def test_parse_noqa_comments_for_file_missing():
+    """Missing file returns empty dict."""
+    result = parse_noqa_comments_for_file(Path("/nonexistent/file.py"))
+    assert result == {}
+
+
+def test_parse_noqa_comments_for_file_reads_file(tmp_path: Path):
+    """Reads a real file and parses noqa comments."""
+    f = tmp_path / "test.py"
+    f.write_text("x = 1  # noqa: TRH101\ny = 2\n")
+    result = parse_noqa_comments_for_file(f)
+    assert result[1] == {"TRH101"}
+    assert 2 not in result

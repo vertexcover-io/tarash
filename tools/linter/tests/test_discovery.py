@@ -64,3 +64,22 @@ def test_discover_empty_file(tmp_gateway: Path):
     providers = discover_providers(tmp_gateway)
     names = {p.name for p in providers}
     assert "empty" not in names
+
+
+def test_discover_skips_syntax_error_files(tmp_gateway: Path):
+    """Provider files with syntax errors are silently skipped."""
+    providers_dir = (
+        tmp_gateway
+        / "packages"
+        / "tarash-gateway"
+        / "src"
+        / "tarash"
+        / "tarash_gateway"
+        / "providers"
+    )
+    (providers_dir / "broken.py").write_text("class Broken(\n")  # invalid syntax
+    providers = discover_providers(tmp_gateway)
+    names = {p.name for p in providers}
+    assert "broken" not in names
+    # Original providers still found
+    assert "fakevideo" in names
