@@ -7,14 +7,10 @@ from pathlib import Path
 
 from tarash_linter.discovery import discover_providers
 from tarash_linter.models import LintConfig, Violation
-from tarash_linter.rules import RULES, RuleContext
+from tarash_linter.rules import RULES, RuleContext, load_all_rules
 
-# Import rule modules to trigger registration
-import tarash_linter.rules.provider  # noqa: F401
-import tarash_linter.rules.registry  # noqa: F401
-import tarash_linter.rules.pricing  # noqa: F401
-import tarash_linter.rules.unit_tests  # noqa: F401
-import tarash_linter.rules.e2e_tests  # noqa: F401
+# Auto-discover and register all rule modules
+load_all_rules()
 
 _GATEWAY_SRC_REL = Path("packages/tarash-gateway/src/tarash/tarash_gateway")
 _GATEWAY_TESTS_REL = Path("packages/tarash-gateway/tests")
@@ -77,38 +73,6 @@ def parse_registry_mapping(source: str) -> dict[str, str]:
                         break
 
     return mapping
-
-
-def parse_pricing_providers(source: str) -> set[str]:
-    """Parse pricing.py source and extract provider names from PRICING_TABLE keys.
-
-    Looks for tuple keys like ("fal", "fal-ai/veo3") and collects the first element.
-    """
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return set()
-
-    providers: set[str] = set()
-
-    for node in ast.walk(tree):
-        # Find PRICING_TABLE = { ... }
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if not isinstance(target, ast.Name) or target.id != "PRICING_TABLE":
-                continue
-            if not isinstance(node.value, ast.Dict):
-                continue
-            for key in node.value.keys:
-                if key is None:
-                    continue
-                if isinstance(key, ast.Tuple) and len(key.elts) >= 1:
-                    first = key.elts[0]
-                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                        providers.add(first.value)
-
-    return providers
 
 
 def scan_test_files(test_root: Path, provider_names: list[str]) -> dict[str, list[str]]:
@@ -180,14 +144,6 @@ def build_context(project_root: Path, provider_names: list[str]) -> RuleContext:
     )
     registry_mapping = parse_registry_mapping(registry_source)
 
-    # Parse pricing.py — if file doesn't exist, skip TRH301 by marking all providers as having pricing
-    pricing_file = gw_src / "pricing.py"
-    if pricing_file.is_file():
-        pricing_source = pricing_file.read_text(encoding="utf-8")
-        pricing_providers = parse_pricing_providers(pricing_source)
-    else:
-        pricing_providers = set(provider_names)
-
     # Scan unit test files
     unit_test_root = gw_tests / "unit"
     unit_test_files = scan_test_files(unit_test_root, provider_names)
@@ -200,7 +156,6 @@ def build_context(project_root: Path, provider_names: list[str]) -> RuleContext:
     return RuleContext(
         project_root=str(project_root),
         registry_mapping=registry_mapping,
-        pricing_providers=pricing_providers,
         unit_test_files=unit_test_files,
         unit_test_functions=unit_test_functions,
         e2e_test_files=e2e_test_files,

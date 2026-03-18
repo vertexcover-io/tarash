@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,14 +26,13 @@ class RuleContext:
     """Shared context passed to all rules during a lint run.
 
     Pre-computed data that multiple rules need (registry mappings,
-    pricing entries, test file lists) so each rule doesn't re-parse files.
+    test file lists) so each rule doesn't re-parse files.
     """
 
     def __init__(
         self,
         project_root: str,
         registry_mapping: dict[str, str],
-        pricing_providers: set[str],
         unit_test_files: dict[str, list[str]],
         unit_test_functions: dict[str, set[str]],
         e2e_test_files: dict[str, list[str]],
@@ -40,8 +40,6 @@ class RuleContext:
         self.project_root = project_root
         # provider_name -> handler_class_name from registry.py
         self.registry_mapping = registry_mapping
-        # set of provider names that have at least one PRICING_TABLE entry
-        self.pricing_providers = pricing_providers
         # provider_name -> list of unit test file paths
         self.unit_test_files = unit_test_files
         # provider_name -> set of test function names across all unit test files
@@ -58,3 +56,17 @@ def register_rule(rule: Rule) -> Rule:
     """Register a rule instance."""
     RULES.append(rule)
     return rule
+
+
+def load_all_rules() -> None:
+    """Auto-discover and import all rule modules in the rules package.
+
+    Each module's top-level register_rule() calls populate the RULES list.
+    Idempotent — safe to call multiple times (modules only import once).
+    """
+    import importlib
+    import pkgutil
+
+    package_path = Path(__file__).parent
+    for module_info in pkgutil.iter_modules([str(package_path)]):
+        importlib.import_module(f"tarash_linter.rules.{module_info.name}")
