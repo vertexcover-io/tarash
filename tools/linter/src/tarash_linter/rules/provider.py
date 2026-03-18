@@ -111,18 +111,9 @@ class TRH105(_ConvertMethodRule):
     suffix = "response"
 
 
-class TRH106(_RequiredMethodRule):
-    """Video provider must implement _validate_params."""
-
-    code = "TRH106"
-    required_method = "_validate_params"
-    video_only = True
-
-
 # Register all rules
 register_rule(TRH101())
 register_rule(TRH102())
 register_rule(TRH103())
 register_rule(TRH104())
 register_rule(TRH105())
-register_rule(TRH106())

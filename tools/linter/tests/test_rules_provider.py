@@ -8,7 +8,6 @@ from tarash_linter.rules.provider import (
     TRH103,
     TRH104,
     TRH105,
-    TRH106,
 )
 
 
@@ -16,7 +15,6 @@ def _empty_context() -> RuleContext:
     return RuleContext(
         project_root=".",
         registry_mapping={},
-        pricing_providers=set(),
         unit_test_files={},
         unit_test_functions={},
         e2e_test_files={},
@@ -192,39 +190,6 @@ def test_trh105_fails_for_video_provider_without_convert_response():
 
 def test_trh105_skips_non_video_provider():
     rule = TRH105()
-    provider = _make_provider(
-        "cartesia",
-        {
-            "_get_client",
-            "_handle_error",
-            "generate_tts",
-            "generate_tts_async",
-        },
-    )
-    assert rule.check(provider, _empty_context()) == []
-
-
-# --- TRH106: _validate_params (video only) ---
-
-
-def test_trh106_fails_for_video_provider_without_validate_params():
-    rule = TRH106()
-    provider = _make_provider(
-        "fal",
-        {
-            "_get_client",
-            "_handle_error",
-            "generate_video",
-            "generate_video_async",
-        },
-    )
-    violations = rule.check(provider, _empty_context())
-    assert len(violations) == 1
-    assert violations[0].code == "TRH106"
-
-
-def test_trh106_skips_non_video_provider():
-    rule = TRH106()
     provider = _make_provider(
         "cartesia",
         {

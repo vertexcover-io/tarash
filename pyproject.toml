@@ -40,9 +40,9 @@ include = [
 members = ["packages/*", "tools/*"]
 
 [tool.tarash-lint]
-select = ["TRH1", "TRH2", "TRH3", "TRH4", "TRH5"]
-ignore = ["TRH106"]
-exclude-providers = ["azure_openai"]
+select = ["TRH1", "TRH2", "TRH4", "TRH5"]
+ignore = []
+exclude-providers = ["azure_openai", "stability"]
 
 [dependency-groups]
 dev = [

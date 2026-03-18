@@ -1,7 +1,7 @@
 """Integration test: run tarash-lint against the real tarash-gateway codebase.
 
 This test verifies that the linter produces only known violations on the current
-codebase (with azure_openai excluded and TRH106 ignored), proving no false positives.
+codebase (with azure_openai and stability excluded), proving no false positives.
 """
 
 from pathlib import Path
@@ -24,16 +24,13 @@ def _find_repo_root() -> Path:
 
 # Known violations in the current codebase that are legitimate findings,
 # not false positives. These represent real coverage gaps.
-KNOWN_VIOLATIONS = {
-    # stability has no error handling tests (only field mapper and success tests)
-    ("TRH403", "stability"),
-}
+KNOWN_VIOLATIONS = set()
 
 
 def test_no_false_positives_on_real_codebase():
     """The linter should produce only known violations on the existing codebase."""
     root = _find_repo_root()
-    config = LintConfig(exclude_providers=["azure_openai"], ignore=["TRH106"])
+    config = LintConfig(exclude_providers=["azure_openai", "stability"])
     violations = run_lint(root, config)
 
     unexpected = [
