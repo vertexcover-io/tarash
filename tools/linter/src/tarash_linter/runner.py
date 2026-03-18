@@ -8,6 +8,7 @@ from pathlib import Path
 from tarash_linter.discovery import discover_providers
 from tarash_linter.models import LintConfig, Violation
 from tarash_linter.rules import RULES, RuleContext, load_all_rules
+from tarash_linter.suppression import parse_noqa_comments_for_file
 
 # Auto-discover and register all rule modules
 load_all_rules()
@@ -198,6 +199,22 @@ def run_lint(
             if not config.is_rule_selected(rule.code):
                 continue
             violations.extend(rule.check(provider, context))
+
+    # Filter violations suppressed by # noqa comments
+    suppression_maps: dict[str, dict[int, set[str] | None]] = {}
+    filtered: list[Violation] = []
+    for v in violations:
+        filepath = project_root / v.file
+        if v.file not in suppression_maps:
+            suppression_maps[v.file] = parse_noqa_comments_for_file(filepath)
+        noqa = suppression_maps[v.file]
+        suppressed_codes = noqa.get(v.line)
+        if suppressed_codes is None and v.line in noqa:
+            continue  # blanket # noqa
+        if isinstance(suppressed_codes, set) and v.code in suppressed_codes:
+            continue  # specific code suppressed
+        filtered.append(v)
+    violations = filtered
 
     # Sort by file, line, code for deterministic output
     violations.sort(key=lambda v: (v.file, v.line, v.code))

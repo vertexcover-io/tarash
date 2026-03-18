@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from tarash_linter.runner import (
-    parse_pricing_providers,
     parse_registry_mapping,
     run_lint,
     scan_test_files,
@@ -33,25 +32,6 @@ def test_parse_registry_mapping_empty():
     """Returns empty dict for source with no if/elif pattern."""
     mapping = parse_registry_mapping("x = 1")
     assert mapping == {}
-
-
-def test_parse_pricing_providers_extracts_tuple_keys():
-    """Extract provider names from PRICING_TABLE (provider, model) tuples."""
-    source = """
-PRICING_TABLE = {
-    ("fal", "fal-ai/veo3"): PricingEntry(usd_per_unit=Decimal("0.40"), unit="seconds"),
-    ("fal", "fal-ai/flux/dev"): PricingEntry(usd_per_unit=Decimal("0.025"), unit="megapixels"),
-    ("openai", "sora"): PricingEntry(usd_per_unit=Decimal("0.10"), unit="seconds"),
-}
-"""
-    providers = parse_pricing_providers(source)
-    assert providers == {"fal", "openai"}
-
-
-def test_parse_pricing_providers_empty():
-    """Returns empty set for source with no PRICING_TABLE."""
-    providers = parse_pricing_providers("x = 1")
-    assert providers == set()
 
 
 def test_scan_test_files(tmp_path: Path):
@@ -108,14 +88,6 @@ def get_handler(config):
         _HANDLER_INSTANCES[provider] = cast(ProviderHandler, FakeaudioProviderHandler())
 """)
 
-    # Add pricing.py
-    (gw_src / "pricing.py").write_text("""
-PRICING_TABLE = {
-    ("fakevideo", "fakevideo/model1"): "entry",
-    ("fakeaudio", "fakeaudio/model1"): "entry",
-}
-""")
-
     # Add unit test files
     gw_root = tmp_gateway / "packages" / "tarash-gateway"
     unit_dir = gw_root / "tests" / "unit" / "video" / "providers"
@@ -153,8 +125,71 @@ def test_run_lint_excludes_provider(tmp_gateway: Path):
         / "tarash_gateway"
     )
     (gw_src / "registry.py").write_text("x = 1")
-    (gw_src / "pricing.py").write_text("PRICING_TABLE = {}")
 
     config = LintConfig(exclude_providers=["fakevideo", "fakeaudio"])
     violations = run_lint(tmp_gateway, config)
     assert violations == []
+
+
+def test_run_lint_respects_noqa(tmp_gateway: Path):
+    """Violations on lines with # noqa are suppressed."""
+    # Overwrite the fakevideo provider to be missing _get_client but with # noqa
+    providers_dir = (
+        tmp_gateway
+        / "packages"
+        / "tarash-gateway"
+        / "src"
+        / "tarash"
+        / "tarash_gateway"
+        / "providers"
+    )
+    (providers_dir / "fakevideo.py").write_text(
+        '''"""Fake video provider."""
+
+class FakevideoProviderHandler:  # noqa: TRH101, TRH102
+    def _convert_request(self, config, request): ...
+    def _convert_response(self, config, request, request_id, response): ...
+    async def generate_video_async(self, config, request, on_progress=None): ...
+    def generate_video(self, config, request, on_progress=None): ...
+'''
+    )
+
+    # Add minimal supporting files
+    gw_src = (
+        tmp_gateway
+        / "packages"
+        / "tarash-gateway"
+        / "src"
+        / "tarash"
+        / "tarash_gateway"
+    )
+    (gw_src / "registry.py").write_text("""
+def get_handler(config):
+    provider = config.provider
+    if provider == "fakevideo":
+        _HANDLER_INSTANCES[provider] = cast(ProviderHandler, FakevideoProviderHandler())
+    elif provider == "fakeaudio":
+        _HANDLER_INSTANCES[provider] = cast(ProviderHandler, FakeaudioProviderHandler())
+""")
+
+    gw_root = tmp_gateway / "packages" / "tarash-gateway"
+    unit_dir = gw_root / "tests" / "unit" / "video" / "providers"
+    unit_dir.mkdir(parents=True)
+    (unit_dir / "test_fakevideo.py").write_text(
+        "def test_convert_request(): pass\ndef test_handle_error(): pass\n"
+    )
+    audio_unit = gw_root / "tests" / "unit" / "audio" / "providers"
+    audio_unit.mkdir(parents=True)
+    (audio_unit / "test_fakeaudio.py").write_text("def test_handle_error(): pass\n")
+    e2e_dir = gw_root / "tests" / "e2e"
+    e2e_dir.mkdir(parents=True)
+    (e2e_dir / "test_fakevideo.py").write_text("def test_e2e(): pass\n")
+    (e2e_dir / "test_fakeaudio.py").write_text("def test_e2e(): pass\n")
+
+    config = LintConfig()
+    violations = run_lint(tmp_gateway, config)
+
+    # TRH101 and TRH102 should be suppressed by # noqa on the class line
+    codes = {v.code for v in violations if v.file.endswith("fakevideo.py")}
+    assert "TRH101" not in codes, "TRH101 should be suppressed by # noqa"
+    assert "TRH102" not in codes, "TRH102 should be suppressed by # noqa"
