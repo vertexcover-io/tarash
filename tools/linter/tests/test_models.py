@@ -107,4 +107,4 @@ def test_lint_config_default_selects_all():
     """Empty select means all rules selected."""
     config = LintConfig(select=[], ignore=[], exclude_providers=[])
     assert config.is_rule_selected("TRH101") is True
-    assert config.is_rule_selected("TRH501") is True
+    assert config.is_rule_selected("TRH401") is True

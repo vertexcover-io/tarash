@@ -40,7 +40,7 @@ include = [
 members = ["packages/*", "tools/*"]
 
 [tool.tarash-lint]
-select = ["TRH1", "TRH2", "TRH4", "TRH5"]
+select = ["TRH1", "TRH2", "TRH3", "TRH4"]
 ignore = []
 exclude-providers = ["azure_openai", "stability"]
 

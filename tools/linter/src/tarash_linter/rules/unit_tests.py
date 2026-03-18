@@ -6,10 +6,10 @@ from tarash_linter.models import ProviderInfo, Violation
 from tarash_linter.rules import Rule, RuleContext, register_rule
 
 
-class TRH401(Rule):
+class TRH301(Rule):
     """Provider must have at least one unit test file."""
 
-    code = "TRH401"
+    code = "TRH301"
 
     def check(self, provider: ProviderInfo, context: RuleContext) -> list[Violation]:
         if context.unit_test_files.get(provider.name):
@@ -28,16 +28,16 @@ class TRH401(Rule):
         ]
 
 
-class TRH402(Rule):
+class TRH302(Rule):
     """Unit tests must include a test for _convert_request (video providers only)."""
 
-    code = "TRH402"
+    code = "TRH302"
 
     def check(self, provider: ProviderInfo, context: RuleContext) -> list[Violation]:
         # Only applies to video providers (who must have _convert_request per TRH104)
         if not provider.is_video_provider:
             return []
-        # Skip if no test files at all — TRH401 covers that
+        # Skip if no test files at all — TRH301 covers that
         if not context.unit_test_files.get(provider.name):
             return []
         functions = context.unit_test_functions.get(provider.name, set())
@@ -58,10 +58,10 @@ class TRH402(Rule):
         ]
 
 
-class TRH403(Rule):
+class TRH303(Rule):
     """Unit tests must include a test for _handle_error."""
 
-    code = "TRH403"
+    code = "TRH303"
 
     def check(self, provider: ProviderInfo, context: RuleContext) -> list[Violation]:
         if not context.unit_test_files.get(provider.name):
@@ -86,6 +86,6 @@ class TRH403(Rule):
         ]
 
 
-register_rule(TRH401())
-register_rule(TRH402())
-register_rule(TRH403())
+register_rule(TRH301())
+register_rule(TRH302())
+register_rule(TRH303())

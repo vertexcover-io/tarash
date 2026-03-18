@@ -1,8 +1,8 @@
-"""Tests for TRH4xx unit test rules."""
+"""Tests for TRH3xx unit test rules."""
 
 from tarash_linter.models import ProviderInfo
 from tarash_linter.rules import RuleContext
-from tarash_linter.rules.unit_tests import TRH401, TRH402, TRH403
+from tarash_linter.rules.unit_tests import TRH301, TRH302, TRH303
 
 
 def _make_provider(name: str) -> ProviderInfo:
@@ -24,31 +24,30 @@ def _context_with_tests(
     return RuleContext(
         project_root=".",
         registry_mapping={},
-        pricing_providers=set(),
         unit_test_files=files or {},
         unit_test_functions=functions or {},
         e2e_test_files={},
     )
 
 
-def test_trh401_passes_when_test_file_exists():
-    rule = TRH401()
+def test_trh301_passes_when_test_file_exists():
+    rule = TRH301()
     provider = _make_provider("fal")
     ctx = _context_with_tests(files={"fal": ["tests/unit/video/providers/test_fal.py"]})
     assert rule.check(provider, ctx) == []
 
 
-def test_trh401_fails_when_no_test_file():
-    rule = TRH401()
+def test_trh301_fails_when_no_test_file():
+    rule = TRH301()
     provider = _make_provider("newprovider")
     ctx = _context_with_tests(files={})
     violations = rule.check(provider, ctx)
     assert len(violations) == 1
-    assert violations[0].code == "TRH401"
+    assert violations[0].code == "TRH301"
 
 
-def test_trh402_passes_with_convert_request_test():
-    rule = TRH402()
+def test_trh302_passes_with_convert_request_test():
+    rule = TRH302()
     provider = _make_provider("fal")
     ctx = _context_with_tests(
         files={"fal": ["test_fal.py"]},
@@ -57,8 +56,8 @@ def test_trh402_passes_with_convert_request_test():
     assert rule.check(provider, ctx) == []
 
 
-def test_trh402_fails_without_convert_request_test():
-    rule = TRH402()
+def test_trh302_fails_without_convert_request_test():
+    rule = TRH302()
     provider = _make_provider("fal")
     ctx = _context_with_tests(
         files={"fal": ["test_fal.py"]},
@@ -66,20 +65,20 @@ def test_trh402_fails_without_convert_request_test():
     )
     violations = rule.check(provider, ctx)
     assert len(violations) == 1
-    assert violations[0].code == "TRH402"
+    assert violations[0].code == "TRH302"
 
 
-def test_trh402_skips_when_no_test_file():
-    """TRH402 doesn't fire if there's no test file -- TRH401 covers that."""
-    rule = TRH402()
+def test_trh302_skips_when_no_test_file():
+    """TRH302 doesn't fire if there's no test file -- TRH301 covers that."""
+    rule = TRH302()
     provider = _make_provider("fal")
     ctx = _context_with_tests(files={}, functions={})
     assert rule.check(provider, ctx) == []
 
 
-def test_trh402_skips_non_video_provider():
-    """TRH402 doesn't apply to audio-only providers."""
-    rule = TRH402()
+def test_trh302_skips_non_video_provider():
+    """TRH302 doesn't apply to audio-only providers."""
+    rule = TRH302()
     provider = ProviderInfo(
         name="cartesia",
         file="providers/cartesia.py",
@@ -96,8 +95,8 @@ def test_trh402_skips_non_video_provider():
     assert rule.check(provider, ctx) == []
 
 
-def test_trh403_passes_with_handle_error_test():
-    rule = TRH403()
+def test_trh303_passes_with_handle_error_test():
+    rule = TRH303()
     provider = _make_provider("fal")
     ctx = _context_with_tests(
         files={"fal": ["test_fal.py"]},
@@ -106,8 +105,8 @@ def test_trh403_passes_with_handle_error_test():
     assert rule.check(provider, ctx) == []
 
 
-def test_trh403_fails_without_handle_error_test():
-    rule = TRH403()
+def test_trh303_fails_without_handle_error_test():
+    rule = TRH303()
     provider = _make_provider("fal")
     ctx = _context_with_tests(
         files={"fal": ["test_fal.py"]},
@@ -115,4 +114,4 @@ def test_trh403_fails_without_handle_error_test():
     )
     violations = rule.check(provider, ctx)
     assert len(violations) == 1
-    assert violations[0].code == "TRH403"
+    assert violations[0].code == "TRH303"

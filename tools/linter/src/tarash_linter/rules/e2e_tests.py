@@ -6,10 +6,10 @@ from tarash_linter.models import ProviderInfo, Violation
 from tarash_linter.rules import Rule, RuleContext, register_rule
 
 
-class TRH501(Rule):
+class TRH401(Rule):
     """Provider must have at least one e2e test file."""
 
-    code = "TRH501"
+    code = "TRH401"
 
     def check(self, provider: ProviderInfo, context: RuleContext) -> list[Violation]:
         if context.e2e_test_files.get(provider.name):
@@ -28,4 +28,4 @@ class TRH501(Rule):
         ]
 
 
-register_rule(TRH501())
+register_rule(TRH401())
