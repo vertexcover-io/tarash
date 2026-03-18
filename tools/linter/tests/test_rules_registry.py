@@ -21,7 +21,6 @@ def _context_with_registry(mapping: dict[str, str]) -> RuleContext:
     return RuleContext(
         project_root=".",
         registry_mapping=mapping,
-        pricing_providers=set(),
         unit_test_files={},
         unit_test_functions={},
         e2e_test_files={},
