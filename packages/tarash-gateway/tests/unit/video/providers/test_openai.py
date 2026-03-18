@@ -6,6 +6,8 @@ import pytest
 
 from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
+    HTTPError,
     TimeoutError,
     ValidationError,
 )
@@ -962,3 +964,332 @@ def test_generate_image_sync_gpt_image_15_success(handler):
     assert response.images[0] == "https://example.com/image1.png"
     assert response.images[1] == "https://example.com/image2.png"
     assert response.status == "completed"
+
+
+# ==================== Error Handling: APITimeoutError, APIConnectionError, APIStatusError ====================
+
+
+def test_handle_error_api_timeout(handler, base_config, base_request):
+    """Test APITimeoutError maps to TimeoutError."""
+    from openai import APITimeoutError
+
+    ex = APITimeoutError.__new__(APITimeoutError)
+    ex.args = ("Request timed out",)
+
+    result = handler._handle_error(base_config, base_request, "req-t", ex)
+
+    assert isinstance(result, TimeoutError)
+    assert "timed out" in result.message
+    assert result.provider == "openai"
+    assert result.timeout_seconds == 600
+
+
+def test_handle_error_api_connection_error(handler, base_config, base_request):
+    """Test APIConnectionError maps to HTTPConnectionError."""
+    from openai import APIConnectionError
+
+    ex = APIConnectionError.__new__(APIConnectionError)
+    ex.args = ("Connection refused",)
+
+    result = handler._handle_error(base_config, base_request, "req-c", ex)
+
+    assert isinstance(result, HTTPConnectionError)
+    assert "Connection error" in result.message
+
+
+def test_handle_error_api_status_error_400_validation(
+    handler, base_config, base_request
+):
+    """Test BadRequestError (400) maps to ValidationError."""
+    from openai import BadRequestError
+
+    ex = BadRequestError.__new__(BadRequestError)
+    ex.status_code = 400
+    ex.message = "Invalid parameter"
+    ex.body = {"message": "Invalid prompt"}
+    ex.type = "invalid_request_error"
+    ex.param = "prompt"
+    ex.code = "invalid_parameter"
+    ex.args = ("Invalid parameter",)
+
+    result = handler._handle_error(base_config, base_request, "req-400", ex)
+
+    assert isinstance(result, ValidationError)
+    assert result.message == "Invalid prompt"  # Extracted from body
+
+
+def test_handle_error_api_status_error_body_dict_no_message(
+    handler, base_config, base_request
+):
+    """Test APIStatusError with body dict but no message key uses ex.message."""
+    from openai import APIStatusError
+
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    mock_response.json.return_value = {}
+    mock_response.headers = {}
+    mock_response.text = ""
+
+    ex = APIStatusError.__new__(APIStatusError)
+    ex.status_code = 500
+    ex.message = "Server error fallback"
+    ex.body = {"error": "no message key"}
+    ex.type = None
+    ex.param = None
+    ex.code = None
+    ex.response = mock_response
+    ex.args = ("Server error",)
+
+    result = handler._handle_error(base_config, base_request, "req-500", ex)
+
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 500
+    assert result.message == "Server error fallback"
+
+
+def test_handle_error_api_status_error_non_dict_body(
+    handler, base_config, base_request
+):
+    """Test APIStatusError with non-dict body uses ex.message."""
+    from openai import APIStatusError
+
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.headers = {}
+    mock_response.text = ""
+
+    ex = APIStatusError.__new__(APIStatusError)
+    ex.status_code = 429
+    ex.message = "Rate limited"
+    ex.body = "rate_limited"  # non-dict body
+    ex.type = None
+    ex.param = None
+    ex.code = None
+    ex.response = mock_response
+    ex.args = ("Rate limited",)
+
+    result = handler._handle_error(base_config, base_request, "req-429", ex)
+
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 429
+    assert result.message == "Rate limited"
+
+
+# ==================== Validate Params: Empty extra_params ====================
+
+
+def test_validate_params_with_none_extra_params(handler, base_config):
+    """Test validation with None extra_params returns empty dict."""
+    request = VideoGenerationRequest(prompt="test")
+    # Ensure extra_params is empty
+    assert handler._validate_params(base_config, request) == {}
+
+
+# ==================== Invalid Aspect Ratio ====================
+
+
+def test_convert_request_invalid_aspect_ratio(handler, base_config):
+    """Test unsupported aspect ratio for OpenAI raises ValidationError."""
+    # 4:3 is valid in the Pydantic model but not supported by OpenAI Sora
+    request = VideoGenerationRequest(prompt="Test", aspect_ratio="4:3")
+    with pytest.raises(ValidationError, match="Invalid aspect ratio"):
+        handler._convert_request(base_config, request)
+
+
+# ==================== Image-to-Video Flow ====================
+
+
+def test_convert_request_image_to_video_with_bytes(handler, base_config):
+    """Test image-to-video conversion with MediaContent bytes dict."""
+    request = VideoGenerationRequest(
+        prompt="Animate this image",
+        image_list=[
+            {
+                "type": "reference",
+                "image": {
+                    "content": b"fake-image-bytes",
+                    "content_type": "image/jpeg",
+                },
+            }
+        ],
+    )
+    result = handler._convert_request(base_config, request)
+
+    # Should have input_reference as BytesIO
+    assert "input_reference" in result
+    import io
+
+    assert isinstance(result["input_reference"], io.BytesIO)
+
+
+def test_convert_request_image_to_video_with_url(handler, base_config):
+    """Test image-to-video conversion with URL downloads the image."""
+    request = VideoGenerationRequest(
+        prompt="Animate",
+        image_list=[
+            {
+                "type": "reference",
+                "image": "https://example.com/image.jpg",
+            }
+        ],
+    )
+    with patch(
+        "tarash.tarash_gateway.providers.openai.download_media_from_url",
+        return_value=(b"downloaded-bytes", "image/jpeg"),
+    ):
+        result = handler._convert_request(base_config, request)
+
+    assert "input_reference" in result
+
+
+def test_convert_request_image_to_video_multiple_images_error(handler, base_config):
+    """Test more than 1 image raises ValidationError."""
+    request = VideoGenerationRequest(
+        prompt="Animate",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/img1.jpg"},
+            {"type": "reference", "image": "https://example.com/img2.jpg"},
+        ],
+    )
+    with pytest.raises(ValidationError, match="only supports 1 reference image"):
+        handler._convert_request(base_config, request)
+
+
+# ==================== Download Video Sync: non-completed ====================
+
+
+def test_download_video_sync_non_completed_returns_none(handler, base_config):
+    """Test _download_video_sync returns (None, None) for non-completed video."""
+    from tarash.tarash_gateway.logging import ProviderLogger
+
+    mock_video = MagicMock()
+    mock_video.id = "video-incomplete"
+    mock_video.status = "in_progress"
+
+    logger = ProviderLogger("openai", "sora-2", "test")
+
+    content, content_type = handler._download_video_sync(
+        MagicMock(), mock_video, logger
+    )
+
+    assert content is None
+    assert content_type is None
+
+
+# ==================== Log Poll Status ====================
+
+
+def test_log_poll_status_returns_last_logged_progress(handler, base_config):
+    """Test _log_poll_status returns last_logged_progress value."""
+    from tarash.tarash_gateway.logging import ProviderLogger
+
+    mock_video = MagicMock()
+    mock_video.status = "in_progress"
+    mock_video.progress = 50
+
+    logger = ProviderLogger("openai", "sora-2", "test")
+
+    result = handler._log_poll_status(logger, mock_video, 0, 10, -1)
+
+    assert isinstance(result, int)
+
+
+# ==================== Remix Flow ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_video_async_remix_removes_model(handler, base_config):
+    """Test remix flow removes 'model' from params."""
+    mock_video_completed = MagicMock()
+    mock_video_completed.id = "video-remix"
+    mock_video_completed.status = "completed"
+    mock_video_completed.progress = 100
+    mock_video_completed.model_dump.return_value = {"id": "video-remix"}
+    mock_video_completed.seconds = "8"
+    mock_video_completed.size = "1280x720"
+
+    mock_download_response = AsyncMock()
+    mock_download_response.response.aread = AsyncMock(return_value=b"video content")
+
+    mock_async_client = AsyncMock()
+    mock_async_client.videos.remix = AsyncMock(return_value=mock_video_completed)
+    mock_async_client.videos.retrieve = AsyncMock(return_value=mock_video_completed)
+    mock_async_client.videos.download_content = AsyncMock(
+        return_value=mock_download_response
+    )
+
+    request = VideoGenerationRequest(
+        prompt="Remix this video",
+        extra_params={"video_id": "existing-video-id"},
+    )
+
+    with patch(
+        "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
+        return_value=mock_async_client,
+    ):
+        result = await handler.generate_video_async(base_config, request)
+
+    assert result.request_id == "video-remix"
+    mock_async_client.videos.remix.assert_called_once()
+    # Verify 'model' is NOT in the remix params
+    call_kwargs = mock_async_client.videos.remix.call_args.kwargs
+    assert "model" not in call_kwargs
+    assert call_kwargs["video_id"] == "existing-video-id"
+
+
+# ==================== Image Generation Error Handling ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_error_handling(handler):
+    """Test async image generation error handling delegates to _handle_error."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="dall-e-3",
+        provider="openai",
+        api_key="test-api-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(prompt="Test")
+
+    mock_async_client = AsyncMock()
+    mock_async_client.images.generate = AsyncMock(
+        side_effect=RuntimeError("API failed")
+    )
+
+    with patch(
+        "tarash.tarash_gateway.providers.openai.AsyncOpenAI",
+        return_value=mock_async_client,
+    ):
+        with pytest.raises(GenerationFailedError, match="Error while generating video"):
+            await handler.generate_image_async(config, request)
+
+
+def test_generate_image_sync_error_handling(handler):
+    """Test sync image generation error handling delegates to _handle_error."""
+    from tarash.tarash_gateway.models import (
+        ImageGenerationConfig,
+        ImageGenerationRequest,
+    )
+
+    config = ImageGenerationConfig(
+        model="dall-e-3",
+        provider="openai",
+        api_key="test-api-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(prompt="Test")
+
+    mock_sync_client = MagicMock()
+    mock_sync_client.images.generate.side_effect = RuntimeError("API failed")
+
+    with patch(
+        "tarash.tarash_gateway.providers.openai.OpenAI",
+        return_value=mock_sync_client,
+    ):
+        with pytest.raises(GenerationFailedError, match="Error while generating video"):
+            handler.generate_image(config, request)

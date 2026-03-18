@@ -459,3 +459,252 @@ def test_generate_video_sync_not_supported(handler):
     """Test that sync video generation raises NotImplementedError."""
     with pytest.raises(NotImplementedError, match="does not support video"):
         handler.generate_video(None, None)
+
+
+# ==================== Error Handling Tests ====================
+
+
+def test_handle_error_tarash_exception_passes_through(
+    handler, base_config, base_request
+):
+    """Test TarashException passes through unchanged."""
+    from tarash.tarash_gateway.exceptions import ValidationError
+
+    ex = ValidationError("test", provider="stability")
+    result = handler._handle_error(base_config, base_request, "req-1", ex)
+    assert result is ex
+
+
+def test_handle_error_http_status_400(handler, base_config, base_request):
+    """Test HTTPStatusError 400 maps to ValidationError."""
+    import httpx
+
+    mock_response = httpx.Response(
+        status_code=400,
+        text="Bad request: invalid prompt",
+        request=httpx.Request("POST", "https://api.stability.ai/v2beta/test"),
+    )
+    ex = httpx.HTTPStatusError(
+        "400 Bad Request", request=mock_response.request, response=mock_response
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-400", ex)
+
+    from tarash.tarash_gateway.exceptions import ValidationError
+
+    assert isinstance(result, ValidationError)
+    assert "Invalid request" in result.message
+    assert result.raw_response["status_code"] == 400
+
+
+def test_handle_error_http_status_422(handler, base_config, base_request):
+    """Test HTTPStatusError 422 maps to ValidationError."""
+    import httpx
+
+    mock_response = httpx.Response(
+        status_code=422,
+        text="Unprocessable entity",
+        request=httpx.Request("POST", "https://api.stability.ai/v2beta/test"),
+    )
+    ex = httpx.HTTPStatusError(
+        "422 Unprocessable", request=mock_response.request, response=mock_response
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-422", ex)
+
+    from tarash.tarash_gateway.exceptions import ValidationError
+
+    assert isinstance(result, ValidationError)
+
+
+def test_handle_error_http_status_500(handler, base_config, base_request):
+    """Test HTTPStatusError 500 maps to HTTPError."""
+    import httpx
+
+    mock_response = httpx.Response(
+        status_code=500,
+        text="Internal server error",
+        request=httpx.Request("POST", "https://api.stability.ai/v2beta/test"),
+    )
+    ex = httpx.HTTPStatusError(
+        "500 Server Error", request=mock_response.request, response=mock_response
+    )
+
+    result = handler._handle_error(base_config, base_request, "req-500", ex)
+
+    from tarash.tarash_gateway.exceptions import HTTPError
+
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 500
+
+
+def test_handle_error_unknown_exception(handler, base_config, base_request):
+    """Test unknown exception maps to TarashException."""
+    from tarash.tarash_gateway.exceptions import TarashException
+
+    ex = RuntimeError("something unexpected")
+    result = handler._handle_error(base_config, base_request, "req-unk", ex)
+
+    assert isinstance(result, TarashException)
+    assert "Error during image generation" in result.message
+
+
+# ==================== Endpoint Routing Tests ====================
+
+
+def test_get_endpoint_sd3_model(handler):
+    """Test SD3 model routes to SD3 endpoint."""
+    result = handler._get_endpoint_for_model("sd3.5-large")
+    assert result == "/v2beta/stable-image/generate/sd3"
+
+
+def test_get_endpoint_sd3_medium(handler):
+    """Test SD3 medium model routes to SD3 endpoint."""
+    result = handler._get_endpoint_for_model("sd3.5-medium")
+    assert result == "/v2beta/stable-image/generate/sd3"
+
+
+def test_get_endpoint_ultra(handler):
+    """Test stable-image-ultra routes to ultra endpoint."""
+    result = handler._get_endpoint_for_model("stable-image-ultra")
+    assert result == "/v2beta/stable-image/generate/ultra"
+
+
+def test_get_endpoint_core(handler):
+    """Test stable-image-core routes to core endpoint."""
+    result = handler._get_endpoint_for_model("stable-image-core")
+    assert result == "/v2beta/stable-image/generate/core"
+
+
+def test_get_endpoint_unknown_defaults_to_sd3(handler):
+    """Test unknown model defaults to SD3 endpoint."""
+    result = handler._get_endpoint_for_model("unknown-model")
+    assert result == "/v2beta/stable-image/generate/sd3"
+
+
+# ==================== SD3 Model Variant Selection ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_sd3_turbo_variant(handler):
+    """Test SD3 turbo variant sets correct model name."""
+    config = ImageGenerationConfig(
+        model="sd3.5-large-turbo",
+        provider="stability",
+        api_key="test-api-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(prompt="A sunset")
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.content = b"fake-image"
+        mock_response.headers = {"content-type": "image/png"}
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        await handler.generate_image_async(config, request)
+
+        call_kwargs = mock_client.post.call_args
+        # Verify model param was set to sd3.5-large-turbo
+        assert call_kwargs[1]["data"]["model"] == "sd3.5-large-turbo"
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_sd3_medium_variant(handler):
+    """Test SD3 medium variant sets correct model name."""
+    config = ImageGenerationConfig(
+        model="sd3.5-medium",
+        provider="stability",
+        api_key="test-api-key",
+        timeout=120,
+    )
+    request = ImageGenerationRequest(prompt="A mountain")
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.content = b"fake-image"
+        mock_response.headers = {"content-type": "image/png"}
+        mock_response.raise_for_status = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        await handler.generate_image_async(config, request)
+
+        call_kwargs = mock_client.post.call_args
+        assert call_kwargs[1]["data"]["model"] == "sd3.5-medium"
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_error_handling(handler, base_config, base_request):
+    """Test async image generation error handling."""
+    import httpx
+
+    mock_response = httpx.Response(
+        status_code=500,
+        text="Server error",
+        request=httpx.Request("POST", "https://api.stability.ai/v2beta/test"),
+    )
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "500", request=mock_response.request, response=mock_response
+            )
+        )
+        mock_client_class.return_value = mock_client
+
+        from tarash.tarash_gateway.exceptions import HTTPError
+
+        with pytest.raises(HTTPError):
+            await handler.generate_image_async(base_config, base_request)
+
+
+def test_generate_image_sync_error_handling(handler, base_config, base_request):
+    """Test sync image generation error handling."""
+    import httpx
+
+    mock_response = httpx.Response(
+        status_code=400,
+        text="Bad request",
+        request=httpx.Request("POST", "https://api.stability.ai/v2beta/test"),
+    )
+
+    with patch("httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.post = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "400", request=mock_response.request, response=mock_response
+            )
+        )
+        mock_client_class.return_value = mock_client
+
+        from tarash.tarash_gateway.exceptions import ValidationError
+
+        with pytest.raises(ValidationError):
+            handler.generate_image(base_config, base_request)
+
+
+# ==================== Field Mapper Non-Dict Input ====================
+
+
+def test_cfg_scale_field_mapper_non_dict_returns_none():
+    """Test cfg_scale field mapper returns None for non-dict input."""
+    request = ImageGenerationRequest(prompt="A sunset")
+    # When extra_params is None, the converter receives None
+    result = apply_field_mappers(SD35_LARGE_FIELD_MAPPERS, request)
+    # cfg_scale should not be in result when extra_params has no cfg_scale
+    assert "cfg_scale" not in result
+
+
+def test_steps_field_mapper_non_dict_returns_none():
+    """Test steps field mapper returns None for non-dict input."""
+    request = ImageGenerationRequest(prompt="A sunset")
+    result = apply_field_mappers(SD35_LARGE_FIELD_MAPPERS, request)
+    assert "steps" not in result

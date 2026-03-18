@@ -6,9 +6,14 @@ import pytest
 
 from tarash.tarash_gateway.exceptions import (
     GenerationFailedError,
+    HTTPConnectionError,
+    HTTPError,
     TimeoutError,
+    ValidationError,
 )
 from tarash.tarash_gateway.models import (
+    ImageGenerationConfig,
+    ImageGenerationRequest,
     VideoGenerationConfig,
     VideoGenerationRequest,
 )
@@ -1342,3 +1347,405 @@ def test_convert_image_response_with_none_output_raises_error(handler):
 
     with pytest.raises(GenerationFailedError, match="no output was returned"):
         handler._convert_image_response(config, request, "pred-null", None)
+
+
+# ==================== Error Handling: APITimeoutError ====================
+
+
+def test_handle_error_api_timeout(handler, base_config, base_request):
+    """Test APITimeoutError maps to TimeoutError."""
+    import replicate
+
+    ex = replicate.APITimeoutError.__new__(replicate.APITimeoutError)
+    ex.args = ("Request timed out",)
+
+    result = handler._handle_error(base_config, base_request, "pred-timeout", ex)
+
+    assert isinstance(result, TimeoutError)
+    assert "timed out" in result.message
+    assert result.provider == "replicate"
+    assert result.request_id == "pred-timeout"
+
+
+def test_handle_error_api_connection_error(handler, base_config, base_request):
+    """Test APIConnectionError maps to HTTPConnectionError."""
+    import replicate
+
+    ex = replicate.APIConnectionError.__new__(replicate.APIConnectionError)
+    ex.args = ("Connection refused",)
+
+    result = handler._handle_error(base_config, base_request, "pred-conn", ex)
+
+    assert isinstance(result, HTTPConnectionError)
+    assert "Connection error" in result.message
+    assert result.provider == "replicate"
+
+
+def test_handle_error_api_status_error_400(handler, base_config, base_request):
+    """Test BadRequestError (400) maps to ValidationError."""
+    import replicate
+
+    ex = replicate.BadRequestError.__new__(replicate.BadRequestError)
+    ex.status_code = 400
+    ex.message = "Invalid input format"
+    ex.body = {"error": "Invalid input format"}
+    ex.args = ("Invalid input format",)
+
+    result = handler._handle_error(base_config, base_request, "pred-400", ex)
+
+    assert isinstance(result, ValidationError)
+    assert result.raw_response["status_code"] == 400
+
+
+def test_handle_error_api_status_error_422(handler, base_config, base_request):
+    """Test UnprocessableEntityError (422) maps to ValidationError."""
+    import replicate
+
+    ex = replicate.UnprocessableEntityError.__new__(replicate.UnprocessableEntityError)
+    ex.status_code = 422
+    ex.message = "Unprocessable entity"
+    ex.body = {"error": "Unprocessable entity"}
+    ex.args = ("Unprocessable entity",)
+
+    result = handler._handle_error(base_config, base_request, "pred-422", ex)
+
+    assert isinstance(result, ValidationError)
+
+
+def test_handle_error_api_status_error_500(handler, base_config, base_request):
+    """Test generic APIStatusError (500) maps to HTTPError."""
+    import replicate
+
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    mock_response.json.return_value = {"error": "Internal server error"}
+    mock_response.headers = {}
+    mock_response.text = "Internal server error"
+
+    ex = replicate.APIStatusError.__new__(replicate.APIStatusError)
+    ex.status_code = 500
+    ex.message = "Internal server error"
+    ex.body = {"error": "Internal server error"}
+    ex.response = mock_response
+    ex.args = ("Internal server error",)
+
+    result = handler._handle_error(base_config, base_request, "pred-500", ex)
+
+    assert isinstance(result, HTTPError)
+    assert result.status_code == 500
+
+
+# ==================== Response Conversion: FileOutput objects ====================
+
+
+def test_convert_response_with_file_output_read_in_list(
+    handler, base_config, base_request
+):
+    """Test conversion when list contains FileOutput objects with .read() method."""
+
+    class FakeFileOutput:
+        def read(self):
+            return b"data"
+
+        def __str__(self):
+            return "https://example.com/video_file.mp4"
+
+    result = handler._convert_response(
+        base_config, base_request, "pred-file", [FakeFileOutput()]
+    )
+
+    assert result.video == "https://example.com/video_file.mp4"
+
+
+def test_convert_response_with_file_output_read_direct(
+    handler, base_config, base_request
+):
+    """Test conversion when output is a FileOutput with .read() (not in list)."""
+
+    class FakeFileOutput:
+        def read(self):
+            return b"data"
+
+        def __str__(self):
+            return "https://example.com/direct_file.mp4"
+
+    result = handler._convert_response(
+        base_config, base_request, "pred-direct-file", FakeFileOutput()
+    )
+
+    assert result.video == "https://example.com/direct_file.mp4"
+
+
+# ==================== Image Response Conversion: FileOutput objects ====================
+
+
+def test_convert_image_response_with_file_output_url(handler):
+    """Test image response conversion with FileOutput objects having .url attribute."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test image")
+
+    mock_file1 = MagicMock()
+    mock_file1.url = "https://example.com/image1.png"
+    mock_file2 = MagicMock()
+    mock_file2.url = "https://example.com/image2.png"
+
+    result = handler._convert_image_response(
+        config, request, "pred-img-url", [mock_file1, mock_file2]
+    )
+
+    assert len(result.images) == 2
+    assert result.images[0] == "https://example.com/image1.png"
+    assert result.images[1] == "https://example.com/image2.png"
+
+
+def test_convert_image_response_with_file_output_read(handler):
+    """Test image response conversion with FileOutput having .read() method."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    class FakeFileOutput:
+        def read(self):
+            return b"data"
+
+        def __str__(self):
+            return "https://example.com/image_read.png"
+
+    result = handler._convert_image_response(
+        config, request, "pred-img-read", [FakeFileOutput()]
+    )
+
+    assert len(result.images) == 1
+    assert result.images[0] == "https://example.com/image_read.png"
+
+
+def test_convert_image_response_string_output(handler):
+    """Test image response conversion with string output."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    result = handler._convert_image_response(
+        config, request, "pred-str", "https://example.com/single.png"
+    )
+
+    assert len(result.images) == 1
+    assert result.images[0] == "https://example.com/single.png"
+
+
+def test_convert_image_response_single_file_output_url(handler):
+    """Test image response conversion with single FileOutput (not in list)."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    mock_file = MagicMock()
+    mock_file.url = "https://example.com/single_file.png"
+
+    result = handler._convert_image_response(config, request, "pred-single", mock_file)
+
+    assert len(result.images) == 1
+    assert result.images[0] == "https://example.com/single_file.png"
+
+
+def test_convert_image_response_empty_list_raises_error(handler):
+    """Test that empty list output raises GenerationFailedError."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    with pytest.raises(GenerationFailedError, match="Could not extract image URLs"):
+        handler._convert_image_response(config, request, "pred-empty", [])
+
+
+# ==================== Image Generation: async/sync ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_without_progress(handler):
+    """Test async image generation without progress callback."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="A beautiful sunset")
+
+    mock_async_client = AsyncMock()
+    mock_async_client.run = AsyncMock(return_value=["https://example.com/image.png"])
+
+    with patch(
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
+        result = await handler.generate_image_async(config, request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    assert result.images[0] == "https://example.com/image.png"
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_with_progress(handler):
+    """Test async image generation with progress callback and polling."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+        poll_interval=1,
+        max_poll_attempts=3,
+    )
+    request = ImageGenerationRequest(prompt="A sunset")
+
+    mock_prediction_processing = MagicMock()
+    mock_prediction_processing.id = "pred-img-async"
+    mock_prediction_processing.status = "processing"
+    mock_prediction_processing.progress = None
+    mock_prediction_processing.logs = None
+    mock_prediction_processing.error = None
+
+    mock_prediction_done = MagicMock()
+    mock_prediction_done.id = "pred-img-async"
+    mock_prediction_done.status = "succeeded"
+    mock_prediction_done.progress = None
+    mock_prediction_done.logs = None
+    mock_prediction_done.error = None
+    mock_prediction_done.output = ["https://example.com/image.png"]
+
+    mock_async_client = AsyncMock()
+    mock_async_client.predictions = AsyncMock()
+    mock_async_client.predictions.create = AsyncMock(
+        return_value=mock_prediction_processing
+    )
+    mock_async_client.predictions.get = AsyncMock(
+        side_effect=[mock_prediction_processing, mock_prediction_done]
+    )
+
+    progress_calls = []
+
+    async def progress_cb(update):
+        progress_calls.append(update)
+
+    with patch(
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await handler.generate_image_async(
+                config, request, on_progress=progress_cb
+            )
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    assert len(progress_calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_timeout(handler):
+    """Test async image generation timeout after max poll attempts."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+        poll_interval=1,
+        max_poll_attempts=2,
+    )
+    request = ImageGenerationRequest(prompt="A sunset")
+
+    mock_prediction = MagicMock()
+    mock_prediction.id = "pred-img-timeout"
+    mock_prediction.status = "processing"
+    mock_prediction.progress = None
+    mock_prediction.logs = None
+    mock_prediction.error = None
+
+    mock_async_client = AsyncMock()
+    mock_async_client.predictions = AsyncMock()
+    mock_async_client.predictions.create = AsyncMock(return_value=mock_prediction)
+    mock_async_client.predictions.get = AsyncMock(return_value=mock_prediction)
+
+    with patch(
+        "tarash.tarash_gateway.providers.replicate.AsyncReplicate",
+        return_value=mock_async_client,
+    ):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(TimeoutError, match="timed out"):
+                await handler.generate_image_async(
+                    config, request, on_progress=lambda x: None
+                )
+
+
+def test_generate_image_sync_without_progress(handler):
+    """Test sync image generation without progress callback."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="A mountain")
+
+    mock_client = MagicMock()
+    mock_client.run.return_value = ["https://example.com/image.png"]
+
+    with patch(
+        "tarash.tarash_gateway.providers.replicate.Replicate",
+        return_value=mock_client,
+    ):
+        result = handler.generate_image(config, request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+
+
+def test_generate_image_sync_with_progress(handler):
+    """Test sync image generation with progress callback and polling."""
+    config = ImageGenerationConfig(
+        model="black-forest-labs/flux.2-pro",
+        provider="replicate",
+        api_key="test-key",
+        poll_interval=1,
+        max_poll_attempts=3,
+    )
+    request = ImageGenerationRequest(prompt="A forest")
+
+    mock_prediction_done = MagicMock()
+    mock_prediction_done.id = "pred-img-sync"
+    mock_prediction_done.status = "succeeded"
+    mock_prediction_done.progress = None
+    mock_prediction_done.logs = None
+    mock_prediction_done.error = None
+    mock_prediction_done.output = ["https://example.com/image.png"]
+
+    mock_client = MagicMock()
+    mock_client.predictions.create.return_value = mock_prediction_done
+    mock_client.predictions.get.return_value = mock_prediction_done
+
+    progress_calls = []
+
+    with patch(
+        "tarash.tarash_gateway.providers.replicate.Replicate",
+        return_value=mock_client,
+    ):
+        with patch("time.sleep"):
+            result = handler.generate_image(
+                config, request, on_progress=lambda x: progress_calls.append(x)
+            )
+
+    assert result.status == "completed"
+    assert len(progress_calls) >= 1

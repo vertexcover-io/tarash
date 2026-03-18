@@ -3445,3 +3445,241 @@ def test_seedream_v5_lite_edit_conversion(handler):
     ]
     assert result["num_images"] == 1
     assert result["image_size"] == "auto_2K"
+
+
+# ==================== Error Handling: httpx timeout/connection ====================
+
+
+def test_handle_error_httpx_timeout(handler, base_config, base_request):
+    """Test httpx.TimeoutException maps to TimeoutError."""
+    import httpx
+
+    from tarash.tarash_gateway.exceptions import TimeoutError
+
+    ex = httpx.ReadTimeout("Request timed out")
+    result = handler._handle_error(base_config, base_request, "req-timeout", ex)
+
+    assert isinstance(result, TimeoutError)
+    assert "timed out" in result.message
+    assert result.provider == "fal"
+
+
+def test_handle_error_httpx_connect_error(handler, base_config, base_request):
+    """Test httpx.ConnectError maps to HTTPConnectionError."""
+    import httpx
+
+    from tarash.tarash_gateway.exceptions import HTTPConnectionError
+
+    ex = httpx.ConnectError("Connection refused")
+    result = handler._handle_error(base_config, base_request, "req-conn", ex)
+
+    assert isinstance(result, HTTPConnectionError)
+    assert "Connection error" in result.message
+
+
+def test_handle_error_tarash_exception_passthrough(handler, base_config, base_request):
+    """Test TarashException passes through unchanged."""
+    ex = ValidationError("test", provider="fal")
+    result = handler._handle_error(base_config, base_request, "req-1", ex)
+    assert result is ex
+
+
+def test_handle_error_unknown_exception(handler, base_config, base_request):
+    """Test unknown exception maps to GenerationFailedError."""
+    ex = RuntimeError("something unexpected")
+    result = handler._handle_error(base_config, base_request, "req-unk", ex)
+    assert isinstance(result, GenerationFailedError)
+    assert "Error while generating video" in result.message
+
+
+# ==================== Image Response Conversion ====================
+
+
+def test_convert_image_response_dict_images(handler):
+    """Test image response conversion with dict images having url key."""
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    fal_result = {
+        "images": [
+            {"url": "https://example.com/img1.png", "content_type": "image/png"},
+            {"url": "https://example.com/img2.png"},
+        ],
+    }
+
+    result = handler._convert_image_response(config, request, "req-img", fal_result)
+
+    assert result.status == "completed"
+    assert len(result.images) == 2
+    assert result.images[0] == "https://example.com/img1.png"
+    assert result.images[1] == "https://example.com/img2.png"
+
+
+def test_convert_image_response_string_images(handler):
+    """Test image response conversion with string image URLs."""
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    fal_result = {
+        "images": [
+            "https://example.com/img1.png",
+            "https://example.com/img2.png",
+        ],
+    }
+
+    result = handler._convert_image_response(config, request, "req-str", fal_result)
+
+    assert len(result.images) == 2
+    assert result.images[0] == "https://example.com/img1.png"
+
+
+def test_convert_image_response_with_revised_prompt(handler):
+    """Test image response conversion includes revised_prompt."""
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    fal_result = {
+        "images": [{"url": "https://example.com/img.png"}],
+        "revised_prompt": "Enhanced: test",
+    }
+
+    result = handler._convert_image_response(config, request, "req-rev", fal_result)
+
+    assert result.revised_prompt == "Enhanced: test"
+
+
+def test_convert_image_response_empty_images(handler):
+    """Test image response conversion with no images."""
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = ImageGenerationRequest(prompt="test")
+
+    fal_result = {}
+
+    result = handler._convert_image_response(config, request, "req-empty", fal_result)
+
+    assert result.images == []
+
+
+# ==================== Image Generation: async/sync ====================
+
+
+@pytest.mark.asyncio
+async def test_generate_image_async_success(handler):
+    """Test async image generation with mocked Fal client."""
+    from fal_client import Completed
+
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key="test-key",
+        timeout=120,
+        max_poll_attempts=5,
+        poll_interval=1,
+    )
+    request = ImageGenerationRequest(prompt="A sunset")
+
+    mock_handle = AsyncMock()
+    mock_handle.request_id = "fal-img-123"
+
+    # Mock status returning Completed
+    completed = Completed(metrics={}, logs=[])
+    mock_handle.status = AsyncMock(return_value=completed)
+    mock_handle.get = AsyncMock(
+        return_value={
+            "images": [{"url": "https://example.com/image.png"}],
+        }
+    )
+
+    mock_client = AsyncMock()
+    mock_client.submit = AsyncMock(return_value=mock_handle)
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        result = await handler.generate_image_async(config, request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+    assert result.images[0] == "https://example.com/image.png"
+
+
+def test_generate_image_sync_success(handler):
+    """Test sync image generation with mocked Fal client."""
+    from fal_client import Completed
+
+    config = ImageGenerationConfig(
+        model="fal-ai/nano-banana-2",
+        provider="fal",
+        api_key="test-key",
+        timeout=120,
+        max_poll_attempts=5,
+        poll_interval=1,
+    )
+    request = ImageGenerationRequest(prompt="A mountain")
+
+    mock_handle = MagicMock()
+    mock_handle.request_id = "fal-img-sync"
+
+    completed = Completed(metrics={}, logs=[])
+    mock_handle.status.return_value = completed
+    mock_handle.get.return_value = {
+        "images": [{"url": "https://example.com/image.png"}],
+    }
+
+    mock_client = MagicMock()
+    mock_client.submit.return_value = mock_handle
+
+    with patch.object(handler, "_get_client", return_value=mock_client):
+        with patch("time.sleep"):
+            result = handler.generate_image(config, request)
+
+    assert result.status == "completed"
+    assert len(result.images) == 1
+
+
+# ==================== TTS Duration Extraction Fallback ====================
+
+
+def test_extract_tts_duration_top_level_seconds():
+    """Test _extract_tts_duration with top-level duration (seconds fallback)."""
+    from tarash.tarash_gateway.providers.fal import _extract_tts_duration
+
+    result = _extract_tts_duration({"duration": 5.5})
+    assert result == 5.5
+
+
+def test_extract_tts_duration_none_when_no_duration():
+    """Test _extract_tts_duration returns None when no duration found."""
+    from tarash.tarash_gateway.providers.fal import _extract_tts_duration
+
+    result = _extract_tts_duration({"some_field": "value"})
+    assert result is None
+
+
+# ==================== TTS Status Parsing: Unknown Status ====================
+
+
+def test_parse_fal_tts_status_unknown_raises_value_error():
+    """Test parse_fal_tts_status with unknown status raises ValueError."""
+    from tarash.tarash_gateway.providers.fal import parse_fal_tts_status
+
+    unknown_status = MagicMock()
+    # Make it NOT an instance of Completed, Queued, or InProgress
+    unknown_status.__class__ = type("UnknownStatus", (), {})
+
+    with pytest.raises(ValueError, match="Unknown status"):
+        parse_fal_tts_status("req-1", unknown_status)
