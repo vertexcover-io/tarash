@@ -1,6 +1,7 @@
 """Orchestrator for managing video and image generation execution with fallback support."""
 
 from datetime import datetime
+from decimal import Decimal
 
 from tarash.tarash_gateway.logging import log_error, log_info
 from tarash.tarash_gateway.exceptions import is_retryable_error
@@ -24,6 +25,20 @@ from tarash.tarash_gateway.models import (
     VideoGenerationResponse,
 )
 from tarash.tarash_gateway.registry import get_handler
+
+
+def _compute_total_cost_usd(attempts: list[AttemptMetadata]) -> Decimal | None:
+    """Compute total USD cost across all attempts.
+
+    Returns ``None`` if any attempt lacks cost data or has
+    ``amount_usd`` set to ``None``.
+    """
+    attempt_costs = [a.cost for a in attempts]
+    if any(c is None for c in attempt_costs):
+        return None
+    if any(c.amount_usd is None for c in attempt_costs):  # type: ignore[union-attr]
+        return None
+    return sum((c.amount_usd for c in attempt_costs), Decimal("0"))  # type: ignore[union-attr, misc]
 
 
 class ExecutionOrchestrator:
@@ -133,6 +148,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 # Attach execution metadata to response
@@ -142,6 +158,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 log_info(
@@ -283,6 +300,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 # Attach execution metadata to response
@@ -292,6 +310,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 log_info(
@@ -412,6 +431,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 execution_metadata = ExecutionMetadata(
@@ -420,6 +440,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 return response.model_copy(
@@ -481,6 +502,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 execution_metadata = ExecutionMetadata(
@@ -489,6 +511,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 return response.model_copy(
@@ -567,6 +590,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 execution_metadata = ExecutionMetadata(
@@ -575,6 +599,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 return response.model_copy(
@@ -636,6 +661,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 execution_metadata = ExecutionMetadata(
@@ -644,6 +670,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 return response.model_copy(
@@ -709,6 +736,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 execution_metadata = ExecutionMetadata(
@@ -717,6 +745,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 return response.model_copy(
@@ -778,6 +807,7 @@ class ExecutionOrchestrator:
                 attempt_metadata.ended_at = ended_at
                 attempt_metadata.status = "success"
                 attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
                 attempts.append(attempt_metadata)
 
                 execution_metadata = ExecutionMetadata(
@@ -786,6 +816,7 @@ class ExecutionOrchestrator:
                     attempts=attempts,
                     fallback_triggered=attempt_number > 1,
                     configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
                 )
 
                 return response.model_copy(

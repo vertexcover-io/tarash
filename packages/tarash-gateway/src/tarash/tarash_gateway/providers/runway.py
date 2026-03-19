@@ -19,6 +19,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    GenerationCost,
     MediaType,
     ProgressCallback,
     VideoGenerationConfig,
@@ -460,11 +461,19 @@ class RunwayProviderHandler:
                 raw_response={"task_id": task.id, "output": str(output)},
             )
 
+        # Resolve cost - use request duration_seconds if available, else fallback to 1.0
+        duration = request.duration_seconds
+        quantity = float(duration) if duration is not None else 1.0
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, quantity
+        )
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=video_url,
             content_type="video/mp4",
             status="completed",
+            cost=cost,
             raw_response={
                 "task_id": task.id,
                 "status": task.status,

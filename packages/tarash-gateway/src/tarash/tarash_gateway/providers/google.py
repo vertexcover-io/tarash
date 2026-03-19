@@ -30,6 +30,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AnyDict,
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -549,11 +550,16 @@ class GoogleProviderHandler:
                 content_type=mime_type,
             )
 
+        # Resolve cost - for Veo, use quantity=1.0 as output duration
+        # is not readily available from the operation response
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=video,
             content_type=video_obj.mime_type,
             status="completed",
+            cost=cost,
             raw_response=operation.model_dump(),
         )
 
@@ -754,12 +760,16 @@ class GoogleProviderHandler:
             mime_type = getattr(img, "mime_type", None) or "image/png"
             image_urls.append(_bytes_to_data_uri(img_bytes, mime_type))
 
+        # Resolve cost with quantity=1 per image
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=image_urls,
             content_type="image/png",
             status="completed",
             is_mock=False,
+            cost=cost,
             raw_response=genai_response,
         )
 
@@ -802,12 +812,16 @@ class GoogleProviderHandler:
         else:
             raw_response = {"response": str(response)}
 
+        # Resolve cost with quantity=1 per image
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=images,
             content_type="image/png",
             status="completed",
             is_mock=False,
+            cost=cost,
             raw_response=raw_response,
         )
 

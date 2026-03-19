@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tarash.tarash_gateway.exceptions import TarashException
 from tarash.tarash_gateway.models import (
     AspectRatio,
+    GenerationCost,
     MediaContent,
     MediaType,
     ProgressCallback,
@@ -185,6 +186,10 @@ class MockResponse(BaseModel):
     error: Exception | None = Field(
         default=None,
         description="If set, raise this exception instead of returning a response.",
+    )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="If set, attach this cost to the returned response.",
     )
 
     @model_validator(mode="after")
@@ -440,9 +445,10 @@ def _create_success_sync(
 ) -> VideoGenerationResponse:
     """Create success response (sync)."""
     if config.mock_response:
-        return config.mock_response.model_copy(
-            update={"request_id": request_id, "is_mock": True}
-        )
+        update: dict[str, object] = {"request_id": request_id, "is_mock": True}
+        if config.cost is not None:
+            update["cost"] = config.cost
+        return config.mock_response.model_copy(update=update)
 
     if config.output_video:
         video = (
@@ -459,6 +465,7 @@ def _create_success_sync(
             aspect_ratio=None,
             status="completed",
             is_mock=True,
+            cost=config.cost,
             raw_response={"mock": True, "output_video_provided": True},
         )
 
@@ -479,6 +486,7 @@ def _create_success_sync(
         aspect_ratio=spec.aspect_ratio,
         status="completed",
         is_mock=True,
+        cost=config.cost,
         raw_response={
             "mock": True,
             "matched_spec": {
@@ -498,9 +506,10 @@ async def _create_success_async(
 ) -> VideoGenerationResponse:
     """Create success response (async)."""
     if config.mock_response:
-        return config.mock_response.model_copy(
-            update={"request_id": request_id, "is_mock": True}
-        )
+        update: dict[str, object] = {"request_id": request_id, "is_mock": True}
+        if config.cost is not None:
+            update["cost"] = config.cost
+        return config.mock_response.model_copy(update=update)
 
     if config.output_video:
         video = (
@@ -517,6 +526,7 @@ async def _create_success_async(
             aspect_ratio=None,
             status="completed",
             is_mock=True,
+            cost=config.cost,
             raw_response={"mock": True, "output_video_provided": True},
         )
 
@@ -537,6 +547,7 @@ async def _create_success_async(
         aspect_ratio=spec.aspect_ratio,
         status="completed",
         is_mock=True,
+        cost=config.cost,
         raw_response={
             "mock": True,
             "matched_spec": {

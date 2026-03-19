@@ -22,6 +22,7 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -478,15 +479,24 @@ class OpenAIProviderHandler:
             "content": video_content,
             "content_type": content_type_value,
         }
+
+        # Resolve cost using output duration if available, else quantity=1.0
+        duration_seconds = (
+            float(getattr(video, "seconds", 0)) if hasattr(video, "seconds") else None
+        )
+        quantity = duration_seconds if duration_seconds else 1.0
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, quantity
+        )
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=video_media,
             content_type=content_type_value,
-            duration=float(getattr(video, "seconds", 0))
-            if hasattr(video, "seconds")
-            else None,
+            duration=duration_seconds,
             resolution=getattr(video, "size", None),
             status="completed",
+            cost=cost,
             raw_response=video.model_dump(),
         )
 
@@ -1100,12 +1110,20 @@ class OpenAIProviderHandler:
         ):
             revised_prompt = provider_response.data[0].revised_prompt
 
+        # Token-based cost for gpt-image-1/1.5/mini, flat-rate fallback
+        # for dall-e-3/dall-e-2 (which don't report token usage).
+        usage = getattr(provider_response, "usage", None)
+        cost = GenerationCost.from_token_usage(config.model, usage)
+        if cost is None:
+            cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=images,
             content_type="image/png",
             status="completed",
             revised_prompt=revised_prompt,
+            cost=cost,
             raw_response=provider_response.model_dump()
             if hasattr(provider_response, "model_dump")
             else {},

@@ -21,6 +21,7 @@ from tarash.tarash_gateway.exceptions import (
 )
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    GenerationCost,
     TTSProgressCallback,
     TTSRequest,
     TTSResponse,
@@ -185,12 +186,17 @@ class HumeProviderHandler:
                 "sample_rate": getattr(encoding, "sample_rate", None),
             }
 
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, len(request.text)
+        )
+
         return TTSResponse(
             request_id=result_request_id,
             audio=audio_b64,
             content_type=content_type,
             duration=duration,
             status="completed",
+            cost=cost,
             raw_response=raw_response,
         )
 

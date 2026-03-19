@@ -16,6 +16,7 @@ from tarash.tarash_gateway.exceptions import (
     handle_video_generation_errors,
 )
 from tarash.tarash_gateway.models import (
+    GenerationCost,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -302,14 +303,22 @@ class XaiProviderHandler:
                 raw_response={"request_id": request_id},
             )
 
+        # Resolve cost using output duration if available, else quantity=1.0
+        duration = getattr(xai_response, "duration", None)
+        quantity = float(duration) if duration is not None else 1.0
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, quantity
+        )
+
         return VideoGenerationResponse(
             request_id=request_id,
             video=str(video_url),
             content_type="video/mp4",
             status="completed",
+            cost=cost,
             raw_response={
                 "request_id": request_id,
-                "duration": getattr(xai_response, "duration", None),
+                "duration": duration,
                 "model": getattr(xai_response, "model", config.model),
             },
         )
@@ -364,11 +373,15 @@ class XaiProviderHandler:
                 raw_response={"request_id": request_id},
             )
 
+        # Resolve cost with quantity=1 per image
+        cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
+
         return ImageGenerationResponse(
             request_id=request_id,
             images=[str(image_url)],
             content_type="image/png",
             status="completed",
+            cost=cost,
             raw_response={
                 "request_id": request_id,
                 "model": getattr(xai_response, "model", config.model),

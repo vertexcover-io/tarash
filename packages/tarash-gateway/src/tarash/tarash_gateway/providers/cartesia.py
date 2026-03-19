@@ -27,6 +27,7 @@ from tarash.tarash_gateway.exceptions import (
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
     AudioOutputFormat,
+    GenerationCost,
     STSProgressCallback,
     STSRequest,
     STSResponse,
@@ -208,6 +209,9 @@ class CartesiaProviderHandler:
         """Convert raw audio bytes to TTSResponse."""
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         content_type = format_to_content_type(request.output_format.format)
+        cost = GenerationCost.from_pricing_table(
+            config.provider, config.model, len(request.text)
+        )
 
         return TTSResponse(
             request_id=request_id,
@@ -215,6 +219,7 @@ class CartesiaProviderHandler:
             content_type=content_type,
             duration=None,  # Cartesia API does not return duration metadata
             status="completed",
+            cost=cost,
             raw_response={
                 "audio_size_bytes": len(audio_bytes),
                 "output_format": request.output_format.model_dump(),
