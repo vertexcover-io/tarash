@@ -1,8 +1,12 @@
 """Public API for video and image generation."""
 
+import asyncio
+import time
+
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
+    HealthCheckResult,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -23,7 +27,10 @@ from tarash.tarash_gateway.orchestrator import ExecutionOrchestrator
 from tarash.tarash_gateway.providers.fal import FAL_MODEL_REGISTRY
 from tarash.tarash_gateway.providers.field_mappers import FieldMapper
 from tarash.tarash_gateway.providers.replicate import REPLICATE_MODEL_REGISTRY
-from tarash.tarash_gateway.registry import register_provider as _register_provider
+from tarash.tarash_gateway.registry import (
+    get_handler,
+    register_provider as _register_provider,
+)
 
 # ==================== Provider Registry ====================
 
@@ -541,3 +548,90 @@ def generate_sts(
     )
 
     return _ORCHESTRATOR.execute_sts_sync(config, request, on_progress=on_progress)
+
+
+# ==================== Health Check API ====================
+
+_ConfigType = VideoGenerationConfig | ImageGenerationConfig | AudioGenerationConfig
+
+
+async def _check_single_provider(
+    provider_name: str,
+    config: _ConfigType,
+) -> HealthCheckResult:
+    """Ping a single provider and return its health status."""
+    start = time.monotonic()
+    try:
+        _ = get_handler(config)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return HealthCheckResult(status="ok", latency_ms=elapsed_ms)
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return HealthCheckResult(status="error", latency_ms=elapsed_ms, error=str(exc))
+
+
+async def health_check_async(
+    configs: dict[str, _ConfigType],
+) -> dict[str, HealthCheckResult]:
+    """Check connectivity for each configured provider.
+
+    Resolves the handler for each provider config and reports whether it
+    succeeded. Runs all checks concurrently.
+
+    Args:
+        configs: Mapping of provider name to its configuration object.
+
+    Returns:
+        Dict mapping each provider name to a ``HealthCheckResult`` with
+        ``status`` (``"ok"`` or ``"error"``), ``latency_ms``, and an
+        optional ``error`` message.
+    """
+    log_info(
+        "Health check started",
+        context={"providers": list(configs.keys())},
+        logger_name="tarash.tarash_gateway.api",
+    )
+
+    tasks = {name: _check_single_provider(name, cfg) for name, cfg in configs.items()}
+    results: dict[str, HealthCheckResult] = {}
+    for name, coro in tasks.items():
+        results[name] = await coro
+
+    log_info(
+        "Health check completed",
+        context={
+            "results": {name: result["status"] for name, result in results.items()}
+        },
+        logger_name="tarash.tarash_gateway.api",
+    )
+    return results
+
+
+def health_check(
+    configs: dict[str, _ConfigType],
+) -> dict[str, HealthCheckResult]:
+    """Check connectivity for each configured provider (sync version).
+
+    Blocking wrapper around ``health_check_async``.
+
+    Args:
+        configs: Mapping of provider name to its configuration object.
+
+    Returns:
+        Dict mapping each provider name to a ``HealthCheckResult`` with
+        ``status`` (``"ok"`` or ``"error"``), ``latency_ms``, and an
+        optional ``error`` message.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(asyncio.run, health_check_async(configs))
+            return future.result()
+
+    return asyncio.run(health_check_async(configs))
