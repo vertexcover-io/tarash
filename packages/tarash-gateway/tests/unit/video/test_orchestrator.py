@@ -11,6 +11,8 @@ from tarash.tarash_gateway.exceptions import (
     ValidationError,
 )
 from tarash.tarash_gateway.models import (
+    AudioGenerationConfig,
+    ImageGenerationConfig,
     VideoGenerationConfig,
     VideoGenerationRequest,
     VideoGenerationResponse,
@@ -244,3 +246,162 @@ def test_execute_sync_success_first_attempt():
     assert response.execution_metadata.total_attempts == 1
     assert response.execution_metadata.successful_attempt == 1
     assert response.execution_metadata.fallback_triggered is False
+
+
+# ==================== EDGE-005: NotImplementedError on video methods ====================
+
+
+@pytest.mark.asyncio
+async def test_execute_async_not_implemented_error_reraises_immediately():
+    """NotImplementedError from video async handler re-raises without fallback (EDGE-005)."""
+    fallback_config = VideoGenerationConfig(
+        model="replicate/minimax",
+        provider="replicate",
+        api_key="replicate-key",
+    )
+
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1",
+        provider="fal",
+        api_key="fal-key",
+        fallback_configs=[fallback_config],
+    )
+
+    request = VideoGenerationRequest(prompt="test prompt")
+
+    handler = AsyncMock()
+    handler.generate_video_async.side_effect = NotImplementedError(
+        "Video generation not supported"
+    )
+
+    with patch("tarash.tarash_gateway.orchestrator.get_handler", return_value=handler):
+        orchestrator = ExecutionOrchestrator()
+        with pytest.raises(NotImplementedError, match="Video generation not supported"):
+            await orchestrator.execute_async(config, request)
+
+
+def test_execute_sync_not_implemented_error_reraises_immediately():
+    """NotImplementedError from video sync handler re-raises without fallback (EDGE-005)."""
+    fallback_config = VideoGenerationConfig(
+        model="replicate/minimax",
+        provider="replicate",
+        api_key="replicate-key",
+    )
+
+    config = VideoGenerationConfig(
+        model="fal-ai/veo3.1",
+        provider="fal",
+        api_key="fal-key",
+        fallback_configs=[fallback_config],
+    )
+
+    request = VideoGenerationRequest(prompt="test prompt")
+
+    handler = MagicMock()
+    handler.generate_video.side_effect = NotImplementedError(
+        "Video generation not supported"
+    )
+
+    with patch("tarash.tarash_gateway.orchestrator.get_handler", return_value=handler):
+        orchestrator = ExecutionOrchestrator()
+        with pytest.raises(NotImplementedError, match="Video generation not supported"):
+            orchestrator.execute_sync(config, request)
+
+
+# ==================== REQ-001: _collect_fallback_chain with image/audio configs ====================
+
+
+def test_collect_fallback_chain_with_image_config():
+    """_collect_fallback_chain works with ImageGenerationConfig (REQ-001)."""
+    fallback = ImageGenerationConfig(
+        model="fal-ai/flux/dev",
+        provider="fal",
+        api_key="fal-key",
+    )
+
+    config = ImageGenerationConfig(
+        model="dall-e-3",
+        provider="openai",
+        api_key="openai-key",
+        fallback_configs=[fallback],
+    )
+
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
+
+    assert len(chain) == 2
+    assert chain[0].model == "dall-e-3"
+    assert chain[1].model == "fal-ai/flux/dev"
+
+
+def test_collect_fallback_chain_with_audio_config():
+    """_collect_fallback_chain works with AudioGenerationConfig (REQ-001)."""
+    fallback = AudioGenerationConfig(
+        model="sonic-3",
+        provider="cartesia",
+        api_key="cartesia-key",
+    )
+
+    config = AudioGenerationConfig(
+        model="eleven_multilingual_v2",
+        provider="elevenlabs",
+        api_key="elevenlabs-key",
+        fallback_configs=[fallback],
+    )
+
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
+
+    assert len(chain) == 2
+    assert chain[0].model == "eleven_multilingual_v2"
+    assert chain[1].model == "sonic-3"
+
+
+def test_collect_fallback_chain_image_no_fallbacks():
+    """_collect_fallback_chain with image config and no fallbacks (EDGE-001)."""
+    config = ImageGenerationConfig(
+        model="dall-e-3",
+        provider="openai",
+        api_key="openai-key",
+    )
+
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
+
+    assert len(chain) == 1
+    assert chain[0].model == "dall-e-3"
+
+
+def test_collect_fallback_chain_audio_deeply_nested():
+    """_collect_fallback_chain with deeply nested audio fallbacks (EDGE-002)."""
+    fallback3 = AudioGenerationConfig(
+        model="fal-ai/minimax/speech-2.8-hd",
+        provider="fal",
+        api_key="fal-key",
+    )
+
+    fallback2 = AudioGenerationConfig(
+        model="sonic-3",
+        provider="cartesia",
+        api_key="cartesia-key",
+        fallback_configs=[fallback3],
+    )
+
+    fallback1 = AudioGenerationConfig(
+        model="eleven_multilingual_v2",
+        provider="elevenlabs",
+        api_key="elevenlabs-key",
+        fallback_configs=[fallback2],
+    )
+
+    config = AudioGenerationConfig(
+        model="tts-1",
+        provider="openai",
+        api_key="openai-key",
+        fallback_configs=[fallback1],
+    )
+
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
+
+    assert len(chain) == 4
+    assert chain[0].model == "tts-1"
+    assert chain[1].model == "eleven_multilingual_v2"
+    assert chain[2].model == "sonic-3"
+    assert chain[3].model == "fal-ai/minimax/speech-2.8-hd"
