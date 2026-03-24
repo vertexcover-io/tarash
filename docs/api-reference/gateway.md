@@ -8,11 +8,20 @@ from tarash.tarash_gateway import (
     generate_video_async,
     generate_image,
     generate_image_async,
+    generate_tts,
+    generate_tts_async,
+    generate_sts,
+    generate_sts_async,
+    health_check,
+    health_check_async,
+    estimate_cost,
     register_provider,
     register_provider_field_mapping,
     get_provider_field_mapping,
 )
 ```
+
+## Generation Functions
 
 | Function | Sync/Async | `on_progress` receives | Returns |
 |---|---|---|---|
@@ -20,11 +29,30 @@ from tarash.tarash_gateway import (
 | `generate_video_async(config, request, on_progress=None)` | Async | `VideoGenerationUpdate` | `VideoGenerationResponse` |
 | `generate_image(config, request, on_progress=None)` | Sync | `ImageGenerationUpdate` | `ImageGenerationResponse` |
 | `generate_image_async(config, request, on_progress=None)` | Async | `ImageGenerationUpdate` | `ImageGenerationResponse` |
-| `register_provider(name, handler)` | — | — | `None` |
-| `register_provider_field_mapping(provider, model_mappings)` | — | — | `None` |
-| `get_provider_field_mapping(provider)` | — | — | `dict | None` |
+| `generate_tts(config, request, on_progress=None)` | Sync | `TTSProgressCallback` | `TTSResponse` |
+| `generate_tts_async(config, request, on_progress=None)` | Async | `TTSProgressCallback` | `TTSResponse` |
+| `generate_sts(config, request, on_progress=None)` | Sync | `STSProgressCallback` | `STSResponse` |
+| `generate_sts_async(config, request, on_progress=None)` | Async | `STSProgressCallback` | `STSResponse` |
 
-`on_progress` accepts both sync and async callables. See the [Custom Providers guide](../guides/custom-providers.md) for registration usage.
+`on_progress` accepts both sync and async callables.
+
+## Health & Cost
+
+| Function | Description | Returns |
+|---|---|---|
+| `health_check(configs)` | Check provider connectivity (sync) | `dict[str, HealthCheckResult]` |
+| `health_check_async(configs)` | Check provider connectivity (async) | `dict[str, HealthCheckResult]` |
+| `estimate_cost(config)` | Estimate generation cost for a provider/model | `CostEstimate \| None` |
+
+## Registration
+
+| Function | Description | Returns |
+|---|---|---|
+| `register_provider(name, handler)` | Register a custom provider handler | `None` |
+| `register_provider_field_mapping(provider, model_mappings)` | Register field mappings for a provider | `None` |
+| `get_provider_field_mapping(provider)` | Get registered field mappings | `dict \| None` |
+
+See the [Custom Providers guide](../guides/custom-providers.md) for registration usage.
 
 ---
 

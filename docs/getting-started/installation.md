@@ -30,9 +30,15 @@ pip install tarash-gateway[runway]
 |---|---|
 | `fal` | Fal.ai |
 | `openai` | OpenAI, Azure OpenAI |
-| `runway` | Runway Gen-3 |
-| `veo3` | Google Veo3 (Vertex AI) |
+| `runway` | Runway |
+| `veo3` | Google Veo (Gemini API) |
+| `google` | Google Vertex AI |
 | `replicate` | Replicate |
+| `xai` | xAI (Grok) |
+| `elevenlabs` | ElevenLabs TTS |
+| `cartesia` | Cartesia TTS |
+| `sarvam` | Sarvam AI TTS |
+| `hume` | Hume AI TTS |
 | `all` | All of the above |
 
 ---

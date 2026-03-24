@@ -51,7 +51,7 @@ pip install tarash-gateway[all]          # Everything
 ### Video Generation
 
 ```python
-from tarash_gateway import VideoGenerationConfig, VideoGenerationRequest, generate_video
+from tarash.tarash_gateway import VideoGenerationConfig, VideoGenerationRequest, generate_video
 
 config = VideoGenerationConfig(
     model="fal-ai/veo3.1/fast",
@@ -82,7 +82,7 @@ response = generate_video(config, request)  # Same request, same response shape
 <summary><strong>Image Generation</strong></summary>
 
 ```python
-from tarash_gateway import ImageGenerationConfig, ImageGenerationRequest, generate_image
+from tarash.tarash_gateway import ImageGenerationConfig, ImageGenerationRequest, generate_image
 
 config = ImageGenerationConfig(
     model="fal-ai/flux-2/pro",
@@ -105,7 +105,7 @@ print(response.image)
 <summary><strong>Audio — TTS</strong></summary>
 
 ```python
-from tarash_gateway import AudioGenerationConfig, TTSRequest, generate_tts
+from tarash.tarash_gateway import AudioGenerationConfig, TTSRequest, generate_tts
 
 config = AudioGenerationConfig(
     model="eleven_multilingual_v2",
@@ -132,7 +132,7 @@ response = generate_tts(config, request)
 Every function has an async variant:
 
 ```python
-from tarash_gateway import generate_video_async
+from tarash.tarash_gateway import generate_video_async
 
 response = await generate_video_async(config, request)
 ```
