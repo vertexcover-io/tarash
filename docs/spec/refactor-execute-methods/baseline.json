@@ -1,0 +1,7 @@
+{
+  "type_check": { "exit": 1, "errors": 9, "note": "pre-existing mypy errors in 3 files" },
+  "lint": { "exit": 0, "warnings": 0 },
+  "test": { "exit": 1, "passed": 0, "failed": 0, "skipped": 0, "note": "Pydantic/Python 3.14 RC2 incompatibility prevents test collection" },
+  "coverage": { "percent": null, "note": "tests cannot run due to Pydantic import error" },
+  "timestamp": "2026-03-24T00:00:00Z"
+}
