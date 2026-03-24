@@ -17,9 +17,12 @@ from .api import (
     generate_video,
     generate_video_async,
     get_provider_field_mapping,
+    health_check,
+    health_check_async,
     register_provider,
     register_provider_field_mapping,
 )
+from .costs import CostEstimate, estimate_cost
 from .exceptions import (
     ContentModerationError,
     GenerationFailedError,
@@ -33,6 +36,7 @@ from .models import (
     AspectRatio,
     AudioGenerationConfig,
     AudioOutputFormat,
+    HealthCheckResult,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -64,6 +68,8 @@ __all__ = [
     "register_provider",
     "register_provider_field_mapping",
     "get_provider_field_mapping",
+    "health_check",
+    "health_check_async",
     # Models
     "VideoGenerationConfig",
     "VideoGenerationRequest",
@@ -79,12 +85,16 @@ __all__ = [
     "STSRequest",
     "STSResponse",
     "STSUpdate",
+    "HealthCheckResult",
     # Types
     "Resolution",
     "AspectRatio",
     "ImageType",
     "AudioOutputFormat",
     "format_to_content_type",
+    # Cost estimation
+    "CostEstimate",
+    "estimate_cost",
     # Exceptions
     "TarashException",
     "ValidationError",
