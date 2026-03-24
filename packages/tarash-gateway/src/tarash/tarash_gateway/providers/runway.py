@@ -493,7 +493,7 @@ class RunwayProviderHandler:
                 model=config.model,
                 request_id=request_id,
                 raw_response={"error": error_message},
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         # API connection errors

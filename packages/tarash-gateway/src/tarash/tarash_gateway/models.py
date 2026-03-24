@@ -9,6 +9,7 @@ from typing import (
     ClassVar,
     Literal,
     Protocol,
+    Required,
     TypeAlias,
     TypeVar,
     TypedDict,
@@ -28,6 +29,15 @@ Resolution = Literal["360p", "480p", "720p", "1080p", "4k"]
 AspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
 Base64 = str
 StatusType = Literal["queued", "processing", "completed", "failed"]
+HealthStatus = Literal["ok", "error"]
+
+
+class HealthCheckResult(TypedDict, total=False):
+    """Result of a single provider health check."""
+
+    status: Required[HealthStatus]
+    latency_ms: Required[int]
+    error: str
 
 
 class AudioOutputFormat(BaseModel):
@@ -202,8 +212,13 @@ class VideoGenerationConfig(BaseModel):
         default=None,
         description="API version string. Required for Azure OpenAI (e.g. '2024-05-01-preview').",
     )
+    timeout_seconds: int = Field(
+        default=300,
+        description="Per-request timeout in seconds for video generation (default 5 min).",
+    )
     timeout: int = Field(
-        default=600, description="Maximum seconds to wait for generation to complete."
+        default=600,
+        description="Deprecated: use timeout_seconds instead. Maximum seconds to wait for generation to complete.",
     )
     max_poll_attempts: int = Field(
         default=120, description="Maximum number of status-poll iterations."
@@ -224,6 +239,14 @@ class VideoGenerationConfig(BaseModel):
     )
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_timeout(cls, data: dict[str, object]) -> dict[str, object]:
+        """If timeout is explicitly set but timeout_seconds is not, use timeout value."""
+        if "timeout" in data and "timeout_seconds" not in data:
+            data["timeout_seconds"] = data["timeout"]
+        return data
 
 
 # ==================== Request ====================
@@ -383,9 +406,13 @@ class ImageGenerationConfig(BaseModel):
         default=None,
         description="API version string. Required for Azure OpenAI.",
     )
+    timeout_seconds: int = Field(
+        default=60,
+        description="Per-request timeout in seconds for image generation (default 1 min).",
+    )
     timeout: int = Field(
         default=120,
-        description="Maximum seconds to wait for generation (default 2 min).",
+        description="Deprecated: use timeout_seconds instead. Maximum seconds to wait for generation (default 2 min).",
     )
     max_poll_attempts: int = Field(
         default=60, description="Maximum number of status-poll iterations."
@@ -406,6 +433,14 @@ class ImageGenerationConfig(BaseModel):
     )
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_timeout(cls, data: dict[str, object]) -> dict[str, object]:
+        """If timeout is explicitly set but timeout_seconds is not, use timeout value."""
+        if "timeout" in data and "timeout_seconds" not in data:
+            data["timeout_seconds"] = data["timeout"]
+        return data
 
 
 class ImageGenerationRequest(BaseModel):
@@ -541,9 +576,13 @@ class AudioGenerationConfig(BaseModel):
         default=None,
         description="API key for authenticating with the provider.",
     )
+    timeout_seconds: int = Field(
+        default=120,
+        description="Per-request timeout in seconds for audio generation (default 2 min).",
+    )
     timeout: int = Field(
         default=240,
-        description="Maximum seconds to wait for generation to complete.",
+        description="Deprecated: use timeout_seconds instead. Maximum seconds to wait for generation to complete.",
     )
     mock: "MockConfig | None" = Field(
         default=None, description="If set, enables mock generation for testing."
@@ -558,6 +597,14 @@ class AudioGenerationConfig(BaseModel):
     )
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_timeout(cls, data: dict[str, object]) -> dict[str, object]:
+        """If timeout is explicitly set but timeout_seconds is not, use timeout value."""
+        if "timeout" in data and "timeout_seconds" not in data:
+            data["timeout_seconds"] = data["timeout"]
+        return data
 
 
 class TTSRequest(BaseModel):

@@ -104,9 +104,11 @@ class SarvamProviderHandler:
 
         if client_type == "async":
             return AsyncSarvamAI(
-                api_subscription_key=config.api_key, timeout=config.timeout
+                api_subscription_key=config.api_key, timeout=config.timeout_seconds
             )
-        return SarvamAI(api_subscription_key=config.api_key, timeout=config.timeout)
+        return SarvamAI(
+            api_subscription_key=config.api_key, timeout=config.timeout_seconds
+        )
 
     def _validate_request(
         self, config: AudioGenerationConfig, request: TTSRequest
@@ -186,7 +188,7 @@ class SarvamProviderHandler:
                 provider=provider,
                 model=model,
                 request_id=request_id,
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         if isinstance(ex, httpx.ConnectError):

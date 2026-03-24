@@ -129,7 +129,7 @@ class ElevenLabsProviderHandler:
                 model=config.model,
             )
         kwargs: dict[str, Any] = {"api_key": config.api_key}
-        kwargs["timeout"] = config.timeout
+        kwargs["timeout"] = config.timeout_seconds
 
         if client_type == "async":
             return AsyncElevenLabs(**kwargs)
@@ -320,7 +320,7 @@ class ElevenLabsProviderHandler:
                 provider=provider,
                 model=model,
                 request_id=request_id,
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         return TarashException(

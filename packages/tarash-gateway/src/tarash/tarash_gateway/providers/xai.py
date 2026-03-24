@@ -403,7 +403,7 @@ class XaiProviderHandler:
                             model=model,
                             request_id=request_id,
                             raw_response={"error": details, "grpc_code": str(code)},
-                            timeout_seconds=float(config.timeout),
+                            timeout_seconds=float(config.timeout_seconds),
                         )
                     if code == _grpc.StatusCode.UNAVAILABLE:
                         return HTTPConnectionError(
@@ -550,7 +550,7 @@ class XaiProviderHandler:
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """Generate video asynchronously via xAI."""
-        client = self._get_client(config.api_key, config.timeout, "async")
+        client = self._get_client(config.api_key, config.timeout_seconds, "async")
         params = self._convert_video_request(config, request)
 
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
@@ -599,7 +599,7 @@ class XaiProviderHandler:
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
         """Generate video synchronously via xAI (blocking)."""
-        client = self._get_client(config.api_key, config.timeout, "sync")
+        client = self._get_client(config.api_key, config.timeout_seconds, "sync")
         params = self._convert_video_request(config, request)
 
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
@@ -648,7 +648,7 @@ class XaiProviderHandler:
         """Generate image asynchronously via xAI (grok-imagine-image)."""
         import uuid
 
-        client = self._get_client(config.api_key, config.timeout, "async")
+        client = self._get_client(config.api_key, config.timeout_seconds, "async")
         params = self._convert_image_request(config, request)
         request_id = str(uuid.uuid4())
 
@@ -681,7 +681,7 @@ class XaiProviderHandler:
         """Generate image synchronously via xAI (grok-imagine-image, blocking)."""
         import uuid
 
-        client = self._get_client(config.api_key, config.timeout, "sync")
+        client = self._get_client(config.api_key, config.timeout_seconds, "sync")
         params = self._convert_image_request(config, request)
         request_id = str(uuid.uuid4())
 

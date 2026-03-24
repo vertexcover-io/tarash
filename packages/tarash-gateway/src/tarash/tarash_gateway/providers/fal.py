@@ -1248,7 +1248,7 @@ class FalProviderHandler:
             )
             return fal_client.AsyncClient(
                 key=config.api_key,
-                default_timeout=config.timeout,
+                default_timeout=config.timeout_seconds,
             )
         else:  # sync
             logger.debug(
@@ -1257,7 +1257,7 @@ class FalProviderHandler:
             )
             return fal_client.SyncClient(
                 key=config.api_key,
-                default_timeout=config.timeout,
+                default_timeout=config.timeout_seconds,
             )
 
     def _convert_request(
@@ -1379,7 +1379,7 @@ class FalProviderHandler:
                 model=config.model,
                 request_id=request_id,
                 raw_response={"error": str(ex)},
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         # httpx connection errors
@@ -1737,7 +1737,7 @@ class FalProviderHandler:
                 provider=config.provider,
                 api_key=config.api_key,
                 base_url=config.base_url,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
                 max_poll_attempts=config.max_poll_attempts,
                 poll_interval=config.poll_interval,
             ),
@@ -1832,7 +1832,7 @@ class FalProviderHandler:
                 provider=config.provider,
                 api_key=config.api_key,
                 base_url=config.base_url,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
                 max_poll_attempts=config.max_poll_attempts,
                 poll_interval=config.poll_interval,
             ),
@@ -1974,7 +1974,7 @@ class FalProviderHandler:
                 model=config.model,
                 request_id=request_id,
                 raw_response={"error": str(ex)},
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         # httpx connection errors
@@ -2062,7 +2062,7 @@ class FalProviderHandler:
                 model=config.model,
                 provider=config.provider,
                 api_key=config.api_key,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
             ),
             "async",
         )
@@ -2142,7 +2142,7 @@ class FalProviderHandler:
                 model=config.model,
                 provider=config.provider,
                 api_key=config.api_key,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
             ),
             "sync",
         )

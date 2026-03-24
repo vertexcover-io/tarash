@@ -591,4 +591,4 @@ def test_get_client_no_api_key(handler):
     config = AudioGenerationConfig(model="sonic-3", provider="cartesia")
     with patch("tarash.tarash_gateway.providers.cartesia.Cartesia") as mock_cls:
         handler._get_client(config, "sync")
-        mock_cls.assert_called_once_with(timeout=240)
+        mock_cls.assert_called_once_with(timeout=120)

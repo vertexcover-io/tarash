@@ -670,7 +670,7 @@ class ReplicateProviderHandler:
                 model=config.model,
                 request_id=prediction_id,
                 raw_response={"error": str(ex), "prediction_id": prediction_id},
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         # API connection errors
@@ -1049,7 +1049,7 @@ class ReplicateProviderHandler:
                 model=config.model,
                 provider=config.provider,
                 api_key=config.api_key,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
                 max_poll_attempts=config.max_poll_attempts,
                 poll_interval=config.poll_interval,
             ),
@@ -1077,7 +1077,7 @@ class ReplicateProviderHandler:
                     model=config.model,
                     provider=config.provider,
                     api_key=config.api_key,
-                    timeout=config.timeout,
+                    timeout=config.timeout_seconds,
                     max_poll_attempts=config.max_poll_attempts,
                     poll_interval=config.poll_interval,
                 ),
@@ -1176,7 +1176,7 @@ class ReplicateProviderHandler:
                 model=config.model,
                 provider=config.provider,
                 api_key=config.api_key,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
                 max_poll_attempts=config.max_poll_attempts,
                 poll_interval=config.poll_interval,
             ),

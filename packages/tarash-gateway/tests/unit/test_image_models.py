@@ -29,7 +29,8 @@ def test_image_generation_config_basic():
     assert config.model == "fal-ai/flux/dev"
     assert config.provider == "fal"
     assert config.api_key == "test-api-key"
-    assert config.timeout == 120  # Default for images
+    assert config.timeout == 120  # Legacy default for images
+    assert config.timeout_seconds == 60  # New default for images
     assert config.max_poll_attempts == 60
     assert config.poll_interval == 2
 
@@ -46,6 +47,9 @@ def test_image_generation_config_with_custom_timeouts():
     )
 
     assert config.timeout == 60
+    assert (
+        config.timeout_seconds == 60
+    )  # Inherits from timeout when timeout_seconds not set
     assert config.max_poll_attempts == 30
     assert config.poll_interval == 1
 

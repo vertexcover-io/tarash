@@ -273,7 +273,9 @@ class OpenAIProviderHandler:
             )
             return AsyncOpenAI(
                 api_key=config.api_key,
-                timeout=float(config.timeout) if config.timeout else None,
+                timeout=float(config.timeout_seconds)
+                if config.timeout_seconds
+                else None,
                 base_url=config.base_url if config.base_url else None,
             )
         else:  # sync
@@ -283,7 +285,9 @@ class OpenAIProviderHandler:
             )
             return OpenAI(
                 api_key=config.api_key,
-                timeout=float(config.timeout) if config.timeout else None,
+                timeout=float(config.timeout_seconds)
+                if config.timeout_seconds
+                else None,
                 base_url=config.base_url if config.base_url else None,
             )
 
@@ -509,7 +513,7 @@ class OpenAIProviderHandler:
                 model=config.model,
                 request_id=request_id,
                 raw_response={"error": str(ex)},
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         # API connection errors

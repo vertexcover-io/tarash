@@ -575,7 +575,7 @@ class GoogleProviderHandler:
                 model=config.model,
                 request_id=request_id,
                 raw_response={"error": str(ex)},
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         # httpx connection errors
@@ -605,7 +605,7 @@ class GoogleProviderHandler:
                     model=config.model,
                     request_id=request_id,
                     raw_response={"error": str(ex)},
-                    timeout_seconds=config.timeout,
+                    timeout_seconds=config.timeout_seconds,
                 )
 
             # aiohttp connection errors
@@ -864,7 +864,7 @@ class GoogleProviderHandler:
             provider=config.provider,
             api_key=config.api_key,
             base_url=config.base_url,
-            timeout=config.timeout,
+            timeout=config.timeout_seconds,
             provider_config=config.provider_config,
         )
         return self._handle_error(video_config, request_id, ex)

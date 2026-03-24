@@ -98,7 +98,7 @@ class AzureOpenAIProviderHandler(OpenAIProviderHandler):
             "azure_endpoint": azure_endpoint.rstrip("/"),
             "api_version": api_version,
             "api_key": config.api_key,
-            "timeout": config.timeout,
+            "timeout": config.timeout_seconds,
         }
 
     @overload

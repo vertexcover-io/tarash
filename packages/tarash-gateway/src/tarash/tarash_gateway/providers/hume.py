@@ -127,8 +127,8 @@ class HumeProviderHandler:
             )
 
         kwargs: dict[str, Any] = {"api_key": config.api_key}
-        if config.timeout:
-            kwargs["timeout"] = config.timeout
+        if config.timeout_seconds:
+            kwargs["timeout"] = config.timeout_seconds
 
         if client_type == "async":
             return AsyncHumeClient(**kwargs)
@@ -211,7 +211,7 @@ class HumeProviderHandler:
                 provider=provider,
                 model=model,
                 request_id=request_id,
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         if isinstance(ex, httpx.ConnectError):

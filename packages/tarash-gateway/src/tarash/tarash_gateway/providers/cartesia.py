@@ -183,7 +183,7 @@ class CartesiaProviderHandler:
         kwargs: dict[str, Any] = {}
         if config.api_key:
             kwargs["api_key"] = config.api_key
-        kwargs["timeout"] = config.timeout
+        kwargs["timeout"] = config.timeout_seconds
 
         if client_type == "async":
             return AsyncCartesia(**kwargs)
@@ -307,7 +307,7 @@ class CartesiaProviderHandler:
                 provider=provider,
                 model=model,
                 request_id=request_id,
-                timeout_seconds=config.timeout,
+                timeout_seconds=config.timeout_seconds,
             )
 
         if isinstance(ex, CartesiaConnectionError):

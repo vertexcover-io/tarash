@@ -279,13 +279,13 @@ class StabilityProviderHandler:
             return httpx.AsyncClient(
                 base_url=STABILITY_API_BASE,
                 headers=headers,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
             )
         else:
             return httpx.Client(
                 base_url=STABILITY_API_BASE,
                 headers=headers,
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
             )
 
     def _convert_image_request(
