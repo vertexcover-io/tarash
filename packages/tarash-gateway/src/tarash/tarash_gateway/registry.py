@@ -5,6 +5,7 @@ from typing import cast
 from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.exceptions import ValidationError
 from tarash.tarash_gateway.models import (
+    ImageGenerationConfig,
     ProviderHandler,
     VideoGenerationConfig,
 )
@@ -21,7 +22,9 @@ from tarash.tarash_gateway.providers import (
 _HANDLER_INSTANCES: dict[str, ProviderHandler] = {}
 
 
-def get_handler(config: VideoGenerationConfig) -> ProviderHandler:
+def get_handler(
+    config: VideoGenerationConfig | ImageGenerationConfig,
+) -> ProviderHandler:
     """Get or create handler instance for the given config.
 
     Args:
