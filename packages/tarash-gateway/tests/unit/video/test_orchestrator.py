@@ -26,7 +26,7 @@ def test_collect_fallback_chain_no_fallbacks():
         api_key="test-key",
     )
 
-    chain = ExecutionOrchestrator.collect_fallback_chain(config)
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
 
     assert len(chain) == 1
     assert chain[0].model == "fal-ai/veo3.1"
@@ -53,7 +53,7 @@ def test_collect_fallback_chain_with_fallbacks():
         fallback_configs=[fallback1, fallback2],
     )
 
-    chain = ExecutionOrchestrator.collect_fallback_chain(config)
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
 
     assert len(chain) == 3
     assert chain[0].model == "fal-ai/veo3.1"
@@ -83,7 +83,7 @@ def test_collect_fallback_chain_depth_first():
         fallback_configs=[fallback1],
     )
 
-    chain = ExecutionOrchestrator.collect_fallback_chain(config)
+    chain = ExecutionOrchestrator._collect_fallback_chain(config)
 
     # Depth-first: primary -> fallback1 -> fallback2
     assert len(chain) == 3
