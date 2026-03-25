@@ -56,7 +56,9 @@ except TarashException as e:
 
 `is_retryable_error(error)` — returns `True` for errors that trigger fallback. Used internally by the orchestrator; useful when building custom retry logic.
 
-`handle_video_generation_errors` — decorator applied to provider `generate_video` / `generate_video_async` methods. Lets `TarashException` and Pydantic `ValidationError` propagate unchanged; wraps any other exception in `TarashException` with full traceback in `raw_response`. See the [Custom Providers guide](../guides/custom-providers.md).
+`handle_video_generation_errors` — decorator applied to provider `generate_video` / `generate_video_async` methods. Propagates `TarashException` and Pydantic `ValidationError` unchanged; wraps any other exception in `TarashException` with full traceback in `raw_response`. See the [Custom Providers guide](../guides/custom-providers.md).
+
+`handle_audio_generation_errors` — decorator applied to provider `generate_tts` / `generate_sts` and their async variants. Propagates `TarashException` and Pydantic `ValidationError` unchanged; wraps any other exception in `TarashException` with full traceback in `raw_response`.
 
 ---
 

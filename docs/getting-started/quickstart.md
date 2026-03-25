@@ -65,7 +65,7 @@ from tarash.tarash_gateway import generate_video_async
 from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
 async def main():
-    config = VideoGenerationConfig(provider="fal", api_key="YOUR_KEY")
+    config = VideoGenerationConfig(provider="fal", api_key="YOUR_FAL_KEY", model="fal-ai/veo3.1/fast")
     request = VideoGenerationRequest(prompt="A timelapse of a blooming flower")
 
     response = await generate_video_async(config, request)

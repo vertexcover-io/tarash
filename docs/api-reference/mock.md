@@ -1,6 +1,6 @@
 # Mock Provider
 
-Mock provider for testing without real API calls. Set `VideoGenerationConfig.mock` to a `MockConfig` to intercept generation requests. See the [Mock guide](../guides/mock.md) for usage patterns.
+Mock provider for testing without real API calls. Set the `mock` field on `VideoGenerationConfig`, `ImageGenerationConfig`, or `AudioGenerationConfig` to a `MockConfig` to intercept generation requests. See the [Mock guide](../guides/mock.md) for usage patterns.
 
 ## MockConfig
 

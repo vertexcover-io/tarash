@@ -166,4 +166,4 @@ config = AudioGenerationConfig(
 
 **Response format:** Audio is returned as a base64-encoded string in `response.audio`. The `content_type` field indicates the MIME type (e.g. `"audio/mpeg"` for MP3).
 
-**Timeout configuration:** Use `AudioGenerationConfig.timeout` to control the maximum wait time in seconds (default: 240).
+**Timeout configuration:** Use `AudioGenerationConfig.timeout_seconds` to control the per-request timeout in seconds (default: 120).

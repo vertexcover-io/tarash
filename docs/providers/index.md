@@ -14,7 +14,7 @@ Change `provider` and `model` in your config — nothing else in your code chang
 | [Fal.ai](fal.md) | ✅ | ✅ | ✅ | `fal` |
 | [Google](google.md) | ✅ | ✅ | ✅ | `veo3` |
 | [Runway](runway.md) | ✅ | — | ✅ | `runway` |
-| [Replicate](replicate.md) | ✅ | — | ✅ | `replicate` |
+| [Replicate](replicate.md) | ✅ | ✅ | ✅ | `replicate` |
 | [xAI](xai.md) | ✅ | ✅ | ✅ | `xai` |
 | [Stability AI](stability.md) | — | ✅ | — | — |
 
@@ -37,7 +37,7 @@ from tarash.tarash_gateway import generate_video
 from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
 request = VideoGenerationRequest(
-    prompt="A cat playing piano, cinematic lighting",
+    prompt="A cat playing piano",
     duration_seconds=4,
     aspect_ratio="16:9",
 )

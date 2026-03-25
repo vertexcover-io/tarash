@@ -42,6 +42,7 @@ from a built-in library matched to your request. The response is a valid
 Control exactly what the mock returns using `MockResponse`:
 
 ```python
+from tarash.tarash_gateway.models import VideoGenerationConfig
 from tarash.tarash_gateway.mock import MockConfig, MockResponse
 
 config = VideoGenerationConfig(
@@ -52,7 +53,7 @@ config = VideoGenerationConfig(
         responses=[
             MockResponse(
                 weight=1.0,
-                video_url="https://example.com/my-test-video.mp4",
+                output_video="https://example.com/my-test-video.mp4",
             ),
         ],
     ),
@@ -66,6 +67,7 @@ config = VideoGenerationConfig(
 Test your error handling by configuring the mock to raise specific exceptions:
 
 ```python
+from tarash.tarash_gateway.models import VideoGenerationConfig
 from tarash.tarash_gateway.exceptions import GenerationFailedError
 from tarash.tarash_gateway.mock import MockConfig, MockResponse
 
@@ -112,6 +114,7 @@ Combine mock with fallback to test your fallback logic without hitting any real 
 config = VideoGenerationConfig(
     provider="fal",
     model="fal-ai/veo3.1/fast",
+    api_key="ignored-in-mock",
     mock=MockConfig(
         enabled=True,
         responses=[MockResponse(weight=1.0, error=GenerationFailedError("forced fail"))],
@@ -120,6 +123,7 @@ config = VideoGenerationConfig(
         VideoGenerationConfig(
             provider="replicate",
             model="google/veo-3.1",
+            api_key="ignored-in-mock",
             mock=MockConfig(enabled=True),  # fallback mock succeeds
         ),
     ],
@@ -133,21 +137,7 @@ assert response.execution_metadata.fallback_triggered is True
 
 ## Image generation mock
 
-`MockConfig` works the same way for image generation:
-
-```python
-from tarash.tarash_gateway import generate_image
-from tarash.tarash_gateway.models import ImageGenerationConfig, ImageGenerationRequest
-
-config = ImageGenerationConfig(
-    provider="openai",
-    model="dall-e-3",
-    mock=MockConfig(enabled=True),
-)
-response = generate_image(config, ImageGenerationRequest(prompt="A sunset"))
-print(response.images[0])   # → URL to a stock mock image
-print(response.is_mock)     # → True
-```
+> **Note:** The mock provider currently supports video generation only. Image generation mock support is not yet available.
 
 ---
 

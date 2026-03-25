@@ -52,7 +52,7 @@ print(response.images[0])
 
 | Model ID | Max Images | Sizes |
 |---|---|---|
-| `gpt-image-1.5` | 1 | `1024×1024`, `1024×1792`, `1792×1024`, `auto` |
+| `gpt-image-1.5` | up to 4 | `1024×1024`, `1024×1792`, `1792×1024`, `auto` |
 | `dall-e-3` | 1 | `1024×1024`, `1024×1792`, `1792×1024` |
 | `dall-e-2` | up to 10 | `256×256`, `512×512`, `1024×1024` |
 
@@ -157,6 +157,6 @@ Parameters, image/video generation, Image-to-Video, and Video Remix all work ide
 
 ## Provider-Specific Notes
 
-**Client caching:** Both sync and async OpenAI clients are cached per `(api_key, base_url)` pair. This is safe because OpenAI's clients support reuse across calls.
+**Client creation:** A fresh OpenAI client is created for each request.
 
 **Content download:** After generation, Tarash automatically downloads the video bytes so the response includes the content directly, not just a URL.

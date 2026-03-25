@@ -41,9 +41,10 @@ response = generate_video(config, request)
 config = VideoGenerationConfig(
     provider="fal",
     model="fal-ai/veo3.1/fast",
+    api_key="YOUR_FAL_KEY",
     fallback_configs=[
-        VideoGenerationConfig(provider="replicate", model="google/veo-3.1"),
-        VideoGenerationConfig(provider="openai", model="sora-2"),
+        VideoGenerationConfig(provider="replicate", model="google/veo-3.1", api_key="YOUR_REPLICATE_KEY"),
+        VideoGenerationConfig(provider="openai", model="sora-2", api_key="YOUR_OPENAI_KEY"),
     ],
 )
 ```
@@ -120,10 +121,12 @@ before falling back to a higher-quality one:
 config = VideoGenerationConfig(
     provider="fal",
     model="fal-ai/veo3.1/fast",      # fast, cheaper
+    api_key="YOUR_FAL_KEY",
     fallback_configs=[
         VideoGenerationConfig(
             provider="fal",
             model="fal-ai/veo3.1",   # higher quality fallback
+            api_key="YOUR_FAL_KEY",
         ),
     ],
 )
@@ -142,8 +145,9 @@ from tarash.tarash_gateway.models import ImageGenerationConfig
 config = ImageGenerationConfig(
     provider="openai",
     model="dall-e-3",
+    api_key="YOUR_OPENAI_KEY",
     fallback_configs=[
-        ImageGenerationConfig(provider="fal", model="fal-ai/flux/dev"),
+        ImageGenerationConfig(provider="fal", model="fal-ai/flux/dev", api_key="YOUR_FAL_KEY"),
     ],
 )
 ```
