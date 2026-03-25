@@ -32,7 +32,7 @@ config = AudioGenerationConfig(
 )
 
 request = TTSRequest(
-    text="Welcome to the future of expressive speech synthesis!",
+    text="Welcome to expressive speech synthesis.",
     voice_id="Kora",
     voice_settings={"description": "excited and warm", "speed": 1.1},
 )

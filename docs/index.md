@@ -6,7 +6,7 @@
 from tarash.tarash_gateway import generate_video
 from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationRequest
 
-config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3.1/fast")
+config = VideoGenerationConfig(provider="fal", model="fal-ai/veo3.1/fast", api_key="YOUR_FAL_KEY")
 request = VideoGenerationRequest(prompt="A cat playing piano, cinematic lighting")
 response = generate_video(config, request)
 print(response.video)  # → URL to generated video
@@ -45,9 +45,10 @@ If a provider fails or rate-limits, Tarash Gateway automatically tries the next 
 config = VideoGenerationConfig(
     provider="fal",
     model="fal-ai/veo3.1/fast",
+    api_key="YOUR_FAL_KEY",
     fallback_configs=[
-        VideoGenerationConfig(provider="replicate", model="google/veo-3.1"),
-        VideoGenerationConfig(provider="openai", model="sora-2"),
+        VideoGenerationConfig(provider="replicate", model="google/veo-3.1", api_key="YOUR_REPLICATE_KEY"),
+        VideoGenerationConfig(provider="openai", model="sora-2", api_key="YOUR_OPENAI_KEY"),
     ],
 )
 response = generate_video(config, request)
@@ -66,6 +67,7 @@ from tarash.tarash_gateway.mock import MockConfig
 config = VideoGenerationConfig(
     provider="fal",
     model="fal-ai/veo3.1/fast",
+    api_key="YOUR_FAL_KEY",
     mock=MockConfig(enabled=True),
 )
 response = generate_video(config, request)

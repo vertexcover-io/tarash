@@ -96,7 +96,7 @@ request = ImageGenerationRequest(
 )
 
 response = generate_image(config, request)
-print(response.image)
+print(response.images)
 ```
 
 </details>
@@ -171,8 +171,8 @@ response = generate_video(config, request)
 | **[OpenAI](https://tarash.vertexcover.io/providers/openai/)** | ✓ | ✓ | — |
 | **[Google](https://tarash.vertexcover.io/providers/google/)** | ✓ | ✓ | — |
 | **[Runway](https://tarash.vertexcover.io/providers/runway/)** | ✓ | — | — |
-| **[Replicate](https://tarash.vertexcover.io/providers/replicate/)** | ✓ | — | — |
-| **[XAI](https://tarash.vertexcover.io/providers/)** | ✓ | — | — |
+| **[Replicate](https://tarash.vertexcover.io/providers/replicate/)** | ✓ | ✓ | — |
+| **[XAI](https://tarash.vertexcover.io/providers/)** | ✓ | ✓ | — |
 | **[Stability AI](https://tarash.vertexcover.io/providers/stability/)** | — | ✓ | — |
 | **[ElevenLabs](https://tarash.vertexcover.io/providers/)** | — | — | ✓ |
 | **[Cartesia](https://tarash.vertexcover.io/providers/)** | — | — | ✓ |
@@ -207,6 +207,10 @@ tarash_gateway/
 ├── orchestrator.py         # Fallback and retry orchestration
 ├── mock.py                 # Mock provider for testing
 ├── logging.py              # Structured logging
+├── costs.py                # Provider/model cost estimation
+├── image_format.py         # Image format utilities
+├── registry.py             # Provider registry
+├── utils.py                # Shared utilities
 └── providers/              # Provider implementations + field mapper registry
 ```
 
@@ -240,4 +244,4 @@ uv run pytest packages/tarash-gateway/tests/e2e/ --e2e
 
 ## License
 
-MIT — see [LICENSE](../../LICENSE) for details.
+MIT License.

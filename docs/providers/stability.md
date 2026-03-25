@@ -26,7 +26,7 @@ config = ImageGenerationConfig(
 )
 
 request = ImageGenerationRequest(
-    prompt="A majestic eagle soaring over mountain peaks, ultra-detailed, photorealistic",
+    prompt="An eagle soaring over mountain peaks",
     aspect_ratio="16:9",
 )
 
@@ -41,7 +41,7 @@ print(response.images[0])   # Base64 image or URL
 | Parameter | Required | Supported | Notes |
 |---|:---:|:---:|---|
 | `prompt` | ✅ | ✅ | Text description of the image |
-| `aspect_ratio` | — | ✅ | `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`, `9:21` |
+| `aspect_ratio` | — | ✅ | `1:1`, `16:9`, `9:16`, `21:9`, `9:21`, `2:3`, `3:2`, `4:5`, `5:4` |
 | `negative_prompt` | — | ✅ | SD 3.5 only |
 | `seed` | — | ✅ | 0 to 4,294,967,294 |
 | `cfg_scale` | — | ✅ | Via `extra_params` |

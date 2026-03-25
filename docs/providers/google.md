@@ -7,7 +7,7 @@ Google provides **Veo 3** video generation and **Imagen 3** / **Gemini** image g
 ## Installation
 
 ```bash
-pip install tarash-gateway[google]
+pip install tarash-gateway[veo3]
 ```
 
 ---
@@ -27,7 +27,7 @@ config = ImageGenerationConfig(
 )
 
 request = ImageGenerationRequest(
-    prompt="A serene Japanese garden with cherry blossoms, photorealistic",
+    prompt="A Japanese garden with cherry blossoms",
     aspect_ratio="16:9",
 )
 

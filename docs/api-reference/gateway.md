@@ -29,10 +29,10 @@ from tarash.tarash_gateway import (
 | `generate_video_async(config, request, on_progress=None)` | Async | `VideoGenerationUpdate` | `VideoGenerationResponse` |
 | `generate_image(config, request, on_progress=None)` | Sync | `ImageGenerationUpdate` | `ImageGenerationResponse` |
 | `generate_image_async(config, request, on_progress=None)` | Async | `ImageGenerationUpdate` | `ImageGenerationResponse` |
-| `generate_tts(config, request, on_progress=None)` | Sync | `TTSProgressCallback` | `TTSResponse` |
-| `generate_tts_async(config, request, on_progress=None)` | Async | `TTSProgressCallback` | `TTSResponse` |
-| `generate_sts(config, request, on_progress=None)` | Sync | `STSProgressCallback` | `STSResponse` |
-| `generate_sts_async(config, request, on_progress=None)` | Async | `STSProgressCallback` | `STSResponse` |
+| `generate_tts(config, request, on_progress=None)` | Sync | `TTSUpdate` | `TTSResponse` |
+| `generate_tts_async(config, request, on_progress=None)` | Async | `TTSUpdate` | `TTSResponse` |
+| `generate_sts(config, request, on_progress=None)` | Sync | `STSUpdate` | `STSResponse` |
+| `generate_sts_async(config, request, on_progress=None)` | Async | `STSUpdate` | `STSResponse` |
 
 `on_progress` accepts both sync and async callables.
 
@@ -48,7 +48,7 @@ from tarash.tarash_gateway import (
 
 | Function | Description | Returns |
 |---|---|---|
-| `register_provider(name, handler)` | Register a custom provider handler | `None` |
+| `register_provider(provider, handler)` | Register a custom provider handler | `None` |
 | `register_provider_field_mapping(provider, model_mappings)` | Register field mappings for a provider | `None` |
 | `get_provider_field_mapping(provider)` | Get registered field mappings | `dict \| None` |
 

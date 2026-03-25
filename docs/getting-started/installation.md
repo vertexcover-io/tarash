@@ -41,6 +41,8 @@ pip install tarash-gateway[runway]
 | `hume` | Hume AI TTS |
 | `all` | All of the above |
 
+> **Note:** Stability AI uses `httpx`, which is a core dependency of tarash-gateway. No extra pip install is needed — just `pip install tarash-gateway`.
+
 ---
 
 ## Verify installation

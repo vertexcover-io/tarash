@@ -15,7 +15,7 @@ config = VideoGenerationConfig(
 )
 
 request = VideoGenerationRequest(
-    prompt="A vibrant coral reef teeming with colorful fish",
+    prompt="A coral reef with fish, underwater",
     duration_seconds=5,
 )
 

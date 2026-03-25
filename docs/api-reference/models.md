@@ -27,7 +27,8 @@ Configuration passed to `generate_video()` and `generate_video_async()`. Immutab
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override provider base URL |
 | `api_version` | `str | None` | — | `None` | API version (required for Azure OpenAI) |
-| `timeout` | `int` | — | `600` | Max seconds to wait for completion |
+| `timeout_seconds` | `int` | — | `300` | Per-request timeout in seconds for video generation |
+| `timeout` | `int` | — | `600` | **Deprecated:** use `timeout_seconds` instead. Max seconds to wait for completion |
 | `max_poll_attempts` | `int` | — | `120` | Max polling iterations |
 | `poll_interval` | `int` | — | `5` | Seconds between polls |
 | `mock` | `MockConfig | None` | — | `None` | Enable mock generation |
@@ -99,7 +100,8 @@ Passed to the `on_progress` callback on each polling cycle during video generati
 | `api_key` | `str | None` | ✅ | — | API key; required |
 | `base_url` | `str | None` | — | `None` | Override base URL |
 | `api_version` | `str | None` | — | `None` | API version |
-| `timeout` | `int` | — | `120` | Max seconds to wait |
+| `timeout_seconds` | `int` | — | `60` | Per-request timeout in seconds for image generation |
+| `timeout` | `int` | — | `120` | **Deprecated:** use `timeout_seconds` instead. Max seconds to wait |
 | `max_poll_attempts` | `int` | — | `60` | Max polling iterations |
 | `poll_interval` | `int` | — | `2` | Seconds between polls |
 | `mock` | `MockConfig | None` | — | `None` | Enable mock |
@@ -199,8 +201,9 @@ Configuration passed to `generate_tts()`, `generate_tts_async()`, `generate_sts(
 |---|---|:---:|---|---|
 | `provider` | `str` | ✅ | — | Provider ID: `"fal"`, `"elevenlabs"`, `"cartesia"`, `"sarvam"`, `"hume"` |
 | `model` | `str` | ✅ | — | Model ID, e.g. `"eleven_multilingual_v2"`, `"sonic-3"`, `"fal-ai/minimax/speech-2.8-hd"` |
-| `api_key` | `str | None` | — | `None` | API key |
-| `timeout` | `int` | — | `240` | Max seconds to wait for completion |
+| `api_key` | `str | None` | ✅ | — | API key; required |
+| `timeout_seconds` | `int` | — | `120` | Per-request timeout in seconds for audio generation |
+| `timeout` | `int` | — | `240` | **Deprecated:** use `timeout_seconds` instead. Max seconds to wait for completion |
 | `mock` | `MockConfig | None` | — | `None` | Enable mock generation |
 | `fallback_configs` | `list[AudioGenerationConfig] | None` | — | `None` | Fallback chain |
 | `provider_config` | `dict` | — | `{}` | Extra provider-specific config |

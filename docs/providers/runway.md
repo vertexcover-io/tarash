@@ -43,10 +43,10 @@ print(response.video)
 | `aspect_ratio` | — | ✅ | Converted to Runway pixel dimensions |
 | `image_list` | — | ✅ | Used as input image for image-to-video |
 | `video` | — | ✅ | Required for Aleph (video-to-video) |
-| `duration_seconds` | — | — | Duration is model-dependent, not user-configurable |
-| `seed` | — | — | Not supported |
+| `duration_seconds` | — | ✅ | Text-to-video: 4, 6, 8. Image-to-video: 2–10 (integer). |
+| `seed` | — | ✅ | Supported for image-to-video and video-to-video |
 | `negative_prompt` | — | — | Not supported |
-| `generate_audio` | — | — | Not supported |
+| `generate_audio` | — | ✅ | Supported for text-to-video |
 
 ### Content moderation
 
@@ -143,4 +143,4 @@ print(response.video)
 
 - **Endpoint auto-selection:** Aleph models → `video_to_video`. All others → `image_to_video` if an image is provided, otherwise `text_to_video`. `gen3a_turbo` always requires an image.
 - **Task polling:** Tarash polls until the task reaches `SUCCEEDED`, `FAILED`, or `CANCELLED`.
-- **Video download:** The response includes video bytes directly, not just a URL.
+- **Video download:** The response includes a video URL, not raw bytes.

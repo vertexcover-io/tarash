@@ -46,7 +46,7 @@ from tarash.tarash_gateway.models import (
     ProgressCallback,
     ImageProgressCallback,
 )
-from tarash.tarash_gateway.utils import generate_unique_id
+import uuid
 
 
 class MyProviderHandler:
@@ -64,16 +64,16 @@ class MyProviderHandler:
             "https://my-provider.example.com/v1/generate",
             json={"prompt": request.prompt},
             headers={"Authorization": f"Bearer {config.api_key}"},
-            timeout=config.timeout,
+            timeout=config.timeout_seconds,
         )
         response.raise_for_status()
         data = response.json()
 
         return VideoGenerationResponse(
-            request_id=generate_unique_id(),
+            request_id=str(uuid.uuid4()),
             video=data["video_url"],
             status="completed",
-            raw_response=data,
+            raw_response=data,  # type: ignore[arg-type]
         )
 
     async def generate_video_async(
@@ -89,16 +89,16 @@ class MyProviderHandler:
                 "https://my-provider.example.com/v1/generate",
                 json={"prompt": request.prompt},
                 headers={"Authorization": f"Bearer {config.api_key}"},
-                timeout=config.timeout,
+                timeout=config.timeout_seconds,
             )
             response.raise_for_status()
             data = response.json()
 
         return VideoGenerationResponse(
-            request_id=generate_unique_id(),
+            request_id=str(uuid.uuid4()),
             video=data["video_url"],
             status="completed",
-            raw_response=data,
+            raw_response=data,  # type: ignore[arg-type]
         )
 
     def generate_image(self, config, request, on_progress=None):

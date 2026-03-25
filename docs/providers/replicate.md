@@ -33,7 +33,7 @@ request = VideoGenerationRequest(
     prompt="The kite soars higher into the stormy sky",
     duration_seconds=5,
     image_list=[
-        ImageType(image="https://example.com/kite.jpg", type="first_frame"),
+        ImageType(image="https://example.com/kite.jpg", type="reference"),
     ],
 )
 
@@ -102,8 +102,9 @@ request = VideoGenerationRequest(
 |---|:---:|:---:|---|---|
 | `prompt` | ✅ | ✅ | All | Text description of the video |
 | `duration_seconds` | — | ✅ | Kling, Minimax, Veo3 | Integer seconds |
-| `image_list` (first_frame) | — | ✅ | Kling, Luma | Start frame |
-| `image_list` (last_frame) | — | ✅ | Luma | End frame |
+| `image_list` (reference) | — | ✅ | Kling | Start frame |
+| `image_list` (first_frame) | — | ✅ | Luma, Veo3 | Start frame |
+| `image_list` (last_frame) | — | ✅ | Luma, Veo3 | End frame |
 | `image_list` (reference) | — | ✅ | Minimax | Reference image |
 | `enhance_prompt` | — | ✅ | Minimax | As `prompt_optimizer` |
 | `aspect_ratio` | — | ✅ | Luma, Veo3 | Passed through |

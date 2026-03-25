@@ -1,6 +1,6 @@
 # Kling (via Fal.ai)
 
-Kuaishou's Kling v2.6 and o1 models hosted on Fal.ai.
+Kuaishou's Kling v2.6, o1, v3, and o3 models hosted on Fal.ai.
 
 ## Quick Example
 
@@ -32,6 +32,8 @@ print(response.video)
 |---|---|:---:|---|
 | `fal-ai/kling-video/v2.6` | `5s`, `10s` | ✅ | Motion control, `cfg_scale`, last-frame pinning |
 | `fal-ai/kling-video/o1` | `5s`, `10s` | ✅ | Reference-to-video, video edit, start/end frame |
+| `fal-ai/kling-video/v3` | `3`–`15` | ✅ | Pro/Standard tiers, multi-prompt, audio generation |
+| `fal-ai/kling-video/o3/` | `3`–`15` | ✅ | Pro/Standard tiers, reference-to-video, audio generation |
 
 ---
 

@@ -51,7 +51,7 @@ request = VideoGenerationRequest(
     prompt="The dog shakes water off its fur",
     duration_seconds=5,
     aspect_ratio="16:9",
-    image_list=[ImageType(image="https://example.com/dog.jpg", type="first_frame")],
+    image_list=[{"image": "https://example.com/dog.jpg", "type": "first_frame"}],
 )
 response = generate_video(config, request)
 print(response.video)

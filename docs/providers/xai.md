@@ -46,7 +46,7 @@ print(response.video)
 | Parameter | Required | Supported | Notes |
 |---|:---:|:---:|---|
 | `prompt` | Yes | Yes | Text description of the video |
-| `duration_seconds` | -- | Yes | Integer, 1--15 seconds |
+| `duration_seconds` | -- | Yes | Integer, 1-15 seconds |
 | `resolution` | -- | Yes | `"480p"` or `"720p"` only |
 | `aspect_ratio` | -- | Yes | Passthrough to xAI API |
 | `image_list` | -- | Yes | Single image for image-to-video (1 image only) |
