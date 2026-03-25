@@ -47,7 +47,7 @@ config = VideoGenerationConfig(
     model="fal-ai/veo3.1/fast",
     fallback_configs=[
         VideoGenerationConfig(provider="replicate", model="google/veo-3.1"),
-        VideoGenerationConfig(provider="openai", model="openai/sora-2"),
+        VideoGenerationConfig(provider="openai", model="sora-2"),
     ],
 )
 response = generate_video(config, request)

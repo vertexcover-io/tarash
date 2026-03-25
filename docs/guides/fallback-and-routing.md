@@ -12,10 +12,12 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 config = VideoGenerationConfig(
     provider="fal",
     model="fal-ai/veo3.1/fast",
+    api_key="YOUR_FAL_KEY",
     fallback_configs=[
         VideoGenerationConfig(
             provider="replicate",
             model="google/veo-3.1",
+            api_key="YOUR_REPLICATE_KEY",  # each config needs its own api_key
         ),
     ],
 )
@@ -41,7 +43,7 @@ config = VideoGenerationConfig(
     model="fal-ai/veo3.1/fast",
     fallback_configs=[
         VideoGenerationConfig(provider="replicate", model="google/veo-3.1"),
-        VideoGenerationConfig(provider="openai", model="openai/sora-2"),
+        VideoGenerationConfig(provider="openai", model="sora-2"),
     ],
 )
 ```

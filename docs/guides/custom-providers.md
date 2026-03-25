@@ -106,6 +106,18 @@ class MyProviderHandler:
 
     async def generate_image_async(self, config, request, on_progress=None):
         raise NotImplementedError("my-provider does not support image generation")
+
+    def generate_tts(self, config, request, on_progress=None):
+        raise NotImplementedError("my-provider does not support TTS")
+
+    async def generate_tts_async(self, config, request, on_progress=None):
+        raise NotImplementedError("my-provider does not support TTS")
+
+    def generate_sts(self, config, request, on_progress=None):
+        raise NotImplementedError("my-provider does not support STS")
+
+    async def generate_sts_async(self, config, request, on_progress=None):
+        raise NotImplementedError("my-provider does not support STS")
 ```
 
 ---
@@ -139,4 +151,4 @@ response = generate_video(config, request)
 
 - `register_provider()` and `register_provider_field_mapping()` are global — call once at startup
 - Registering with the same name as a built-in provider overwrites it
-- The `ProviderHandler` protocol requires all four methods (`generate_video`, `generate_video_async`, `generate_image`, `generate_image_async`). Raise `NotImplementedError` for unsupported modalities
+- The `ProviderHandler` protocol requires all eight methods (`generate_video`, `generate_video_async`, `generate_image`, `generate_image_async`, `generate_tts`, `generate_tts_async`, `generate_sts`, `generate_sts_async`). Raise `NotImplementedError` for unsupported modalities
