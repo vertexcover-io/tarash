@@ -32,7 +32,7 @@ jobs:
       - name: Fetch review comments JSON
         id: comments
         env:
-          GH_TOKEN: ${{ secrets.HARNESS_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER="${{ github.event.issue.number || github.event.pull_request.number }}"
           REPO="${{ github.repository }}"
@@ -50,7 +50,7 @@ jobs:
         with:
           base_branch: master
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.HARNESS_PAT }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           plugin_marketplaces: 'https://github.com/vertexcover-io/harness-engineering.git'
           plugins: 'harness@main'
           prompt: |
