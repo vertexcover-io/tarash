@@ -35,7 +35,7 @@ jobs:
           base_branch: master
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.HARNESS_PAT }}
-          plugin_marketplaces: 'https://github.com/vertexcover-io/harness-engineering.git'
+          plugin_marketplaces: 'https://x-access-token:${{ secrets.HARNESS_PAT }}@github.com/vertexcover-io/harness-engineering.git'
           plugins: 'harness@main'
           prompt: |
             You have the harness plugin installed with skills for software engineering workflows.
