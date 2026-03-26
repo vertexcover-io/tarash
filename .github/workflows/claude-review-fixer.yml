@@ -13,8 +13,8 @@ concurrency:
 jobs:
   respond:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && github.event.issue.pull_request) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude-harness') && github.event.issue.pull_request) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude-harness'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -38,7 +38,7 @@ jobs:
           prompt: |
             You have the harness plugin installed with skills for software engineering workflows.
             When asked to fix review comments or address PR feedback, use /review-fixer.
-            Follow the instructions in the @claude comment on this PR.
+            Follow the instructions in the @claude-harness comment on this PR.
           show_full_output: true
           claude_args: |
             --model opus
