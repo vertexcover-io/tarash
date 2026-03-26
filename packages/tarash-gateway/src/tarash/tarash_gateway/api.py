@@ -3,10 +3,10 @@
 from tarash.tarash_gateway.logging import log_debug, log_info
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
-    CompoundGenerationConfig,
-    CompoundGenerationRequest,
-    CompoundGenerationResponse,
-    CompoundProgressCallback,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
+    MultiModalProgressCallback,
     ImageGenerationConfig,
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -32,7 +32,7 @@ from tarash.tarash_gateway.registry import register_provider as _register_provid
 # ==================== Provider Registry ====================
 
 # Singleton orchestrator instance
-_ORCHESTRATOR = ExecutionOrchestrator()
+_orchestrator = ExecutionOrchestrator()
 
 # Field mapper registries for each provider (hardcoded built-in providers)
 _FIELD_MAPPER_REGISTRIES: dict[str, dict[str, dict[str, FieldMapper]]] = {
@@ -221,7 +221,7 @@ async def generate_video_async(
     )
 
     # Delegate to orchestrator (handles mock, fallbacks, and execution)
-    return await _ORCHESTRATOR.execute_async(config, request, on_progress=on_progress)
+    return await _orchestrator.execute_async(config, request, on_progress=on_progress)
 
 
 def generate_video(
@@ -281,7 +281,7 @@ def generate_video(
     )
 
     # Delegate to orchestrator (handles mock, fallbacks, and execution)
-    return _ORCHESTRATOR.execute_sync(config, request, on_progress=on_progress)
+    return _orchestrator.execute_sync(config, request, on_progress=on_progress)
 
 
 # ==================== Image Generation API ====================
@@ -346,7 +346,7 @@ async def generate_image_async(
     )
 
     # Delegate to orchestrator
-    return await _ORCHESTRATOR.execute_image_async(
+    return await _orchestrator.execute_image_async(
         config, request, on_progress=on_progress
     )
 
@@ -406,7 +406,7 @@ def generate_image(
     )
 
     # Delegate to orchestrator
-    return _ORCHESTRATOR.execute_image_sync(config, request, on_progress=on_progress)
+    return _orchestrator.execute_image_sync(config, request, on_progress=on_progress)
 
 
 # ==================== TTS Generation API ====================
@@ -441,7 +441,7 @@ async def generate_tts_async(
         redact=True,
     )
 
-    return await _ORCHESTRATOR.execute_tts_async(
+    return await _orchestrator.execute_tts_async(
         config, request, on_progress=on_progress
     )
 
@@ -475,7 +475,7 @@ def generate_tts(
         logger_name="tarash.tarash_gateway.api",
     )
 
-    return _ORCHESTRATOR.execute_tts_sync(config, request, on_progress=on_progress)
+    return _orchestrator.execute_tts_sync(config, request, on_progress=on_progress)
 
 
 # ==================== STS Generation API ====================
@@ -510,7 +510,7 @@ async def generate_sts_async(
         redact=True,
     )
 
-    return await _ORCHESTRATOR.execute_sts_async(
+    return await _orchestrator.execute_sts_async(
         config, request, on_progress=on_progress
     )
 
@@ -544,62 +544,62 @@ def generate_sts(
         logger_name="tarash.tarash_gateway.api",
     )
 
-    return _ORCHESTRATOR.execute_sts_sync(config, request, on_progress=on_progress)
+    return _orchestrator.execute_sts_sync(config, request, on_progress=on_progress)
 
 
-# ==================== Compound Generation API ====================
+# ==================== Multi-Modal Generation API ====================
 
 
-async def generate_compound_async(
-    config: CompoundGenerationConfig,
-    request: CompoundGenerationRequest,
-    on_progress: CompoundProgressCallback | None = None,
-) -> CompoundGenerationResponse:
-    """Generate compound (multi-modal) output asynchronously using the configured provider.
+async def generate_multi_modal_async(
+    config: MultiModalGenerationConfig,
+    request: MultiModalGenerationRequest,
+    on_progress: MultiModalProgressCallback | None = None,
+) -> MultiModalGenerationResponse:
+    """Generate multi-modal output asynchronously using the configured provider.
 
-    Runs the full orchestration pipeline for compound generation using the
+    Runs the full orchestration pipeline for multi-modal generation using the
     Responses API pattern. Automatically falls back to ``config.fallback_configs``
     on retryable errors.
 
     Args:
         config: Provider configuration including API key, model, allowed tools,
             and optional fallback chain.
-        request: Compound generation parameters (prompt or message array).
+        request: Multi-modal generation parameters (prompt or message array).
             Unknown fields are captured into ``extra_params``.
         on_progress: Optional callback invoked with a
-            [CompoundGenerationUpdate][] during generation. Accepts both
+            [MultiModalGenerationUpdate][] during generation. Accepts both
             sync and async callables.
 
     Returns:
-        [CompoundGenerationResponse][] containing ordered output items
+        [MultiModalGenerationResponse][] containing ordered output items
         (text, images, reasoning, etc.), status, and ``execution_metadata``.
 
     Raises:
         TarashException: If generation fails on all providers in the
             fallback chain.
         NotImplementedError: If the configured provider does not support
-            compound generation.
+            multi-modal generation.
 
     Example:
         ```python
         import asyncio
-        from tarash.tarash_gateway import generate_compound_async
+        from tarash.tarash_gateway import generate_multi_modal_async
         from tarash.tarash_gateway.models import (
-            CompoundGenerationConfig,
-            CompoundGenerationRequest,
+            MultiModalGenerationConfig,
+            MultiModalGenerationRequest,
         )
 
         async def main():
-            config = CompoundGenerationConfig(
+            config = MultiModalGenerationConfig(
                 provider="openai",
                 model="gpt-5",
                 api_key="YOUR_OPENAI_KEY",
                 allowed_tools=["image_generation"],
             )
-            request = CompoundGenerationRequest(
+            request = MultiModalGenerationRequest(
                 prompt="Write a blog post about space and generate an illustration",
             )
-            response = await generate_compound_async(config, request)
+            response = await generate_multi_modal_async(config, request)
             print(response.text)
             print(response.images)
 
@@ -607,7 +607,7 @@ async def generate_compound_async(
         ```
     """
     log_info(
-        "Compound generation request received (async)",
+        "Multi-modal generation request received (async)",
         context={
             "config": config,
             "request": request,
@@ -616,64 +616,64 @@ async def generate_compound_async(
         redact=True,
     )
 
-    return await _ORCHESTRATOR.execute_compound_async(
+    return await _orchestrator.execute_multi_modal_async(
         config, request, on_progress=on_progress
     )
 
 
-def generate_compound(
-    config: CompoundGenerationConfig,
-    request: CompoundGenerationRequest,
-    on_progress: CompoundProgressCallback | None = None,
-) -> CompoundGenerationResponse:
-    """Generate compound (multi-modal) output synchronously using the configured provider.
+def generate_multi_modal(
+    config: MultiModalGenerationConfig,
+    request: MultiModalGenerationRequest,
+    on_progress: MultiModalProgressCallback | None = None,
+) -> MultiModalGenerationResponse:
+    """Generate multi-modal output synchronously using the configured provider.
 
-    Blocking version of [generate_compound_async][]. Runs the full orchestration
+    Blocking version of [generate_multi_modal_async][]. Runs the full orchestration
     pipeline and returns only when generation is complete.
 
     Args:
         config: Provider configuration including API key, model, allowed tools,
             and optional fallback chain.
-        request: Compound generation parameters (prompt or message array).
+        request: Multi-modal generation parameters (prompt or message array).
             Unknown fields are captured into ``extra_params``.
         on_progress: Optional callback invoked with a
-            [CompoundGenerationUpdate][] during generation. Accepts both
+            [MultiModalGenerationUpdate][] during generation. Accepts both
             sync and async callables.
 
     Returns:
-        [CompoundGenerationResponse][] containing ordered output items
+        [MultiModalGenerationResponse][] containing ordered output items
         (text, images, reasoning, etc.), status, and ``execution_metadata``.
 
     Raises:
         TarashException: If generation fails on all providers in the
             fallback chain.
         NotImplementedError: If the configured provider does not support
-            compound generation.
+            multi-modal generation.
 
     Example:
         ```python
-        from tarash.tarash_gateway import generate_compound
+        from tarash.tarash_gateway import generate_multi_modal
         from tarash.tarash_gateway.models import (
-            CompoundGenerationConfig,
-            CompoundGenerationRequest,
+            MultiModalGenerationConfig,
+            MultiModalGenerationRequest,
         )
 
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-5",
             api_key="YOUR_OPENAI_KEY",
             allowed_tools=["image_generation"],
         )
-        request = CompoundGenerationRequest(
+        request = MultiModalGenerationRequest(
             prompt="Write a blog post about space and generate an illustration",
         )
-        response = generate_compound(config, request)
+        response = generate_multi_modal(config, request)
         print(response.text)
         print(response.images)
         ```
     """
     log_info(
-        "Compound generation request received (sync)",
+        "Multi-modal generation request received (sync)",
         context={
             "config": config,
             "request": request,
@@ -682,4 +682,4 @@ def generate_compound(
         logger_name="tarash.tarash_gateway.api",
     )
 
-    return _ORCHESTRATOR.execute_compound_sync(config, request, on_progress=on_progress)
+    return _orchestrator.execute_multi_modal_sync(config, request, on_progress=on_progress)

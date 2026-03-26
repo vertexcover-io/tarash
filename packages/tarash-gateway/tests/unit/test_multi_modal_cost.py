@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from tarash.tarash_gateway.models import CostComponent, GenerationCost
-from tarash.tarash_gateway.pricing import OPENAI_COMPOUND_TOKEN_RATES
+from tarash.tarash_gateway.pricing import OPENAI_MULTI_MODAL_TOKEN_RATES
 
 
 def test_cost_component_creation():
@@ -72,10 +72,10 @@ def test_existing_cost_backwards_compatible():
     assert cost.amount_usd == Decimal("0.40")
 
 
-def test_openai_compound_token_rates_exist():
-    """OPENAI_COMPOUND_TOKEN_RATES has entries for known models."""
-    assert "gpt-4o" in OPENAI_COMPOUND_TOKEN_RATES
-    rates = OPENAI_COMPOUND_TOKEN_RATES["gpt-4o"]
+def test_openai_multi_modal_token_rates_exist():
+    """OPENAI_MULTI_MODAL_TOKEN_RATES has entries for known models."""
+    assert "gpt-4o" in OPENAI_MULTI_MODAL_TOKEN_RATES
+    rates = OPENAI_MULTI_MODAL_TOKEN_RATES["gpt-4o"]
     assert "text_input" in rates
     assert "text_output" in rates
 
@@ -122,8 +122,8 @@ def test_from_token_usage_default_rates_unchanged():
     assert cost_none is None
 
 
-def test_from_token_usage_with_compound_rates():
-    """from_token_usage with OPENAI_COMPOUND_TOKEN_RATES works for gpt-4o."""
+def test_from_token_usage_with_multi_modal_rates():
+    """from_token_usage with OPENAI_MULTI_MODAL_TOKEN_RATES works for gpt-4o."""
     usage = MagicMock()
     usage.total_tokens = 100
     usage.input_tokens = 50
@@ -132,7 +132,7 @@ def test_from_token_usage_with_compound_rates():
     usage.output_tokens_details = None
 
     cost = GenerationCost.from_token_usage(
-        "gpt-4o", usage, rates_table=OPENAI_COMPOUND_TOKEN_RATES
+        "gpt-4o", usage, rates_table=OPENAI_MULTI_MODAL_TOKEN_RATES
     )
     assert cost is not None
     assert cost.amount_usd > Decimal("0")

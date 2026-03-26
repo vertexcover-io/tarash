@@ -1,13 +1,13 @@
-"""Tests for compound generation models."""
+"""Tests for multi-modal generation models."""
 
 from decimal import Decimal
 
 import pytest
 
 from tarash.tarash_gateway.models import (
-    CompoundGenerationConfig,
-    CompoundGenerationRequest,
-    CompoundGenerationResponse,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
     CostComponent,
     GenerationCost,
     ImageOutputItem,
@@ -18,12 +18,12 @@ from tarash.tarash_gateway.models import (
 )
 
 
-# ---- CompoundGenerationConfig ----
+# ---- MultiModalGenerationConfig ----
 
 
 def test_config_defaults():
     """Config has sensible defaults."""
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai", model="gpt-4o", api_key="test-key"
     )
     assert config.timeout == 300
@@ -36,7 +36,7 @@ def test_config_defaults():
 
 def test_config_frozen():
     """Config is immutable."""
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai", model="gpt-4o", api_key="test-key"
     )
     with pytest.raises(Exception):
@@ -45,10 +45,10 @@ def test_config_frozen():
 
 def test_config_with_fallback():
     """Config supports fallback chain."""
-    fallback = CompoundGenerationConfig(
+    fallback = MultiModalGenerationConfig(
         provider="openai", model="gpt-4o-mini", api_key="test-key"
     )
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o",
         api_key="test-key",
@@ -58,12 +58,12 @@ def test_config_with_fallback():
     assert config.fallback_configs[0].model == "gpt-4o-mini"
 
 
-# ---- CompoundGenerationRequest ----
+# ---- MultiModalGenerationRequest ----
 
 
 def test_request_basic():
     """Request with just a prompt."""
-    request = CompoundGenerationRequest(prompt="Generate an image of a cat")
+    request = MultiModalGenerationRequest(prompt="Generate an image of a cat")
     assert request.prompt == "Generate an image of a cat"
     assert request.input is None
     assert request.previous_response_id is None
@@ -72,14 +72,14 @@ def test_request_basic():
 
 def test_request_captures_extra_fields():
     """Unknown fields captured into extra_params."""
-    request = CompoundGenerationRequest(prompt="test", custom_field="custom_value")
+    request = MultiModalGenerationRequest(prompt="test", custom_field="custom_value")
     assert request.extra_params == {"custom_field": "custom_value"}
 
 
 def test_request_with_input_messages():
     """Request with multi-turn input."""
     messages = [{"role": "user", "content": "Hello"}]
-    request = CompoundGenerationRequest(prompt="test", input=messages)
+    request = MultiModalGenerationRequest(prompt="test", input=messages)
     assert request.input == messages
 
 
@@ -122,12 +122,12 @@ def test_unknown_output_item():
     assert item.raw["some_key"] == "some_value"
 
 
-# ---- CompoundGenerationResponse ----
+# ---- MultiModalGenerationResponse ----
 
 
 def test_response_text_property():
     """Response.text concatenates all TextOutputItems."""
-    response = CompoundGenerationResponse(
+    response = MultiModalGenerationResponse(
         request_id="test-123",
         items=[
             TextOutputItem(content="Hello"),
@@ -143,7 +143,7 @@ def test_response_text_property():
 def test_response_images_property():
     """Response.images returns only ImageOutputItems."""
     img = ImageOutputItem(url="https://example.com/img.png")
-    response = CompoundGenerationResponse(
+    response = MultiModalGenerationResponse(
         request_id="test-123",
         items=[
             TextOutputItem(content="Hello"),
@@ -157,7 +157,7 @@ def test_response_images_property():
 
 def test_response_frozen():
     """Response is immutable."""
-    response = CompoundGenerationResponse(
+    response = MultiModalGenerationResponse(
         request_id="test-123",
         items=[],
         status="completed",
@@ -182,7 +182,7 @@ def test_response_with_cost_breakdown():
             ),
         ),
     )
-    response = CompoundGenerationResponse(
+    response = MultiModalGenerationResponse(
         request_id="test-123",
         items=[TextOutputItem(content="Hello")],
         status="completed",

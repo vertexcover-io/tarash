@@ -6,7 +6,7 @@ from tarash.tarash_gateway.logging import log_debug, log_error, log_info
 from tarash.tarash_gateway.exceptions import ValidationError
 from tarash.tarash_gateway.models import (
     AudioGenerationConfig,
-    CompoundGenerationConfig,
+    MultiModalGenerationConfig,
     ImageGenerationConfig,
     ProviderHandler,
     VideoGenerationConfig,
@@ -33,7 +33,7 @@ def get_handler(
     config: VideoGenerationConfig
     | ImageGenerationConfig
     | AudioGenerationConfig
-    | CompoundGenerationConfig,
+    | MultiModalGenerationConfig,
 ) -> ProviderHandler:
     """Get or create handler instance for the given config.
 

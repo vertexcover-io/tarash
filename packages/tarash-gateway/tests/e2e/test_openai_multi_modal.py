@@ -1,9 +1,9 @@
-"""End-to-end tests for OpenAI compound (Responses API) generation.
+"""End-to-end tests for OpenAI multi-modal (Responses API) generation.
 
 These tests make actual API calls to the OpenAI Responses API.
 Requires OPENAI_API_KEY environment variable to be set.
 
-Run with: pytest tests/e2e/test_openai_compound.py -v --e2e
+Run with: pytest tests/e2e/test_openai_multi_modal.py -v --e2e
 """
 
 import os
@@ -11,13 +11,13 @@ import os
 import pytest
 
 from tarash.tarash_gateway import (
-    generate_compound,
-    generate_compound_async,
+    generate_multi_modal,
+    generate_multi_modal_async,
 )
 from tarash.tarash_gateway.models import (
-    CompoundGenerationConfig,
-    CompoundGenerationRequest,
-    CompoundGenerationResponse,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
     TextOutputItem,
     ImageOutputItem,
 )
@@ -40,15 +40,15 @@ def openai_api_key():
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_compound_text_only_async(openai_api_key):
-    """Test compound generation with text-only output (async).
+async def test_multi_modal_text_only_async(openai_api_key):
+    """Test multi-modal generation with text-only output (async).
 
     This tests:
     - Basic text generation via Responses API
     - No tools used (empty allowed_tools)
     - Response structure validation
     """
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o-mini",
         api_key=openai_api_key,
@@ -56,15 +56,15 @@ async def test_compound_text_only_async(openai_api_key):
         allowed_tools=[],
     )
 
-    request = CompoundGenerationRequest(
+    request = MultiModalGenerationRequest(
         prompt="What is 2 + 2? Answer in one word.",
     )
 
-    print(f"\nGenerating compound output with model: {config.model}")
-    response = await generate_compound_async(config, request)
+    print(f"\nGenerating multi-modal output with model: {config.model}")
+    response = await generate_multi_modal_async(config, request)
 
     # Validate response structure
-    assert isinstance(response, CompoundGenerationResponse)
+    assert isinstance(response, MultiModalGenerationResponse)
     assert response.request_id is not None
     assert response.status == "completed"
     assert isinstance(response.raw_response, dict)
@@ -77,7 +77,7 @@ async def test_compound_text_only_async(openai_api_key):
     # No images expected (no tools)
     assert len(response.images) == 0
 
-    print("Compound generation completed successfully")
+    print("Multi-modal generation completed successfully")
     print(f"  Request ID: {response.request_id}")
     print(f"  Text: {response.text[:200]}")
     print(f"  Items: {len(response.items)}")
@@ -86,15 +86,15 @@ async def test_compound_text_only_async(openai_api_key):
 
 
 @pytest.mark.e2e
-def test_compound_text_only_sync(openai_api_key):
-    """Test compound generation with text-only output (sync).
+def test_multi_modal_text_only_sync(openai_api_key):
+    """Test multi-modal generation with text-only output (sync).
 
     This tests:
     - Sync execution
     - Text-only generation
     - Cost tracking
     """
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o-mini",
         api_key=openai_api_key,
@@ -102,21 +102,21 @@ def test_compound_text_only_sync(openai_api_key):
         allowed_tools=[],
     )
 
-    request = CompoundGenerationRequest(
+    request = MultiModalGenerationRequest(
         prompt="Name three primary colors. One word each, comma separated.",
     )
 
-    print(f"\nGenerating compound output with model: {config.model}")
-    response = generate_compound(config, request)
+    print(f"\nGenerating multi-modal output with model: {config.model}")
+    response = generate_multi_modal(config, request)
 
     # Validate response
-    assert isinstance(response, CompoundGenerationResponse)
+    assert isinstance(response, MultiModalGenerationResponse)
     assert response.request_id is not None
     assert response.status == "completed"
     assert len(response.items) > 0
     assert len(response.text) > 0
 
-    print("Compound generation completed successfully")
+    print("Multi-modal generation completed successfully")
     print(f"  Request ID: {response.request_id}")
     print(f"  Text: {response.text[:200]}")
     if response.cost:
@@ -125,8 +125,8 @@ def test_compound_text_only_sync(openai_api_key):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_compound_with_image_generation(openai_api_key):
-    """Test compound generation with image_generation tool (async).
+async def test_multi_modal_with_image_generation(openai_api_key):
+    """Test multi-modal generation with image_generation tool (async).
 
     This tests:
     - Text + image mixed output via Responses API
@@ -134,7 +134,7 @@ async def test_compound_with_image_generation(openai_api_key):
     - ImageOutputItem parsing
     - Mixed output ordering
     """
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o-mini",
         api_key=openai_api_key,
@@ -142,15 +142,15 @@ async def test_compound_with_image_generation(openai_api_key):
         allowed_tools=["image_generation"],
     )
 
-    request = CompoundGenerationRequest(
+    request = MultiModalGenerationRequest(
         prompt="Generate an image of a sunset over a mountain lake.",
     )
 
-    print(f"\nGenerating compound output with image tool: {config.model}")
-    response = await generate_compound_async(config, request)
+    print(f"\nGenerating multi-modal output with image tool: {config.model}")
+    response = await generate_multi_modal_async(config, request)
 
     # Validate response structure
-    assert isinstance(response, CompoundGenerationResponse)
+    assert isinstance(response, MultiModalGenerationResponse)
     assert response.request_id is not None
     assert response.status == "completed"
     assert len(response.items) > 0
@@ -163,7 +163,7 @@ async def test_compound_with_image_generation(openai_api_key):
         # Image should have either url or base64
         assert img.url is not None or img.base64 is not None
 
-    print("Compound generation with image completed successfully")
+    print("Multi-modal generation with image completed successfully")
     print(f"  Request ID: {response.request_id}")
     print(f"  Total items: {len(response.items)}")
     print(
@@ -180,14 +180,14 @@ async def test_compound_with_image_generation(openai_api_key):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_compound_with_instructions(openai_api_key):
-    """Test compound generation with system instructions.
+async def test_multi_modal_with_instructions(openai_api_key):
+    """Test multi-modal generation with system instructions.
 
     This tests:
     - System instructions passed to the model
     - Instructions influence output
     """
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o-mini",
         api_key=openai_api_key,
@@ -196,14 +196,14 @@ async def test_compound_with_instructions(openai_api_key):
         instructions="You are a pirate. Always respond in pirate speak.",
     )
 
-    request = CompoundGenerationRequest(
+    request = MultiModalGenerationRequest(
         prompt="Say hello.",
     )
 
     print(f"\nGenerating with instructions: {config.model}")
-    response = await generate_compound_async(config, request)
+    response = await generate_multi_modal_async(config, request)
 
-    assert isinstance(response, CompoundGenerationResponse)
+    assert isinstance(response, MultiModalGenerationResponse)
     assert response.status == "completed"
     assert len(response.text) > 0
 
@@ -213,14 +213,14 @@ async def test_compound_with_instructions(openai_api_key):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_compound_with_multi_turn(openai_api_key):
-    """Test compound generation with multi-turn input messages.
+async def test_multi_modal_with_multi_turn(openai_api_key):
+    """Test multi-modal generation with multi-turn input messages.
 
     This tests:
     - Structured input messages (not just a prompt string)
     - Multi-turn conversation support
     """
-    config = CompoundGenerationConfig(
+    config = MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o-mini",
         api_key=openai_api_key,
@@ -228,7 +228,7 @@ async def test_compound_with_multi_turn(openai_api_key):
         allowed_tools=[],
     )
 
-    request = CompoundGenerationRequest(
+    request = MultiModalGenerationRequest(
         prompt="ignored when input is set",
         input=[
             {"role": "user", "content": "My name is Alice."},
@@ -238,9 +238,9 @@ async def test_compound_with_multi_turn(openai_api_key):
     )
 
     print(f"\nGenerating with multi-turn input: {config.model}")
-    response = await generate_compound_async(config, request)
+    response = await generate_multi_modal_async(config, request)
 
-    assert isinstance(response, CompoundGenerationResponse)
+    assert isinstance(response, MultiModalGenerationResponse)
     assert response.status == "completed"
     assert len(response.text) > 0
     # The model should recall the name

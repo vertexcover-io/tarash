@@ -1,4 +1,4 @@
-"""Integration smoke tests for compound generation feature.
+"""Integration smoke tests for multi-modal generation feature.
 
 These tests exercise the full flow from public API through orchestrator and
 provider layers, using the mock provider for reproducibility.
@@ -12,10 +12,10 @@ import tarash.tarash_gateway as api
 from tarash.tarash_gateway.mock import MockConfig
 from tarash.tarash_gateway.models import (
     CodeOutputItem,
-    CompoundGenerationConfig,
-    CompoundGenerationRequest,
-    CompoundGenerationResponse,
-    CompoundGenerationUpdate,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
+    MultiModalGenerationUpdate,
     CostComponent,
     GenerationCost,
     ImageOutputItem,
@@ -29,7 +29,7 @@ from tarash.tarash_gateway.models import (
 @pytest.fixture
 def mock_config():
     """Create a config with mock provider enabled."""
-    return CompoundGenerationConfig(
+    return MultiModalGenerationConfig(
         provider="openai",
         model="gpt-4o",
         api_key="test-key",
@@ -40,16 +40,16 @@ def mock_config():
 
 @pytest.fixture
 def basic_request():
-    """Create a basic compound generation request."""
-    return CompoundGenerationRequest(
+    """Create a basic multi-modal generation request."""
+    return MultiModalGenerationRequest(
         prompt="Generate a summary and create an image of a sunset"
     )
 
 
 @pytest.fixture
 def detailed_request():
-    """Create a detailed compound generation request with various parameters."""
-    return CompoundGenerationRequest(
+    """Create a detailed multi-modal generation request with various parameters."""
+    return MultiModalGenerationRequest(
         prompt="Analyze this data and generate insights",
         system_prompt="You are a data analyst expert",
         temperature=0.7,
@@ -57,41 +57,41 @@ def detailed_request():
     )
 
 
-class TestCompoundGenerationImports:
-    """Test that compound generation types are properly exported."""
+class TestMultiModalGenerationImports:
+    """Test that multi-modal generation types are properly exported."""
 
-    def test_generate_compound_function_exported(self):
-        """generate_compound should be exported from public API."""
-        assert hasattr(api, "generate_compound")
-        assert callable(api.generate_compound)
+    def test_generate_multi_modal_function_exported(self):
+        """generate_multi_modal should be exported from public API."""
+        assert hasattr(api, "generate_multi_modal")
+        assert callable(api.generate_multi_modal)
 
-    def test_generate_compound_async_function_exported(self):
-        """generate_compound_async should be exported from public API."""
-        assert hasattr(api, "generate_compound_async")
-        assert callable(api.generate_compound_async)
+    def test_generate_multi_modal_async_function_exported(self):
+        """generate_multi_modal_async should be exported from public API."""
+        assert hasattr(api, "generate_multi_modal_async")
+        assert callable(api.generate_multi_modal_async)
 
-    def test_compound_config_exported(self):
-        """CompoundGenerationConfig should be exported."""
-        assert hasattr(api, "CompoundGenerationConfig")
-        assert api.CompoundGenerationConfig is CompoundGenerationConfig
+    def test_multi_modal_config_exported(self):
+        """MultiModalGenerationConfig should be exported."""
+        assert hasattr(api, "MultiModalGenerationConfig")
+        assert api.MultiModalGenerationConfig is MultiModalGenerationConfig
 
-    def test_compound_request_exported(self):
-        """CompoundGenerationRequest should be exported."""
-        assert hasattr(api, "CompoundGenerationRequest")
-        assert api.CompoundGenerationRequest is CompoundGenerationRequest
+    def test_multi_modal_request_exported(self):
+        """MultiModalGenerationRequest should be exported."""
+        assert hasattr(api, "MultiModalGenerationRequest")
+        assert api.MultiModalGenerationRequest is MultiModalGenerationRequest
 
-    def test_compound_response_exported(self):
-        """CompoundGenerationResponse should be exported."""
-        assert hasattr(api, "CompoundGenerationResponse")
-        assert api.CompoundGenerationResponse is CompoundGenerationResponse
+    def test_multi_modal_response_exported(self):
+        """MultiModalGenerationResponse should be exported."""
+        assert hasattr(api, "MultiModalGenerationResponse")
+        assert api.MultiModalGenerationResponse is MultiModalGenerationResponse
 
-    def test_compound_update_exported(self):
-        """CompoundGenerationUpdate should be exported."""
-        assert hasattr(api, "CompoundGenerationUpdate")
+    def test_multi_modal_update_exported(self):
+        """MultiModalGenerationUpdate should be exported."""
+        assert hasattr(api, "MultiModalGenerationUpdate")
 
-    def test_compound_progress_callback_exported(self):
-        """CompoundProgressCallback should be exported."""
-        assert hasattr(api, "CompoundProgressCallback")
+    def test_multi_modal_progress_callback_exported(self):
+        """MultiModalProgressCallback should be exported."""
+        assert hasattr(api, "MultiModalProgressCallback")
 
     def test_output_item_types_exported(self):
         """All output item types should be exported."""
@@ -108,27 +108,27 @@ class TestCompoundGenerationImports:
         assert api.CostComponent is CostComponent
 
 
-class TestBasicCompoundGenerationSync:
-    """Test basic synchronous compound generation flow."""
+class TestBasicMultiModalGenerationSync:
+    """Test basic synchronous multi-modal generation flow."""
 
     def test_sync_generation_returns_response(self, mock_config, basic_request):
-        """Synchronous generation should return CompoundGenerationResponse."""
-        response = api.generate_compound(mock_config, basic_request)
+        """Synchronous generation should return MultiModalGenerationResponse."""
+        response = api.generate_multi_modal(mock_config, basic_request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
         assert response.status == "completed"
         assert response.request_id is not None
 
     def test_sync_generation_includes_items(self, mock_config, basic_request):
         """Response should include output items."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         assert len(response.items) > 0
         assert all(isinstance(item, OutputItem) for item in response.items)
 
     def test_sync_generation_includes_text_item(self, mock_config, basic_request):
         """Response should include at least one text item."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         text_items = [i for i in response.items if isinstance(i, TextOutputItem)]
         assert len(text_items) > 0
@@ -136,9 +136,9 @@ class TestBasicCompoundGenerationSync:
     def test_sync_generation_preserves_prompt(self, mock_config):
         """Response should include the original prompt in text content."""
         prompt = "Summarize the key points"
-        request = CompoundGenerationRequest(prompt=prompt)
+        request = MultiModalGenerationRequest(prompt=prompt)
 
-        response = api.generate_compound(mock_config, request)
+        response = api.generate_multi_modal(mock_config, request)
 
         text_items = [i for i in response.items if isinstance(i, TextOutputItem)]
         assert len(text_items) > 0
@@ -146,7 +146,7 @@ class TestBasicCompoundGenerationSync:
 
     def test_sync_generation_includes_images_when_allowed(self, basic_request):
         """Should include image items when image_generation is in allowed_tools."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -154,14 +154,14 @@ class TestBasicCompoundGenerationSync:
             mock=MockConfig(enabled=True),
         )
 
-        response = api.generate_compound(config, basic_request)
+        response = api.generate_multi_modal(config, basic_request)
 
         image_items = [i for i in response.items if isinstance(i, ImageOutputItem)]
         assert len(image_items) > 0
 
     def test_sync_generation_omits_images_when_not_allowed(self, basic_request):
         """Should omit image items when image_generation not in allowed_tools."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -169,58 +169,58 @@ class TestBasicCompoundGenerationSync:
             mock=MockConfig(enabled=True),
         )
 
-        response = api.generate_compound(config, basic_request)
+        response = api.generate_multi_modal(config, basic_request)
 
         image_items = [i for i in response.items if isinstance(i, ImageOutputItem)]
         assert len(image_items) == 0
 
     def test_sync_generation_includes_cost(self, mock_config, basic_request):
         """Response should include cost information (may be None for mock)."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         # Mock provider may not compute cost, but cost field should be present
         assert hasattr(response, "cost")
 
     def test_sync_generation_marks_as_mock(self, mock_config, basic_request):
         """Mock response should be marked as mock."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         assert response.is_mock is True
 
     def test_sync_generation_with_custom_params(self):
         """Should handle custom parameters in request."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
             mock=MockConfig(enabled=True),
         )
-        request = CompoundGenerationRequest(
+        request = MultiModalGenerationRequest(
             prompt="Test",
             temperature=0.5,
             max_tokens=500,
         )
 
-        response = api.generate_compound(config, request)
+        response = api.generate_multi_modal(config, request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
         assert response.status == "completed"
 
 
-class TestBasicCompoundGenerationAsync:
-    """Test basic asynchronous compound generation flow."""
+class TestBasicMultiModalGenerationAsync:
+    """Test basic asynchronous multi-modal generation flow."""
 
     async def test_async_generation_returns_response(self, mock_config, basic_request):
-        """Asynchronous generation should return CompoundGenerationResponse."""
-        response = await api.generate_compound_async(mock_config, basic_request)
+        """Asynchronous generation should return MultiModalGenerationResponse."""
+        response = await api.generate_multi_modal_async(mock_config, basic_request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
         assert response.status == "completed"
         assert response.request_id is not None
 
     async def test_async_generation_includes_items(self, mock_config, basic_request):
         """Response should include output items."""
-        response = await api.generate_compound_async(mock_config, basic_request)
+        response = await api.generate_multi_modal_async(mock_config, basic_request)
 
         assert len(response.items) > 0
         assert all(isinstance(item, OutputItem) for item in response.items)
@@ -229,7 +229,7 @@ class TestBasicCompoundGenerationAsync:
         self, mock_config, basic_request
     ):
         """Response should include at least one text item."""
-        response = await api.generate_compound_async(mock_config, basic_request)
+        response = await api.generate_multi_modal_async(mock_config, basic_request)
 
         text_items = [i for i in response.items if isinstance(i, TextOutputItem)]
         assert len(text_items) > 0
@@ -237,9 +237,9 @@ class TestBasicCompoundGenerationAsync:
     async def test_async_generation_preserves_prompt(self, mock_config):
         """Response should include the original prompt in text content."""
         prompt = "Generate creative ideas"
-        request = CompoundGenerationRequest(prompt=prompt)
+        request = MultiModalGenerationRequest(prompt=prompt)
 
-        response = await api.generate_compound_async(mock_config, request)
+        response = await api.generate_multi_modal_async(mock_config, request)
 
         text_items = [i for i in response.items if isinstance(i, TextOutputItem)]
         assert len(text_items) > 0
@@ -247,7 +247,7 @@ class TestBasicCompoundGenerationAsync:
 
     async def test_async_generation_includes_images_when_allowed(self, basic_request):
         """Should include image items when image_generation is in allowed_tools."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -255,14 +255,14 @@ class TestBasicCompoundGenerationAsync:
             mock=MockConfig(enabled=True),
         )
 
-        response = await api.generate_compound_async(config, basic_request)
+        response = await api.generate_multi_modal_async(config, basic_request)
 
         image_items = [i for i in response.items if isinstance(i, ImageOutputItem)]
         assert len(image_items) > 0
 
     async def test_async_generation_omits_images_when_not_allowed(self, basic_request):
         """Should omit image items when image_generation not in allowed_tools."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -270,21 +270,21 @@ class TestBasicCompoundGenerationAsync:
             mock=MockConfig(enabled=True),
         )
 
-        response = await api.generate_compound_async(config, basic_request)
+        response = await api.generate_multi_modal_async(config, basic_request)
 
         image_items = [i for i in response.items if isinstance(i, ImageOutputItem)]
         assert len(image_items) == 0
 
     async def test_async_generation_includes_cost(self, mock_config, basic_request):
         """Response should include cost information (may be None for mock)."""
-        response = await api.generate_compound_async(mock_config, basic_request)
+        response = await api.generate_multi_modal_async(mock_config, basic_request)
 
         # Mock provider may not compute cost, but cost field should be present
         assert hasattr(response, "cost")
 
     async def test_async_generation_marks_as_mock(self, mock_config, basic_request):
         """Mock response should be marked as mock."""
-        response = await api.generate_compound_async(mock_config, basic_request)
+        response = await api.generate_multi_modal_async(mock_config, basic_request)
 
         assert response.is_mock is True
 
@@ -298,37 +298,37 @@ class TestProgressCallbackSync:
         """Should invoke progress callback during synchronous generation."""
         updates = []
 
-        def progress_callback(update: CompoundGenerationUpdate):
+        def progress_callback(update: MultiModalGenerationUpdate):
             updates.append(update)
 
-        response = api.generate_compound(
+        response = api.generate_multi_modal(
             mock_config, basic_request, on_progress=progress_callback
         )
 
         assert len(updates) >= 0
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
     def test_progress_callback_receives_updates(self, mock_config, basic_request):
-        """Progress callback should receive CompoundGenerationUpdate objects."""
+        """Progress callback should receive MultiModalGenerationUpdate objects."""
         updates = []
 
-        def progress_callback(update: CompoundGenerationUpdate):
+        def progress_callback(update: MultiModalGenerationUpdate):
             updates.append(update)
-            assert isinstance(update, CompoundGenerationUpdate)
+            assert isinstance(update, MultiModalGenerationUpdate)
 
-        api.generate_compound(mock_config, basic_request, on_progress=progress_callback)
+        api.generate_multi_modal(mock_config, basic_request, on_progress=progress_callback)
 
     def test_sync_generation_without_callback(self, mock_config, basic_request):
         """Should work without progress callback."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
     def test_sync_generation_with_none_callback(self, mock_config, basic_request):
         """Should accept None as callback."""
-        response = api.generate_compound(mock_config, basic_request, on_progress=None)
+        response = api.generate_multi_modal(mock_config, basic_request, on_progress=None)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
 
 class TestProgressCallbackAsync:
@@ -340,14 +340,14 @@ class TestProgressCallbackAsync:
         """Should invoke progress callback during asynchronous generation."""
         updates = []
 
-        async def progress_callback(update: CompoundGenerationUpdate):
+        async def progress_callback(update: MultiModalGenerationUpdate):
             updates.append(update)
 
-        response = await api.generate_compound_async(
+        response = await api.generate_multi_modal_async(
             mock_config, basic_request, on_progress=progress_callback
         )
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
     async def test_async_generation_supports_sync_callback(
         self, mock_config, basic_request
@@ -355,38 +355,38 @@ class TestProgressCallbackAsync:
         """Should support synchronous callback in async context."""
         updates = []
 
-        def progress_callback(update: CompoundGenerationUpdate):
+        def progress_callback(update: MultiModalGenerationUpdate):
             updates.append(update)
 
-        response = await api.generate_compound_async(
+        response = await api.generate_multi_modal_async(
             mock_config, basic_request, on_progress=progress_callback
         )
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
     async def test_async_generation_without_callback(self, mock_config, basic_request):
         """Should work without progress callback in async context."""
-        response = await api.generate_compound_async(mock_config, basic_request)
+        response = await api.generate_multi_modal_async(mock_config, basic_request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
     async def test_async_generation_with_none_callback(
         self, mock_config, basic_request
     ):
         """Should accept None as callback in async context."""
-        response = await api.generate_compound_async(
+        response = await api.generate_multi_modal_async(
             mock_config, basic_request, on_progress=None
         )
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
 
 
 class TestResponseStructure:
-    """Test the structure of compound generation responses."""
+    """Test the structure of multi-modal generation responses."""
 
     def test_response_has_all_required_fields(self, mock_config, basic_request):
         """Response should have all required fields."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         assert response.request_id is not None
         assert response.items is not None
@@ -396,21 +396,21 @@ class TestResponseStructure:
 
     def test_response_request_id_format(self, mock_config, basic_request):
         """Request ID should follow expected format."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         assert isinstance(response.request_id, str)
         assert len(response.request_id) > 0
 
     def test_response_items_are_output_items(self, mock_config, basic_request):
         """All items in response should be OutputItem instances."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         for item in response.items:
             assert isinstance(item, OutputItem)
 
     def test_response_status_is_valid(self, mock_config, basic_request):
         """Response status should be valid."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         assert response.status in ("completed", "partial", "failed")
 
@@ -433,18 +433,18 @@ class TestResponseStructure:
 
 
 class TestCostTracking:
-    """Test cost tracking in compound generation."""
+    """Test cost tracking in multi-modal generation."""
 
     def test_response_includes_generation_cost(self, mock_config, basic_request):
         """Response should include GenerationCost when available."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         if response.cost is not None:
             assert isinstance(response.cost, GenerationCost)
 
     def test_generation_cost_has_required_fields(self, mock_config, basic_request):
         """GenerationCost should have required fields when not None."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         if response.cost is not None:
             assert response.cost.amount_usd is not None
@@ -453,14 +453,14 @@ class TestCostTracking:
 
     def test_generation_cost_is_decimal(self, mock_config, basic_request):
         """Cost amount_usd should be Decimal for precision when present."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         if response.cost is not None:
             assert isinstance(response.cost.amount_usd, Decimal)
 
     def test_cost_breakdown_available(self, mock_config, basic_request):
         """Cost breakdown should be available if present."""
-        response = api.generate_compound(mock_config, basic_request)
+        response = api.generate_multi_modal(mock_config, basic_request)
 
         if response.cost and response.cost.breakdown:
             for component in response.cost.breakdown:
@@ -474,16 +474,16 @@ class TestFullFlowIntegration:
 
     def test_end_to_end_sync_flow(self):
         """Complete synchronous flow from API call to response."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
             allowed_tools=["image_generation"],
             mock=MockConfig(enabled=True),
         )
-        request = CompoundGenerationRequest(prompt="Generate a summary and an image")
+        request = MultiModalGenerationRequest(prompt="Generate a summary and an image")
 
-        response = api.generate_compound(config, request)
+        response = api.generate_multi_modal(config, request)
 
         assert response.status == "completed"
         assert response.is_mock is True
@@ -493,21 +493,21 @@ class TestFullFlowIntegration:
 
     async def test_end_to_end_async_flow(self):
         """Complete asynchronous flow from API call to response."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
             allowed_tools=["image_generation"],
             mock=MockConfig(enabled=True),
         )
-        request = CompoundGenerationRequest(prompt="Generate a summary and an image")
+        request = MultiModalGenerationRequest(prompt="Generate a summary and an image")
 
         updates = []
 
-        async def progress_callback(update: CompoundGenerationUpdate):
+        async def progress_callback(update: MultiModalGenerationUpdate):
             updates.append(update)
 
-        response = await api.generate_compound_async(
+        response = await api.generate_multi_modal_async(
             config, request, on_progress=progress_callback
         )
 
@@ -519,7 +519,7 @@ class TestFullFlowIntegration:
 
     def test_sync_with_detailed_config_and_request(self):
         """Test with detailed configuration and request parameters."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -528,21 +528,21 @@ class TestFullFlowIntegration:
             max_tokens=2000,
             mock=MockConfig(enabled=True),
         )
-        request = CompoundGenerationRequest(
+        request = MultiModalGenerationRequest(
             prompt="Analyze and visualize the data",
             system_prompt="You are an expert data scientist",
             temperature=0.5,
         )
 
-        response = api.generate_compound(config, request)
+        response = api.generate_multi_modal(config, request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
         assert response.status == "completed"
         assert len(response.items) > 0
 
     async def test_async_with_detailed_config_and_request(self):
         """Test async with detailed configuration and request parameters."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -551,25 +551,25 @@ class TestFullFlowIntegration:
             max_tokens=2000,
             mock=MockConfig(enabled=True),
         )
-        request = CompoundGenerationRequest(
+        request = MultiModalGenerationRequest(
             prompt="Analyze and visualize the data",
             system_prompt="You are an expert data scientist",
             temperature=0.5,
         )
 
-        response = await api.generate_compound_async(config, request)
+        response = await api.generate_multi_modal_async(config, request)
 
-        assert isinstance(response, CompoundGenerationResponse)
+        assert isinstance(response, MultiModalGenerationResponse)
         assert response.status == "completed"
         assert len(response.items) > 0
 
 
 class TestErrorHandling:
-    """Test error handling in compound generation."""
+    """Test error handling in multi-modal generation."""
 
     def test_missing_prompt_validation(self):
         """Should handle missing prompt gracefully."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
@@ -577,51 +577,51 @@ class TestErrorHandling:
         )
 
         try:
-            request = CompoundGenerationRequest(prompt="")
-            response = api.generate_compound(config, request)
+            request = MultiModalGenerationRequest(prompt="")
+            response = api.generate_multi_modal(config, request)
             assert response is not None
         except Exception:
             pass
 
     async def test_async_error_handling(self):
         """Async generation should handle errors gracefully."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
             mock=MockConfig(enabled=True),
         )
-        request = CompoundGenerationRequest(prompt="Test")
+        request = MultiModalGenerationRequest(prompt="Test")
 
         try:
-            response = await api.generate_compound_async(config, request)
+            response = await api.generate_multi_modal_async(config, request)
             assert response is not None
         except Exception:
             pass
 
     def test_mock_disabled_raises_error(self):
         """Should raise error if mock not enabled."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
         )
-        request = CompoundGenerationRequest(prompt="Test")
+        request = MultiModalGenerationRequest(prompt="Test")
 
         with pytest.raises(Exception):
-            api.generate_compound(config, request)
+            api.generate_multi_modal(config, request)
 
     async def test_async_mock_disabled_raises_error(self):
         """Async should raise error if mock not enabled."""
-        config = CompoundGenerationConfig(
+        config = MultiModalGenerationConfig(
             provider="openai",
             model="gpt-4o",
             api_key="test-key",
         )
-        request = CompoundGenerationRequest(prompt="Test")
+        request = MultiModalGenerationRequest(prompt="Test")
 
         with pytest.raises(Exception):
-            await api.generate_compound_async(config, request)
+            await api.generate_multi_modal_async(config, request)
 
 
 class TestResponseConsistency:
@@ -629,14 +629,14 @@ class TestResponseConsistency:
 
     def test_multiple_requests_return_consistent_structures(self, mock_config):
         """Multiple requests should return consistent response structures."""
-        request1 = CompoundGenerationRequest(prompt="First prompt")
-        request2 = CompoundGenerationRequest(prompt="Second prompt")
+        request1 = MultiModalGenerationRequest(prompt="First prompt")
+        request2 = MultiModalGenerationRequest(prompt="Second prompt")
 
-        response1 = api.generate_compound(mock_config, request1)
-        response2 = api.generate_compound(mock_config, request2)
+        response1 = api.generate_multi_modal(mock_config, request1)
+        response2 = api.generate_multi_modal(mock_config, request2)
 
-        assert isinstance(response1, CompoundGenerationResponse)
-        assert isinstance(response2, CompoundGenerationResponse)
+        assert isinstance(response1, MultiModalGenerationResponse)
+        assert isinstance(response2, MultiModalGenerationResponse)
         assert hasattr(response1, "request_id")
         assert hasattr(response2, "request_id")
         assert hasattr(response1, "items")
@@ -646,18 +646,18 @@ class TestResponseConsistency:
 
     async def test_async_multiple_requests_consistent(self, mock_config):
         """Async requests should return consistent responses."""
-        request1 = CompoundGenerationRequest(prompt="First prompt")
-        request2 = CompoundGenerationRequest(prompt="Second prompt")
+        request1 = MultiModalGenerationRequest(prompt="First prompt")
+        request2 = MultiModalGenerationRequest(prompt="Second prompt")
 
-        response1 = await api.generate_compound_async(mock_config, request1)
-        response2 = await api.generate_compound_async(mock_config, request2)
+        response1 = await api.generate_multi_modal_async(mock_config, request1)
+        response2 = await api.generate_multi_modal_async(mock_config, request2)
 
-        assert isinstance(response1, CompoundGenerationResponse)
-        assert isinstance(response2, CompoundGenerationResponse)
+        assert isinstance(response1, MultiModalGenerationResponse)
+        assert isinstance(response2, MultiModalGenerationResponse)
         assert isinstance(response1.items, list)
         assert isinstance(response2.items, list)
 
     def test_sync_async_return_same_type(self, mock_config, basic_request):
         """Sync and async should return the same response type."""
-        sync_response = api.generate_compound(mock_config, basic_request)
-        assert isinstance(sync_response, CompoundGenerationResponse)
+        sync_response = api.generate_multi_modal(mock_config, basic_request)
+        assert isinstance(sync_response, MultiModalGenerationResponse)

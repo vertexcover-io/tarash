@@ -232,11 +232,11 @@ OPENAI_IMAGE_TOKEN_RATES: dict[str, dict[str, Decimal]] = {
 }
 
 
-# ==================== Token-Based Pricing (OpenAI Compound/Responses API) ====================
+# ==================== Token-Based Pricing (OpenAI Multi-Modal/Responses API) ====================
 
 # Per-token rates (USD per token) for OpenAI Responses API models.
 # These models produce text + use tools (image_generation, code_interpreter).
-OPENAI_COMPOUND_TOKEN_RATES: dict[str, dict[str, Decimal]] = {
+OPENAI_MULTI_MODAL_TOKEN_RATES: dict[str, dict[str, Decimal]] = {
     "gpt-4o": {
         "text_input": Decimal("2.50") / 1_000_000,
         "text_output": Decimal("10.00") / 1_000_000,

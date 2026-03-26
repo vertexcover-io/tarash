@@ -103,10 +103,10 @@ SyncSTSProgressCallback = Callable[["STSUpdate"], None]
 AsyncSTSProgressCallback = Callable[["STSUpdate"], Awaitable[None]]
 STSProgressCallback = SyncSTSProgressCallback | AsyncSTSProgressCallback
 
-# Progress callback types (compound)
-SyncCompoundProgressCallback = Callable[["CompoundGenerationUpdate"], None]
-AsyncCompoundProgressCallback = Callable[["CompoundGenerationUpdate"], Awaitable[None]]
-CompoundProgressCallback = SyncCompoundProgressCallback | AsyncCompoundProgressCallback
+# Progress callback types (multi-modal)
+SyncMultiModalProgressCallback = Callable[["MultiModalGenerationUpdate"], None]
+AsyncMultiModalProgressCallback = Callable[["MultiModalGenerationUpdate"], Awaitable[None]]
+MultiModalProgressCallback = SyncMultiModalProgressCallback | AsyncMultiModalProgressCallback
 
 # ==================== Cost ====================
 
@@ -131,7 +131,7 @@ class TokenUsage:
 
 @dataclass(frozen=True)
 class CostComponent:
-    """A single cost component within a compound generation."""
+    """A single cost component within a multi-modal generation."""
 
     amount_usd: Decimal | None
     """Estimated cost in USD for this component, or ``None`` if unknown."""
@@ -1085,11 +1085,11 @@ class KlingVideoParams(BaseVideoParams):
     camera_control: KlingCameraControl | None
 
 
-# ==================== Compound Generation ====================
+# ==================== Multi-Modal Generation ====================
 
 
 class OutputItem(BaseModel):
-    """Base class for items in a compound generation response."""
+    """Base class for items in a multi-modal generation response."""
 
     type: str = Field(description="Item type discriminator.")
 
@@ -1097,14 +1097,14 @@ class OutputItem(BaseModel):
 
 
 class TextOutputItem(OutputItem):
-    """A text segment in the compound output."""
+    """A text segment in the multi-modal output."""
 
     type: Literal["text"] = "text"
     content: str = Field(description="The text content.")
 
 
 class ImageOutputItem(OutputItem):
-    """A generated image in the compound output."""
+    """A generated image in the multi-modal output."""
 
     type: Literal["image"] = "image"
     url: str | None = Field(default=None, description="URL of the generated image.")
@@ -1115,7 +1115,7 @@ class ImageOutputItem(OutputItem):
 
 
 class ReasoningOutputItem(OutputItem):
-    """A reasoning trace in the compound output."""
+    """A reasoning trace in the multi-modal output."""
 
     type: Literal["reasoning"] = "reasoning"
     summary: list[str] = Field(default_factory=list, description="Reasoning summaries.")
@@ -1136,8 +1136,8 @@ class UnknownOutputItem(OutputItem):
     raw: dict[str, object] = Field(description="Raw item data from provider.")
 
 
-class CompoundGenerationResponse(BaseModel):
-    """Normalized response returned by every compound generation call."""
+class MultiModalGenerationResponse(BaseModel):
+    """Normalized response returned by every multi-modal generation call."""
 
     request_id: str = Field(description="Tarash-assigned unique ID for this request.")
     items: list[OutputItem] = Field(
@@ -1175,8 +1175,8 @@ class CompoundGenerationResponse(BaseModel):
         return [i for i in self.items if isinstance(i, ImageOutputItem)]
 
 
-class CompoundGenerationUpdate(BaseModel):
-    """A progress event emitted during compound generation."""
+class MultiModalGenerationUpdate(BaseModel):
+    """A progress event emitted during multi-modal generation."""
 
     request_id: str = Field(
         description="Same ID as the originating request, for correlation."
@@ -1188,7 +1188,7 @@ class CompoundGenerationUpdate(BaseModel):
     update: dict[str, object] = Field(
         description="Raw event payload from the provider."
     )
-    result: CompoundGenerationResponse | None = Field(
+    result: MultiModalGenerationResponse | None = Field(
         default=None,
         description="Final response, set only when status is 'completed'.",
     )
@@ -1197,8 +1197,8 @@ class CompoundGenerationUpdate(BaseModel):
     )
 
 
-class CompoundGenerationConfig(BaseModel):
-    """Configuration for a compound (multi-modal) generation request."""
+class MultiModalGenerationConfig(BaseModel):
+    """Configuration for a multi-modal generation request."""
 
     model: str = Field(description="Model identifier, e.g. 'gpt-5', 'gpt-4o'.")
     provider: str = Field(description="Provider identifier: 'openai'.")
@@ -1231,7 +1231,7 @@ class CompoundGenerationConfig(BaseModel):
     mock: "MockConfig | None" = Field(
         default=None, description="If set, enables mock generation for testing."
     )
-    fallback_configs: list["CompoundGenerationConfig"] | None = Field(
+    fallback_configs: list["MultiModalGenerationConfig"] | None = Field(
         default=None,
         description="Ordered list of fallback configs to try on retryable errors.",
     )
@@ -1243,15 +1243,19 @@ class CompoundGenerationConfig(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
 
-class CompoundGenerationRequest(BaseModel):
-    """Parameters for a compound (multi-modal) generation request."""
+class MultiModalGenerationRequest(BaseModel):
+    """Parameters for a multi-modal generation request."""
 
-    prompt: str = Field(
-        description="Natural language intent describing what to generate."
-    )
-    input: list[dict[str, Any]] | None = Field(
+    prompt: str | None = Field(
         default=None,
-        description="Optional multi-turn message array (role/content dicts). Overrides prompt if set.",
+        description="Simple string prompt. Shorthand for input when only a single user message is needed.",
+    )
+    input: str | list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Primary input: a plain string prompt or a multi-turn message array "
+            "(role/content dicts). Takes precedence over prompt when both are set."
+        ),
     )
     previous_response_id: str | None = Field(
         default=None,
@@ -1278,6 +1282,13 @@ class CompoundGenerationRequest(BaseModel):
         extra_params.update(extra)
         data["extra_params"] = extra_params
         return data
+
+    @model_validator(mode="after")
+    def require_input_or_prompt(self) -> "MultiModalGenerationRequest":
+        """Ensure at least one of ``input`` or ``prompt`` is provided."""
+        if self.input is None and self.prompt is None:
+            raise ValueError("Either 'input' or 'prompt' must be provided.")
+        return self
 
 
 # ==================== Provider Handler Protocol ====================
@@ -1479,50 +1490,50 @@ class ProviderHandler(Protocol):
         """
         ...
 
-    # ==================== Compound Generation ====================
+    # ==================== Multi-Modal Generation ====================
 
-    async def generate_compound_async(
+    async def generate_multi_modal_async(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-        on_progress: CompoundProgressCallback | None = None,
-    ) -> CompoundGenerationResponse:
-        """Generate compound (multi-modal) output asynchronously.
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output asynchronously.
 
         Args:
             config: Provider configuration with API key, model, allowed tools,
                 and optional fallback chain.
-            request: Compound generation parameters (prompt or message array).
+            request: Multi-modal generation parameters (prompt or message array).
             on_progress: Optional callback invoked during generation.
 
         Returns:
-            ``CompoundGenerationResponse`` with ordered output items and metadata.
+            ``MultiModalGenerationResponse`` with ordered output items and metadata.
 
         Raises:
-            NotImplementedError: If this provider does not support compound generation.
+            NotImplementedError: If this provider does not support multi-modal generation.
             TarashException: On any provider-level error.
         """
         ...
 
-    def generate_compound(
+    def generate_multi_modal(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-        on_progress: CompoundProgressCallback | None = None,
-    ) -> CompoundGenerationResponse:
-        """Generate compound (multi-modal) output synchronously (blocking).
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output synchronously (blocking).
 
         Args:
             config: Provider configuration with API key, model, allowed tools,
                 and optional fallback chain.
-            request: Compound generation parameters (prompt or message array).
+            request: Multi-modal generation parameters (prompt or message array).
             on_progress: Optional callback invoked during generation.
 
         Returns:
-            ``CompoundGenerationResponse`` with ordered output items and metadata.
+            ``MultiModalGenerationResponse`` with ordered output items and metadata.
 
         Raises:
-            NotImplementedError: If this provider does not support compound generation.
+            NotImplementedError: If this provider does not support multi-modal generation.
             TarashException: On any provider-level error.
         """
         ...
@@ -1537,4 +1548,4 @@ from tarash.tarash_gateway.mock import MockConfig  # noqa: E402, F811
 VideoGenerationConfig.model_rebuild()
 ImageGenerationConfig.model_rebuild()
 AudioGenerationConfig.model_rebuild()
-CompoundGenerationConfig.model_rebuild()
+MultiModalGenerationConfig.model_rebuild()

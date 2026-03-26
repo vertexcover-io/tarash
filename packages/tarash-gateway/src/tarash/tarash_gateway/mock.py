@@ -16,10 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tarash.tarash_gateway.exceptions import TarashException
 from tarash.tarash_gateway.models import (
     AspectRatio,
-    CompoundGenerationConfig,
-    CompoundGenerationRequest,
-    CompoundGenerationResponse,
-    CompoundProgressCallback,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
+    MultiModalProgressCallback,
     GenerationCost,
     ImageOutputItem,
     MediaContent,
@@ -796,40 +796,40 @@ class MockProviderHandler:
 
         return handle_mock_request_sync(config.mock, request, on_progress)
 
-    async def generate_compound_async(
+    async def generate_multi_modal_async(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-        on_progress: CompoundProgressCallback | None = None,
-    ) -> CompoundGenerationResponse:
-        """Generate a mock compound response asynchronously."""
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate a mock multi-modal response asynchronously."""
         if not config.mock or not config.mock.enabled:
             raise ValueError("MockProviderHandler requires mock config to be enabled")
-        return self._build_mock_compound_response(config, request)
+        return self._build_mock_multi_modal_response(config, request)
 
-    def generate_compound(
+    def generate_multi_modal(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-        on_progress: CompoundProgressCallback | None = None,
-    ) -> CompoundGenerationResponse:
-        """Generate a mock compound response synchronously."""
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate a mock multi-modal response synchronously."""
         if not config.mock or not config.mock.enabled:
             raise ValueError("MockProviderHandler requires mock config to be enabled")
-        return self._build_mock_compound_response(config, request)
+        return self._build_mock_multi_modal_response(config, request)
 
-    def _build_mock_compound_response(
+    def _build_mock_multi_modal_response(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-    ) -> CompoundGenerationResponse:
-        """Build a mock compound response with text and optional image."""
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+    ) -> MultiModalGenerationResponse:
+        """Build a mock multi-modal response with text and optional image."""
         items: list[OutputItem] = [
             TextOutputItem(content=f"Mock response for: {request.prompt}"),
         ]
         if "image_generation" in config.allowed_tools:
             items.append(ImageOutputItem(url="https://mock.tarash.dev/image.png"))
-        return CompoundGenerationResponse(
+        return MultiModalGenerationResponse(
             request_id=f"mock_{uuid.uuid4()}",
             items=items,
             status="completed",

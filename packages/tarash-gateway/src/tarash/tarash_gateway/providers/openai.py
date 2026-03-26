@@ -34,10 +34,10 @@ from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
-    CompoundGenerationConfig,
-    CompoundGenerationRequest,
-    CompoundGenerationResponse,
-    CompoundProgressCallback,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
+    MultiModalProgressCallback,
     TextOutputItem,
     ImageOutputItem,
     ReasoningOutputItem,
@@ -45,7 +45,7 @@ from tarash.tarash_gateway.models import (
     UnknownOutputItem,
     OutputItem,
 )
-from tarash.tarash_gateway.pricing import OPENAI_COMPOUND_TOKEN_RATES
+from tarash.tarash_gateway.pricing import OPENAI_MULTI_MODAL_TOKEN_RATES
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     get_filename_from_url,
@@ -268,7 +268,7 @@ class OpenAIProviderHandler:
         self,
         config: VideoGenerationConfig
         | ImageGenerationConfig
-        | CompoundGenerationConfig,
+        | MultiModalGenerationConfig,
         client_type: str,
     ) -> "AsyncOpenAI | AsyncAzureOpenAI | OpenAI | AzureOpenAI":
         """
@@ -519,10 +519,10 @@ class OpenAIProviderHandler:
         self,
         config: VideoGenerationConfig
         | ImageGenerationConfig
-        | CompoundGenerationConfig,
+        | MultiModalGenerationConfig,
         request: VideoGenerationRequest
         | ImageGenerationRequest
-        | CompoundGenerationRequest,
+        | MultiModalGenerationRequest,
         request_id: str | None,
         ex: Exception,
     ) -> TarashException:
@@ -1220,20 +1220,20 @@ class OpenAIProviderHandler:
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex)
 
-    # ==================== Compound Generation ====================
+    # ==================== Multi-Modal Generation ====================
 
-    def _convert_compound_request(
+    def _convert_multi_modal_request(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
     ) -> dict[str, Any]:
-        """Convert CompoundGenerationRequest to OpenAI Responses API format."""
+        """Convert MultiModalGenerationRequest to OpenAI Responses API format."""
         params: dict[str, Any] = {"model": config.model}
 
-        # Input: structured messages or simple prompt string
+        # Input: string, structured messages, or prompt fallback
         if request.input is not None:
             params["input"] = request.input
-        else:
+        elif request.prompt is not None:
             params["input"] = request.prompt
 
         # Built-in tools — only media tools
@@ -1262,21 +1262,21 @@ class OpenAIProviderHandler:
 
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
         logger.info(
-            "Mapped compound request to provider format",
+            "Mapped multi-modal request to provider format",
             {"converted_request": params},
             redact=True,
         )
 
         return params
 
-    def _convert_compound_response(
+    def _convert_multi_modal_response(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
         request_id: str,
         provider_response: Any,
-    ) -> CompoundGenerationResponse:
-        """Convert OpenAI Responses API response to CompoundGenerationResponse."""
+    ) -> MultiModalGenerationResponse:
+        """Convert OpenAI Responses API response to MultiModalGenerationResponse."""
         items: list[OutputItem] = []
 
         for output_item in provider_response.output:
@@ -1321,9 +1321,9 @@ class OpenAIProviderHandler:
                 )
                 items.append(UnknownOutputItem(raw=raw))
 
-        cost = self._compute_compound_cost(config, provider_response)
+        cost = self._compute_multi_modal_cost(config, provider_response)
 
-        return CompoundGenerationResponse(
+        return MultiModalGenerationResponse(
             request_id=request_id,
             items=items,
             status="completed",
@@ -1335,17 +1335,17 @@ class OpenAIProviderHandler:
             ),
         )
 
-    def _compute_compound_cost(
+    def _compute_multi_modal_cost(
         self,
-        config: CompoundGenerationConfig,
+        config: MultiModalGenerationConfig,
         provider_response: Any,
     ) -> GenerationCost | None:
-        """Compute cost for compound generation with optional breakdown."""
+        """Compute cost for multi-modal generation with optional breakdown."""
         usage = getattr(provider_response, "usage", None)
 
         # Try token-based cost first (same pattern as image cost)
         cost = GenerationCost.from_token_usage(
-            config.model, usage, rates_table=OPENAI_COMPOUND_TOKEN_RATES
+            config.model, usage, rates_table=OPENAI_MULTI_MODAL_TOKEN_RATES
         )
 
         # Fall back to pricing table
@@ -1354,61 +1354,61 @@ class OpenAIProviderHandler:
 
         return cost
 
-    async def generate_compound_async(
+    async def generate_multi_modal_async(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-        on_progress: CompoundProgressCallback | None = None,
-    ) -> CompoundGenerationResponse:
-        """Generate compound output asynchronously via OpenAI Responses API."""
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output asynchronously via OpenAI Responses API."""
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
-        request_id = f"openai-compound-{uuid.uuid4()}"
+        request_id = f"openai-multi-modal-{uuid.uuid4()}"
         logger = logger.with_request_id(request_id)
 
         client: AsyncOpenAI = self._get_client(config, "async")
-        openai_params = self._convert_compound_request(config, request)
+        openai_params = self._convert_multi_modal_request(config, request)
 
-        logger.debug("Starting compound generation API call")
+        logger.debug("Starting multi-modal generation API call")
 
         try:
             response = await client.responses.create(**openai_params)
 
             logger.info(
-                "Compound generation completed",
+                "Multi-modal generation completed",
                 {"num_output_items": len(response.output)},
             )
 
-            return self._convert_compound_response(
+            return self._convert_multi_modal_response(
                 config, request, request_id, response
             )
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex)
 
-    def generate_compound(
+    def generate_multi_modal(
         self,
-        config: CompoundGenerationConfig,
-        request: CompoundGenerationRequest,
-        on_progress: CompoundProgressCallback | None = None,
-    ) -> CompoundGenerationResponse:
-        """Generate compound output synchronously (blocking)."""
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output synchronously (blocking)."""
         logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
-        request_id = f"openai-compound-{uuid.uuid4()}"
+        request_id = f"openai-multi-modal-{uuid.uuid4()}"
         logger = logger.with_request_id(request_id)
 
         client: OpenAI = self._get_client(config, "sync")
-        openai_params = self._convert_compound_request(config, request)
+        openai_params = self._convert_multi_modal_request(config, request)
 
-        logger.debug("Starting compound generation API call")
+        logger.debug("Starting multi-modal generation API call")
 
         try:
             response = client.responses.create(**openai_params)
 
             logger.info(
-                "Compound generation completed",
+                "Multi-modal generation completed",
                 {"num_output_items": len(response.output)},
             )
 
-            return self._convert_compound_response(
+            return self._convert_multi_modal_response(
                 config, request, request_id, response
             )
         except Exception as ex:
