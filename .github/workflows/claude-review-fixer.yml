@@ -53,5 +53,4 @@ jobs:
           claude_args: |
             --model opus
             --effort high
-            --max-turns 30
             --permission-mode bypassPermissions
