@@ -15,7 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 fal = ["fal-client>=0.4.0"]
 veo3 = ["google-genai>=1.0.0"]
-openai = ["openai>=1.0.0"]
+openai = ["openai>=1.75.0"]
 replicate = ["replicate>=2.0.0b1"]
 google = ["google-cloud-aiplatform>=1.38.0"]
 runway = ["runwayml>=3.0.0"]
@@ -27,7 +27,7 @@ hume = ["hume>=0.9.0"]
 all = [
     "fal-client>=0.4.0",
     "google-genai>=1.0.0",
-    "openai>=1.0.0",
+    "openai>=1.75.0",
     "replicate>=2.0.0b1",
     "google-cloud-aiplatform>=1.38.0",
     "runwayml>=3.0.0",

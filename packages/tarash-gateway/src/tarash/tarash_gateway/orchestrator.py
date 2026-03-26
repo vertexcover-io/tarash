@@ -1,13 +1,22 @@
-"""Orchestrator for managing video and image generation execution with fallback support."""
+"""Orchestrator for managing generation execution with fallback support."""
+
+from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
+
+from pydantic import BaseModel
 
 from tarash.tarash_gateway.logging import log_error, log_info
 from tarash.tarash_gateway.exceptions import is_retryable_error
 from tarash.tarash_gateway.models import (
     AttemptMetadata,
     AudioGenerationConfig,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
+    MultiModalProgressCallback,
     ExecutionMetadata,
     ImageGenerationConfig,
     ImageGenerationRequest,
@@ -26,6 +35,8 @@ from tarash.tarash_gateway.models import (
 )
 from tarash.tarash_gateway.registry import get_handler
 
+_LOGGER_NAME = "tarash.tarash_gateway.orchestrator"
+
 
 def _compute_total_cost_usd(attempts: list[AttemptMetadata]) -> Decimal | None:
     """Compute total USD cost across all attempts.
@@ -41,6 +52,19 @@ def _compute_total_cost_usd(attempts: list[AttemptMetadata]) -> Decimal | None:
     return sum((c.amount_usd for c in attempt_costs), Decimal("0"))  # type: ignore[union-attr, misc]
 
 
+def _collect_fallback_chain(config: BaseModel) -> list[Any]:
+    """Collect the full fallback chain using depth-first traversal.
+
+    Works for any config type that has an optional ``fallback_configs`` list.
+    """
+    chain: list[Any] = [config]
+    fallbacks = getattr(config, "fallback_configs", None)
+    if fallbacks:
+        for fallback in fallbacks:
+            chain.extend(_collect_fallback_chain(fallback))
+    return chain
+
+
 class ExecutionOrchestrator:
     """Manages provider execution with automatic fallback and metadata tracking.
 
@@ -49,28 +73,327 @@ class ExecutionOrchestrator:
     response for observability.
     """
 
+    # ------------------------------------------------------------------
+    # Generic core executors
+    # ------------------------------------------------------------------
+
+    async def _execute_chain_async(
+        self,
+        fallback_chain: list[Any],
+        request: Any,
+        on_progress: Any,
+        handler_method: str,
+        error_label: str,
+    ) -> Any:
+        """Execute a generation request asynchronously through the fallback chain.
+
+        Args:
+            fallback_chain: Ordered list of configs to try.
+            request: Generation parameters.
+            on_progress: Optional progress callback forwarded to the handler.
+            handler_method: Name of the async handler method to invoke.
+            error_label: Label for error messages (e.g. "Video", "Image").
+        """
+        attempts: list[AttemptMetadata] = []
+        last_exception: Exception | None = None
+
+        log_info(
+            f"Starting {error_label.lower()} fallback chain execution",
+            context={
+                "configs_in_chain": len(fallback_chain),
+                "primary_provider": fallback_chain[0].provider,
+                "primary_model": fallback_chain[0].model,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        for attempt_number, cfg in enumerate(fallback_chain, start=1):
+            started_at = datetime.now()
+            attempt_metadata = AttemptMetadata(
+                provider=cfg.provider,
+                model=cfg.model,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=None,
+                status="failed",
+                error_type=None,
+                error_message=None,
+                is_retryable=None,
+                request_id=None,
+            )
+
+            try:
+                log_info(
+                    f"Attempting with provider (attempt {attempt_number}/{len(fallback_chain)})",
+                    context={
+                        "provider": cfg.provider,
+                        "model": cfg.model,
+                        "attempt_number": attempt_number,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
+                handler = get_handler(cfg)
+                method = getattr(handler, handler_method)
+                response = await method(cfg, request, on_progress=on_progress)
+
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.status = "success"
+                attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
+                attempts.append(attempt_metadata)
+
+                execution_metadata = ExecutionMetadata(
+                    total_attempts=len(attempts),
+                    successful_attempt=attempt_number,
+                    attempts=attempts,
+                    fallback_triggered=attempt_number > 1,
+                    configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
+                )
+
+                log_info(
+                    f"Successfully generated on attempt {attempt_number}",
+                    context={
+                        "provider": cfg.provider,
+                        "model": cfg.model,
+                        "request_id": response.request_id,
+                        "total_attempts": len(attempts),
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
+                return response.model_copy(
+                    update={"execution_metadata": execution_metadata}
+                )
+
+            except NotImplementedError:
+                raise
+
+            except Exception as ex:
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.error_type = type(ex).__name__
+                attempt_metadata.error_message = str(ex)
+                attempt_metadata.is_retryable = is_retryable_error(ex)
+                attempts.append(attempt_metadata)
+                last_exception = ex
+
+                log_error(
+                    f"Attempt {attempt_number} failed",
+                    context={
+                        "provider": cfg.provider,
+                        "model": cfg.model,
+                        "error_type": type(ex).__name__,
+                        "error_message": str(ex),
+                        "is_retryable": attempt_metadata.is_retryable,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
+                if not attempt_metadata.is_retryable:
+                    log_info(
+                        "Non-retryable error encountered, stopping fallback chain",
+                        context={"error_type": type(ex).__name__},
+                        logger_name=_LOGGER_NAME,
+                    )
+                    raise ex
+
+                if attempt_number == len(fallback_chain):
+                    log_error(
+                        "All fallback attempts exhausted",
+                        context={"total_attempts": len(attempts)},
+                        logger_name=_LOGGER_NAME,
+                    )
+                    raise ex
+
+                log_info(
+                    f"Retryable error, continuing to next fallback ({attempt_number + 1}/{len(fallback_chain)})",
+                    logger_name=_LOGGER_NAME,
+                )
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError(f"{error_label} fallback chain execution failed unexpectedly")
+
+    def _execute_chain_sync(
+        self,
+        fallback_chain: list[Any],
+        request: Any,
+        on_progress: Any,
+        handler_method: str,
+        error_label: str,
+    ) -> Any:
+        """Execute a generation request synchronously through the fallback chain.
+
+        Blocking version of ``_execute_chain_async``.
+
+        Args:
+            fallback_chain: Ordered list of configs to try.
+            request: Generation parameters.
+            on_progress: Optional progress callback forwarded to the handler.
+            handler_method: Name of the sync handler method to invoke.
+            error_label: Label for error messages (e.g. "Video", "Image").
+        """
+        attempts: list[AttemptMetadata] = []
+        last_exception: Exception | None = None
+
+        log_info(
+            f"Starting {error_label.lower()} fallback chain execution (sync)",
+            context={
+                "configs_in_chain": len(fallback_chain),
+                "primary_provider": fallback_chain[0].provider,
+                "primary_model": fallback_chain[0].model,
+            },
+            logger_name=_LOGGER_NAME,
+        )
+
+        for attempt_number, cfg in enumerate(fallback_chain, start=1):
+            started_at = datetime.now()
+            attempt_metadata = AttemptMetadata(
+                provider=cfg.provider,
+                model=cfg.model,
+                attempt_number=attempt_number,
+                started_at=started_at,
+                ended_at=None,
+                status="failed",
+                error_type=None,
+                error_message=None,
+                is_retryable=None,
+                request_id=None,
+            )
+
+            try:
+                log_info(
+                    f"Attempting with provider (attempt {attempt_number}/{len(fallback_chain)})",
+                    context={
+                        "provider": cfg.provider,
+                        "model": cfg.model,
+                        "attempt_number": attempt_number,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
+                handler = get_handler(cfg)
+                method = getattr(handler, handler_method)
+                response = method(cfg, request, on_progress=on_progress)
+
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.status = "success"
+                attempt_metadata.request_id = response.request_id
+                attempt_metadata.cost = response.cost
+                attempts.append(attempt_metadata)
+
+                execution_metadata = ExecutionMetadata(
+                    total_attempts=len(attempts),
+                    successful_attempt=attempt_number,
+                    attempts=attempts,
+                    fallback_triggered=attempt_number > 1,
+                    configs_in_chain=len(fallback_chain),
+                    total_cost_usd=_compute_total_cost_usd(attempts),
+                )
+
+                log_info(
+                    f"Successfully generated on attempt {attempt_number}",
+                    context={
+                        "provider": cfg.provider,
+                        "model": cfg.model,
+                        "request_id": response.request_id,
+                        "total_attempts": len(attempts),
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
+                return response.model_copy(
+                    update={"execution_metadata": execution_metadata}
+                )
+
+            except NotImplementedError:
+                raise
+
+            except Exception as ex:
+                ended_at = datetime.now()
+                attempt_metadata.ended_at = ended_at
+                attempt_metadata.error_type = type(ex).__name__
+                attempt_metadata.error_message = str(ex)
+                attempt_metadata.is_retryable = is_retryable_error(ex)
+                attempts.append(attempt_metadata)
+                last_exception = ex
+
+                log_error(
+                    f"Attempt {attempt_number} failed",
+                    context={
+                        "provider": cfg.provider,
+                        "model": cfg.model,
+                        "error_type": type(ex).__name__,
+                        "error_message": str(ex),
+                        "is_retryable": attempt_metadata.is_retryable,
+                    },
+                    logger_name=_LOGGER_NAME,
+                )
+
+                if not attempt_metadata.is_retryable:
+                    log_info(
+                        "Non-retryable error encountered, stopping fallback chain",
+                        context={"error_type": type(ex).__name__},
+                        logger_name=_LOGGER_NAME,
+                    )
+                    raise ex
+
+                if attempt_number == len(fallback_chain):
+                    log_error(
+                        "All fallback attempts exhausted",
+                        context={"total_attempts": len(attempts)},
+                        logger_name=_LOGGER_NAME,
+                    )
+                    raise ex
+
+                log_info(
+                    f"Retryable error, continuing to next fallback ({attempt_number + 1}/{len(fallback_chain)})",
+                    logger_name=_LOGGER_NAME,
+                )
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError(f"{error_label} fallback chain execution failed unexpectedly")
+
+    # ------------------------------------------------------------------
+    # Fallback chain collectors (kept as static helpers for backward compat)
+    # ------------------------------------------------------------------
+
     @staticmethod
     def collect_fallback_chain(
         config: VideoGenerationConfig,
     ) -> list[VideoGenerationConfig]:
-        """Collect the full fallback chain using depth-first traversal.
+        """Collect the full fallback chain for video generation."""
+        return _collect_fallback_chain(config)
 
-        Args:
-            config: Root config (primary provider). Its ``fallback_configs``
-                are recursively traversed depth-first.
+    @staticmethod
+    def collect_image_fallback_chain(
+        config: ImageGenerationConfig,
+    ) -> list[ImageGenerationConfig]:
+        """Collect fallback chain for image generation."""
+        return _collect_fallback_chain(config)
 
-        Returns:
-            Ordered list of ``VideoGenerationConfig`` objects to try, starting
-            with ``config`` itself.
-        """
-        chain = [config]
+    @staticmethod
+    def collect_audio_fallback_chain(
+        config: AudioGenerationConfig,
+    ) -> list[AudioGenerationConfig]:
+        """Collect fallback chain for audio generation."""
+        return _collect_fallback_chain(config)
 
-        if config.fallback_configs:
-            for fallback in config.fallback_configs:
-                # Recursively collect fallbacks (depth-first)
-                chain.extend(ExecutionOrchestrator.collect_fallback_chain(fallback))
+    @staticmethod
+    def collect_multi_modal_fallback_chain(
+        config: MultiModalGenerationConfig,
+    ) -> list[MultiModalGenerationConfig]:
+        """Collect fallback chain for multi-modal generation."""
+        return _collect_fallback_chain(config)
 
-        return chain
+    # ------------------------------------------------------------------
+    # Video Generation
+    # ------------------------------------------------------------------
 
     async def execute_async(
         self,
@@ -78,155 +401,14 @@ class ExecutionOrchestrator:
         request: VideoGenerationRequest,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
-        """Execute video generation asynchronously with fallback support.
-
-        Iterates the fallback chain in order. On a retryable error the next
-        provider is tried; on a non-retryable error execution stops immediately.
-
-        Args:
-            config: Primary configuration. Fallbacks are read from
-                ``config.fallback_configs`` recursively.
-            request: Video generation parameters.
-            on_progress: Optional callback forwarded to the active provider.
-
-        Returns:
-            ``VideoGenerationResponse`` with ``execution_metadata`` attached.
-
-        Raises:
-            TarashException: The last exception raised if all providers fail.
-                Non-retryable errors are re-raised immediately without trying
-                further fallbacks.
-        """
-        fallback_chain = self.collect_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
-
-        log_info(
-            "Starting fallback chain execution",
-            context={
-                "configs_in_chain": len(fallback_chain),
-                "primary_provider": config.provider,
-                "primary_model": config.model,
-            },
-            logger_name="tarash.tarash_gateway.orchestrator",
+        """Execute video generation asynchronously with fallback support."""
+        return await self._execute_chain_async(
+            self.collect_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_video_async",
+            error_label="Video",
         )
-
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                log_info(
-                    f"Attempting with provider (attempt {attempt_number}/{len(fallback_chain)})",
-                    context={
-                        "provider": cfg.provider,
-                        "model": cfg.model,
-                        "attempt_number": attempt_number,
-                    },
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-                # Get handler and execute
-                handler = get_handler(cfg)
-                response = await handler.generate_video_async(
-                    cfg, request, on_progress=on_progress
-                )
-
-                # Success!
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                # Attach execution metadata to response
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                log_info(
-                    f"Successfully generated video on attempt {attempt_number}",
-                    context={
-                        "provider": cfg.provider,
-                        "model": cfg.model,
-                        "request_id": response.request_id,
-                        "total_attempts": len(attempts),
-                    },
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-                # Return response with metadata (need to create new instance since frozen)
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-
-                last_exception = ex
-
-                log_error(
-                    f"Attempt {attempt_number} failed",
-                    context={
-                        "provider": cfg.provider,
-                        "model": cfg.model,
-                        "error_type": type(ex).__name__,
-                        "error_message": str(ex),
-                        "is_retryable": attempt_metadata.is_retryable,
-                    },
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-                # If error is not retryable, stop immediately
-                if not attempt_metadata.is_retryable:
-                    log_info(
-                        "Non-retryable error encountered, stopping fallback chain",
-                        context={"error_type": type(ex).__name__},
-                        logger_name="tarash.tarash_gateway.orchestrator",
-                    )
-                    raise ex
-
-                # If this was the last config, raise the error
-                if attempt_number == len(fallback_chain):
-                    log_error(
-                        "All fallback attempts exhausted",
-                        context={"total_attempts": len(attempts)},
-                        logger_name="tarash.tarash_gateway.orchestrator",
-                    )
-                    raise ex
-
-                # Otherwise, continue to next fallback
-                log_info(
-                    f"Retryable error, continuing to next fallback ({attempt_number + 1}/{len(fallback_chain)})",
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-        # Should never reach here, but raise last exception if we do
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("Fallback chain execution failed unexpectedly")
 
     def execute_sync(
         self,
@@ -234,166 +416,18 @@ class ExecutionOrchestrator:
         request: VideoGenerationRequest,
         on_progress: ProgressCallback | None = None,
     ) -> VideoGenerationResponse:
-        """Execute video generation synchronously with fallback support.
-
-        Blocking version of ``execute_async``. Iterates the fallback chain in
-        order, stopping on non-retryable errors.
-
-        Args:
-            config: Primary configuration. Fallbacks are read from
-                ``config.fallback_configs`` recursively.
-            request: Video generation parameters.
-            on_progress: Optional callback forwarded to the active provider.
-
-        Returns:
-            ``VideoGenerationResponse`` with ``execution_metadata`` attached.
-
-        Raises:
-            TarashException: The last exception raised if all providers fail.
-        """
-        fallback_chain = self.collect_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
-
-        log_info(
-            "Starting fallback chain execution (sync)",
-            context={
-                "configs_in_chain": len(fallback_chain),
-                "primary_provider": config.provider,
-                "primary_model": config.model,
-            },
-            logger_name="tarash.tarash_gateway.orchestrator",
+        """Execute video generation synchronously with fallback support."""
+        return self._execute_chain_sync(
+            self.collect_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_video",
+            error_label="Video",
         )
 
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                log_info(
-                    f"Attempting with provider (attempt {attempt_number}/{len(fallback_chain)})",
-                    context={
-                        "provider": cfg.provider,
-                        "model": cfg.model,
-                        "attempt_number": attempt_number,
-                    },
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-                # Get handler and execute
-                handler = get_handler(cfg)
-                response = handler.generate_video(cfg, request, on_progress=on_progress)
-
-                # Success!
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                # Attach execution metadata to response
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                log_info(
-                    f"Successfully generated video on attempt {attempt_number}",
-                    context={
-                        "provider": cfg.provider,
-                        "model": cfg.model,
-                        "request_id": response.request_id,
-                        "total_attempts": len(attempts),
-                    },
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-                # Return response with metadata (need to create new instance since frozen)
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-
-                last_exception = ex
-
-                log_error(
-                    f"Attempt {attempt_number} failed",
-                    context={
-                        "provider": cfg.provider,
-                        "model": cfg.model,
-                        "error_type": type(ex).__name__,
-                        "error_message": str(ex),
-                        "is_retryable": attempt_metadata.is_retryable,
-                    },
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-                # If error is not retryable, stop immediately
-                if not attempt_metadata.is_retryable:
-                    log_info(
-                        "Non-retryable error encountered, stopping fallback chain",
-                        context={"error_type": type(ex).__name__},
-                        logger_name="tarash.tarash_gateway.orchestrator",
-                    )
-                    raise ex
-
-                # If this was the last config, raise the error
-                if attempt_number == len(fallback_chain):
-                    log_error(
-                        "All fallback attempts exhausted",
-                        context={"total_attempts": len(attempts)},
-                        logger_name="tarash.tarash_gateway.orchestrator",
-                    )
-                    raise ex
-
-                # Otherwise, continue to next fallback
-                log_info(
-                    f"Retryable error, continuing to next fallback ({attempt_number + 1}/{len(fallback_chain)})",
-                    logger_name="tarash.tarash_gateway.orchestrator",
-                )
-
-        # Should never reach here, but raise last exception if we do
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("Fallback chain execution failed unexpectedly")
-
-    # ==================== Image Generation ====================
-
-    @staticmethod
-    def collect_image_fallback_chain(
-        config: ImageGenerationConfig,
-    ) -> list[ImageGenerationConfig]:
-        """Collect fallback chain for image generation."""
-        chain = [config]
-        if config.fallback_configs:
-            for fallback in config.fallback_configs:
-                chain.extend(
-                    ExecutionOrchestrator.collect_image_fallback_chain(fallback)
-                )
-        return chain
+    # ------------------------------------------------------------------
+    # Image Generation
+    # ------------------------------------------------------------------
 
     async def execute_image_async(
         self,
@@ -402,71 +436,13 @@ class ExecutionOrchestrator:
         on_progress: ImageProgressCallback | None = None,
     ) -> ImageGenerationResponse:
         """Execute image generation with fallback support (async)."""
-        fallback_chain = self.collect_image_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
-
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                handler = get_handler(cfg)
-                response = await handler.generate_image_async(
-                    cfg, request, on_progress=on_progress
-                )
-
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except NotImplementedError:
-                raise
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-                last_exception = ex
-
-                if not attempt_metadata.is_retryable or attempt_number == len(
-                    fallback_chain
-                ):
-                    raise ex
-
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("Image fallback chain execution failed")
+        return await self._execute_chain_async(
+            self.collect_image_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_image_async",
+            error_label="Image",
+        )
 
     def execute_image_sync(
         self,
@@ -475,84 +451,17 @@ class ExecutionOrchestrator:
         on_progress: ImageProgressCallback | None = None,
     ) -> ImageGenerationResponse:
         """Execute image generation with fallback support (sync)."""
-        fallback_chain = self.collect_image_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
+        return self._execute_chain_sync(
+            self.collect_image_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_image",
+            error_label="Image",
+        )
 
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                handler = get_handler(cfg)
-                response = handler.generate_image(cfg, request, on_progress=on_progress)
-
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except NotImplementedError:
-                raise
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-                last_exception = ex
-
-                if not attempt_metadata.is_retryable or attempt_number == len(
-                    fallback_chain
-                ):
-                    raise ex
-
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("Image fallback chain execution failed")
-
-    # ==================== TTS Generation ====================
-
-    @staticmethod
-    def collect_audio_fallback_chain(
-        config: AudioGenerationConfig,
-    ) -> list[AudioGenerationConfig]:
-        """Collect fallback chain for audio generation."""
-        chain = [config]
-        if config.fallback_configs:
-            for fallback in config.fallback_configs:
-                chain.extend(
-                    ExecutionOrchestrator.collect_audio_fallback_chain(fallback)
-                )
-        return chain
+    # ------------------------------------------------------------------
+    # TTS Generation
+    # ------------------------------------------------------------------
 
     async def execute_tts_async(
         self,
@@ -561,71 +470,13 @@ class ExecutionOrchestrator:
         on_progress: TTSProgressCallback | None = None,
     ) -> TTSResponse:
         """Execute TTS generation with fallback support (async)."""
-        fallback_chain = self.collect_audio_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
-
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                handler = get_handler(cfg)
-                response = await handler.generate_tts_async(
-                    cfg, request, on_progress=on_progress
-                )
-
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except NotImplementedError:
-                raise
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-                last_exception = ex
-
-                if not attempt_metadata.is_retryable or attempt_number == len(
-                    fallback_chain
-                ):
-                    raise ex
-
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("TTS fallback chain execution failed")
+        return await self._execute_chain_async(
+            self.collect_audio_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_tts_async",
+            error_label="TTS",
+        )
 
     def execute_tts_sync(
         self,
@@ -634,71 +485,17 @@ class ExecutionOrchestrator:
         on_progress: TTSProgressCallback | None = None,
     ) -> TTSResponse:
         """Execute TTS generation with fallback support (sync)."""
-        fallback_chain = self.collect_audio_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
+        return self._execute_chain_sync(
+            self.collect_audio_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_tts",
+            error_label="TTS",
+        )
 
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                handler = get_handler(cfg)
-                response = handler.generate_tts(cfg, request, on_progress=on_progress)
-
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except NotImplementedError:
-                raise
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-                last_exception = ex
-
-                if not attempt_metadata.is_retryable or attempt_number == len(
-                    fallback_chain
-                ):
-                    raise ex
-
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("TTS fallback chain execution failed")
-
-    # ==================== STS Generation ====================
+    # ------------------------------------------------------------------
+    # STS Generation
+    # ------------------------------------------------------------------
 
     async def execute_sts_async(
         self,
@@ -707,71 +504,13 @@ class ExecutionOrchestrator:
         on_progress: STSProgressCallback | None = None,
     ) -> STSResponse:
         """Execute STS generation with fallback support (async)."""
-        fallback_chain = self.collect_audio_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
-
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
-
-            try:
-                handler = get_handler(cfg)
-                response = await handler.generate_sts_async(
-                    cfg, request, on_progress=on_progress
-                )
-
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except NotImplementedError:
-                raise
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-                last_exception = ex
-
-                if not attempt_metadata.is_retryable or attempt_number == len(
-                    fallback_chain
-                ):
-                    raise ex
-
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("STS fallback chain execution failed")
+        return await self._execute_chain_async(
+            self.collect_audio_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_sts_async",
+            error_label="STS",
+        )
 
     def execute_sts_sync(
         self,
@@ -780,66 +519,44 @@ class ExecutionOrchestrator:
         on_progress: STSProgressCallback | None = None,
     ) -> STSResponse:
         """Execute STS generation with fallback support (sync)."""
-        fallback_chain = self.collect_audio_fallback_chain(config)
-        attempts: list[AttemptMetadata] = []
-        last_exception: Exception | None = None
+        return self._execute_chain_sync(
+            self.collect_audio_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_sts",
+            error_label="STS",
+        )
 
-        for attempt_number, cfg in enumerate(fallback_chain, start=1):
-            started_at = datetime.now()
-            attempt_metadata = AttemptMetadata(
-                provider=cfg.provider,
-                model=cfg.model,
-                attempt_number=attempt_number,
-                started_at=started_at,
-                ended_at=None,
-                status="failed",
-                error_type=None,
-                error_message=None,
-                is_retryable=None,
-                request_id=None,
-            )
+    # ------------------------------------------------------------------
+    # Multi-Modal Generation
+    # ------------------------------------------------------------------
 
-            try:
-                handler = get_handler(cfg)
-                response = handler.generate_sts(cfg, request, on_progress=on_progress)
+    async def execute_multi_modal_async(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Execute multi-modal generation with fallback support (async)."""
+        return await self._execute_chain_async(
+            self.collect_multi_modal_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_multi_modal_async",
+            error_label="Multi-modal",
+        )
 
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.status = "success"
-                attempt_metadata.request_id = response.request_id
-                attempt_metadata.cost = response.cost
-                attempts.append(attempt_metadata)
-
-                execution_metadata = ExecutionMetadata(
-                    total_attempts=len(attempts),
-                    successful_attempt=attempt_number,
-                    attempts=attempts,
-                    fallback_triggered=attempt_number > 1,
-                    configs_in_chain=len(fallback_chain),
-                    total_cost_usd=_compute_total_cost_usd(attempts),
-                )
-
-                return response.model_copy(
-                    update={"execution_metadata": execution_metadata}
-                )
-
-            except NotImplementedError:
-                raise
-
-            except Exception as ex:
-                ended_at = datetime.now()
-                attempt_metadata.ended_at = ended_at
-                attempt_metadata.error_type = type(ex).__name__
-                attempt_metadata.error_message = str(ex)
-                attempt_metadata.is_retryable = is_retryable_error(ex)
-                attempts.append(attempt_metadata)
-                last_exception = ex
-
-                if not attempt_metadata.is_retryable or attempt_number == len(
-                    fallback_chain
-                ):
-                    raise ex
-
-        if last_exception:
-            raise last_exception
-        raise RuntimeError("STS fallback chain execution failed")
+    def execute_multi_modal_sync(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Execute multi-modal generation with fallback support (sync)."""
+        return self._execute_chain_sync(
+            self.collect_multi_modal_fallback_chain(config),
+            request,
+            on_progress,
+            handler_method="generate_multi_modal",
+            error_label="Multi-modal",
+        )

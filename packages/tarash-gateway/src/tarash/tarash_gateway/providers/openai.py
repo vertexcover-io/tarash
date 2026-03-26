@@ -34,7 +34,18 @@ from tarash.tarash_gateway.models import (
     VideoGenerationRequest,
     VideoGenerationResponse,
     VideoGenerationUpdate,
+    MultiModalGenerationConfig,
+    MultiModalGenerationRequest,
+    MultiModalGenerationResponse,
+    MultiModalProgressCallback,
+    TextOutputItem,
+    ImageOutputItem,
+    ReasoningOutputItem,
+    CodeOutputItem,
+    UnknownOutputItem,
+    OutputItem,
 )
+from tarash.tarash_gateway.pricing import OPENAI_MULTI_MODAL_TOKEN_RATES
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
     get_filename_from_url,
@@ -254,7 +265,11 @@ class OpenAIProviderHandler:
     ) -> "OpenAI | AzureOpenAI": ...
 
     def _get_client(
-        self, config: VideoGenerationConfig, client_type: str
+        self,
+        config: VideoGenerationConfig
+        | ImageGenerationConfig
+        | MultiModalGenerationConfig,
+        client_type: str,
     ) -> "AsyncOpenAI | AsyncAzureOpenAI | OpenAI | AzureOpenAI":
         """
         Create OpenAI client for the given config.
@@ -502,8 +517,12 @@ class OpenAIProviderHandler:
 
     def _handle_error(
         self,
-        config: VideoGenerationConfig,
-        request: VideoGenerationRequest,
+        config: VideoGenerationConfig
+        | ImageGenerationConfig
+        | MultiModalGenerationConfig,
+        request: VideoGenerationRequest
+        | ImageGenerationRequest
+        | MultiModalGenerationRequest,
         request_id: str | None,
         ex: Exception,
     ) -> TarashException:
@@ -1198,5 +1217,199 @@ class OpenAIProviderHandler:
             )
 
             return self._convert_image_response(config, request, request_id, response)
+        except Exception as ex:
+            raise self._handle_error(config, request, request_id, ex)
+
+    # ==================== Multi-Modal Generation ====================
+
+    def _convert_multi_modal_request(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+    ) -> dict[str, Any]:
+        """Convert MultiModalGenerationRequest to OpenAI Responses API format."""
+        params: dict[str, Any] = {"model": config.model}
+
+        # Input: string, structured messages, or prompt fallback
+        if request.input is not None:
+            params["input"] = request.input
+        elif request.prompt is not None:
+            params["input"] = request.prompt
+
+        # Built-in tools — only media tools
+        tools = []
+        for tool_name in config.allowed_tools:
+            if tool_name == "image_generation":
+                tools.append({"type": "image_generation"})
+            elif tool_name == "code_interpreter":
+                tools.append({"type": "code_interpreter"})
+        if tools:
+            params["tools"] = tools
+
+        # Optional fields
+        if config.instructions is not None:
+            params["instructions"] = config.instructions
+        if request.previous_response_id is not None:
+            params["previous_response_id"] = request.previous_response_id
+
+        params["store"] = config.store
+
+        # Extra params pass-through (same pattern as _convert_image_request)
+        if request.extra_params:
+            for key, value in request.extra_params.items():
+                if key not in params and value is not None:
+                    params[key] = value
+
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        logger.info(
+            "Mapped multi-modal request to provider format",
+            {"converted_request": params},
+            redact=True,
+        )
+
+        return params
+
+    def _convert_multi_modal_response(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        request_id: str,
+        provider_response: Any,
+    ) -> MultiModalGenerationResponse:
+        """Convert OpenAI Responses API response to MultiModalGenerationResponse."""
+        items: list[OutputItem] = []
+
+        for output_item in provider_response.output:
+            item_type = getattr(output_item, "type", "unknown")
+
+            if item_type == "message":
+                for content_part in getattr(output_item, "content", []):
+                    part_type = getattr(content_part, "type", "unknown")
+                    if part_type == "output_text":
+                        items.append(TextOutputItem(content=content_part.text))
+                    elif part_type == "refusal":
+                        items.append(
+                            TextOutputItem(content=f"[Refused: {content_part.refusal}]")
+                        )
+
+            elif item_type == "image_generation_call":
+                items.append(
+                    ImageOutputItem(
+                        url=getattr(output_item, "url", None),
+                        base64=getattr(output_item, "result", None),
+                        revised_prompt=getattr(output_item, "revised_prompt", None),
+                    )
+                )
+
+            elif item_type == "reasoning":
+                summary = [
+                    s.text
+                    for s in getattr(output_item, "summary", [])
+                    if hasattr(s, "text")
+                ]
+                items.append(ReasoningOutputItem(summary=summary))
+
+            elif item_type == "code_interpreter_call":
+                code = getattr(output_item, "input", "")
+                items.append(CodeOutputItem(code=code, output=None))
+
+            else:
+                raw = (
+                    output_item.model_dump()
+                    if hasattr(output_item, "model_dump")
+                    else {}
+                )
+                items.append(UnknownOutputItem(raw=raw))
+
+        cost = self._compute_multi_modal_cost(config, provider_response)
+
+        return MultiModalGenerationResponse(
+            request_id=request_id,
+            items=items,
+            status="completed",
+            cost=cost,
+            raw_response=(
+                provider_response.model_dump()
+                if hasattr(provider_response, "model_dump")
+                else {}
+            ),
+        )
+
+    def _compute_multi_modal_cost(
+        self,
+        config: MultiModalGenerationConfig,
+        provider_response: Any,
+    ) -> GenerationCost | None:
+        """Compute cost for multi-modal generation with optional breakdown."""
+        usage = getattr(provider_response, "usage", None)
+
+        # Try token-based cost first (same pattern as image cost)
+        cost = GenerationCost.from_token_usage(
+            config.model, usage, rates_table=OPENAI_MULTI_MODAL_TOKEN_RATES
+        )
+
+        # Fall back to pricing table
+        if cost is None:
+            cost = GenerationCost.from_pricing_table(config.provider, config.model, 1.0)
+
+        return cost
+
+    async def generate_multi_modal_async(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output asynchronously via OpenAI Responses API."""
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        request_id = f"openai-multi-modal-{uuid.uuid4()}"
+        logger = logger.with_request_id(request_id)
+
+        client: AsyncOpenAI = self._get_client(config, "async")
+        openai_params = self._convert_multi_modal_request(config, request)
+
+        logger.debug("Starting multi-modal generation API call")
+
+        try:
+            response = await client.responses.create(**openai_params)
+
+            logger.info(
+                "Multi-modal generation completed",
+                {"num_output_items": len(response.output)},
+            )
+
+            return self._convert_multi_modal_response(
+                config, request, request_id, response
+            )
+        except Exception as ex:
+            raise self._handle_error(config, request, request_id, ex)
+
+    def generate_multi_modal(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output synchronously (blocking)."""
+        logger = ProviderLogger(config.provider, config.model, _LOGGER_NAME)
+        request_id = f"openai-multi-modal-{uuid.uuid4()}"
+        logger = logger.with_request_id(request_id)
+
+        client: OpenAI = self._get_client(config, "sync")
+        openai_params = self._convert_multi_modal_request(config, request)
+
+        logger.debug("Starting multi-modal generation API call")
+
+        try:
+            response = client.responses.create(**openai_params)
+
+            logger.info(
+                "Multi-modal generation completed",
+                {"num_output_items": len(response.output)},
+            )
+
+            return self._convert_multi_modal_response(
+                config, request, request_id, response
+            )
         except Exception as ex:
             raise self._handle_error(config, request, request_id, ex)

@@ -103,6 +103,11 @@ SyncSTSProgressCallback = Callable[["STSUpdate"], None]
 AsyncSTSProgressCallback = Callable[["STSUpdate"], Awaitable[None]]
 STSProgressCallback = SyncSTSProgressCallback | AsyncSTSProgressCallback
 
+# Progress callback types (multi-modal)
+SyncMultiModalProgressCallback = Callable[["MultiModalGenerationUpdate"], None]
+AsyncMultiModalProgressCallback = Callable[["MultiModalGenerationUpdate"], Awaitable[None]]
+MultiModalProgressCallback = SyncMultiModalProgressCallback | AsyncMultiModalProgressCallback
+
 # ==================== Cost ====================
 
 
@@ -125,6 +130,18 @@ class TokenUsage:
 
 
 @dataclass(frozen=True)
+class CostComponent:
+    """A single cost component within a multi-modal generation."""
+
+    amount_usd: Decimal | None
+    """Estimated cost in USD for this component, or ``None`` if unknown."""
+    raw_amount: float
+    """Raw quantity used for cost calculation."""
+    raw_unit: str
+    """Unit of the raw quantity (e.g. ``"tokens"``, ``"images"``)."""
+
+
+@dataclass(frozen=True)
 class GenerationCost:
     """Cost information for a single generation request.
 
@@ -140,6 +157,8 @@ class GenerationCost:
     """Unit of the raw quantity (e.g. ``"seconds"``, ``"characters"``, ``"images"``)."""
     token_usage: TokenUsage | None = None
     """Token breakdown when cost is computed from per-token rates."""
+    breakdown: tuple[CostComponent, ...] = ()
+    """Per-component cost breakdown. Empty for single-modality responses."""
 
     @classmethod
     def from_pricing_table(
@@ -175,6 +194,7 @@ class GenerationCost:
         cls,
         model: str,
         usage: Any,
+        rates_table: dict[str, dict[str, Decimal]] | None = None,
     ) -> GenerationCost | None:
         """Compute cost from OpenAI image API usage token breakdown.
 
@@ -190,9 +210,11 @@ class GenerationCost:
         Returns:
             A ``GenerationCost`` with exact token-based cost, or ``None``.
         """
-        from tarash.tarash_gateway.pricing import OPENAI_IMAGE_TOKEN_RATES
+        if rates_table is None:
+            from tarash.tarash_gateway.pricing import OPENAI_IMAGE_TOKEN_RATES
 
-        rates = OPENAI_IMAGE_TOKEN_RATES.get(model)
+            rates_table = OPENAI_IMAGE_TOKEN_RATES
+        rates = rates_table.get(model)
         if rates is None or usage is None:
             return None
 
@@ -239,10 +261,10 @@ class GenerationCost:
             )
         else:
             # No detailed breakdown — use image_input rate for all input tokens
+            # (fall back to text_input for models without image tokens)
             input_tokens = _safe_int(getattr(usage, "input_tokens", 0))
-            total_cost += Decimal(str(input_tokens)) * Decimal(
-                str(rates["image_input"])
-            )
+            input_rate = rates.get("image_input", rates.get("text_input", Decimal("0")))
+            total_cost += Decimal(str(input_tokens)) * Decimal(str(input_rate))
 
         # --- Output tokens ---
         output_details = getattr(usage, "output_tokens_details", None)
@@ -256,18 +278,20 @@ class GenerationCost:
         if has_output_details:
             image_output = _safe_int(getattr(output_details, "image_tokens", 0))
             text_output = _safe_int(getattr(output_details, "text_tokens", 0))
-            total_cost += Decimal(str(image_output)) * Decimal(
-                str(rates["image_output"])
+            image_output_rate = rates.get(
+                "image_output", rates.get("text_output", Decimal("0"))
             )
+            total_cost += Decimal(str(image_output)) * Decimal(str(image_output_rate))
             total_cost += Decimal(str(text_output)) * Decimal(
-                str(rates.get("text_output", rates["image_output"]))
+                str(rates.get("text_output", image_output_rate))
             )
         else:
             output_tokens = _safe_int(getattr(usage, "output_tokens", 0))
             image_output = output_tokens
-            total_cost += Decimal(str(output_tokens)) * Decimal(
-                str(rates["image_output"])
+            output_rate = rates.get(
+                "image_output", rates.get("text_output", Decimal("0"))
             )
+            total_cost += Decimal(str(output_tokens)) * Decimal(str(output_rate))
 
         return cls(
             amount_usd=total_cost,
@@ -1061,6 +1085,212 @@ class KlingVideoParams(BaseVideoParams):
     camera_control: KlingCameraControl | None
 
 
+# ==================== Multi-Modal Generation ====================
+
+
+class OutputItem(BaseModel):
+    """Base class for items in a multi-modal generation response."""
+
+    type: str = Field(description="Item type discriminator.")
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class TextOutputItem(OutputItem):
+    """A text segment in the multi-modal output."""
+
+    type: Literal["text"] = "text"
+    content: str = Field(description="The text content.")
+
+
+class ImageOutputItem(OutputItem):
+    """A generated image in the multi-modal output."""
+
+    type: Literal["image"] = "image"
+    url: str | None = Field(default=None, description="URL of the generated image.")
+    base64: str | None = Field(default=None, description="Base64-encoded image data.")
+    revised_prompt: str | None = Field(
+        default=None, description="Model's enhanced prompt used for generation."
+    )
+
+
+class ReasoningOutputItem(OutputItem):
+    """A reasoning trace in the multi-modal output."""
+
+    type: Literal["reasoning"] = "reasoning"
+    summary: list[str] = Field(default_factory=list, description="Reasoning summaries.")
+
+
+class CodeOutputItem(OutputItem):
+    """Code execution result from code_interpreter."""
+
+    type: Literal["code_output"] = "code_output"
+    code: str = Field(description="The executed code.")
+    output: str | None = Field(default=None, description="Execution output.")
+
+
+class UnknownOutputItem(OutputItem):
+    """Pass-through for unrecognized output item types."""
+
+    type: Literal["unknown"] = "unknown"
+    raw: dict[str, object] = Field(description="Raw item data from provider.")
+
+
+class MultiModalGenerationResponse(BaseModel):
+    """Normalized response returned by every multi-modal generation call."""
+
+    request_id: str = Field(description="Tarash-assigned unique ID for this request.")
+    items: list[OutputItem] = Field(
+        description="Ordered list of output items (text, images, etc.)."
+    )
+    status: Literal["completed", "failed"] = Field(
+        description="Final generation status."
+    )
+    is_mock: bool = Field(
+        default=False,
+        description="True if the response was produced by the mock provider.",
+    )
+    cost: GenerationCost | None = Field(
+        default=None,
+        description="Cost information with optional per-component breakdown.",
+    )
+    raw_response: dict[str, object] = Field(
+        description="Unmodified provider response, preserved for debugging."
+    )
+    execution_metadata: ExecutionMetadata | None = Field(
+        default=None,
+        description="Timing and fallback attempt details captured by the orchestrator.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    @property
+    def text(self) -> str:
+        """All text items concatenated."""
+        return "\n".join(i.content for i in self.items if isinstance(i, TextOutputItem))
+
+    @property
+    def images(self) -> list[ImageOutputItem]:
+        """Just the image output items."""
+        return [i for i in self.items if isinstance(i, ImageOutputItem)]
+
+
+class MultiModalGenerationUpdate(BaseModel):
+    """A progress event emitted during multi-modal generation."""
+
+    request_id: str = Field(
+        description="Same ID as the originating request, for correlation."
+    )
+    status: StatusType = Field(description="Current generation status.")
+    progress_percent: int | None = Field(
+        None, ge=0, le=100, description="Estimated completion percentage (0-100)."
+    )
+    update: dict[str, object] = Field(
+        description="Raw event payload from the provider."
+    )
+    result: MultiModalGenerationResponse | None = Field(
+        default=None,
+        description="Final response, set only when status is 'completed'.",
+    )
+    error: str | None = Field(
+        default=None, description="Error message if status is 'failed'."
+    )
+
+
+class MultiModalGenerationConfig(BaseModel):
+    """Configuration for a multi-modal generation request."""
+
+    model: str = Field(description="Model identifier, e.g. 'gpt-5', 'gpt-4o'.")
+    provider: str = Field(description="Provider identifier: 'openai'.")
+    api_key: str | None = Field(
+        default=None,
+        description="API key for authenticating with the provider.",
+    )
+    base_url: str | None = Field(
+        default=None, description="Override the provider's base API URL."
+    )
+    api_version: str | None = Field(
+        default=None,
+        description="Azure OpenAI API version. When set, Azure endpoints are used.",
+    )
+    timeout: int = Field(
+        default=300,
+        description="Maximum seconds to wait for generation to complete.",
+    )
+    allowed_tools: list[str] = Field(
+        default_factory=lambda: ["image_generation"],
+        description="Built-in tools the model may use. Limited to media tools.",
+    )
+    instructions: str | None = Field(
+        default=None, description="System-level instructions for the model."
+    )
+    store: bool = Field(
+        default=True,
+        description="Whether to store the response for multi-turn statefulness.",
+    )
+    mock: "MockConfig | None" = Field(
+        default=None, description="If set, enables mock generation for testing."
+    )
+    fallback_configs: list["MultiModalGenerationConfig"] | None = Field(
+        default=None,
+        description="Ordered list of fallback configs to try on retryable errors.",
+    )
+    provider_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional provider-specific configuration.",
+    )
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+
+class MultiModalGenerationRequest(BaseModel):
+    """Parameters for a multi-modal generation request."""
+
+    prompt: str | None = Field(
+        default=None,
+        description="Simple string prompt. Shorthand for input when only a single user message is needed.",
+    )
+    input: str | list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Primary input: a plain string prompt or a multi-turn message array "
+            "(role/content dicts). Takes precedence over prompt when both are set."
+        ),
+    )
+    previous_response_id: str | None = Field(
+        default=None,
+        description="ID of a previous response for multi-turn conversations.",
+    )
+    extra_params: dict[str, object] = Field(
+        default_factory=dict,
+        description="Provider- or model-specific parameters with no standard equivalent.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_extra_fields(cls, data: dict[str, object]) -> dict[str, object]:
+        """Capture unknown fields into extra_params."""
+        if not isinstance(data, dict):
+            return data
+        extra_params: dict[str, object] = cast(
+            dict[str, object], data.pop("extra_params", {})
+        )
+        known_fields = set(cls.model_fields.keys())
+        extra = {k: v for k, v in data.items() if k not in known_fields}
+        for k in extra.keys():
+            _ = data.pop(k)
+        extra_params.update(extra)
+        data["extra_params"] = extra_params
+        return data
+
+    @model_validator(mode="after")
+    def require_input_or_prompt(self) -> "MultiModalGenerationRequest":
+        """Ensure at least one of ``input`` or ``prompt`` is provided."""
+        if self.input is None and self.prompt is None:
+            raise ValueError("Either 'input' or 'prompt' must be provided.")
+        return self
+
+
 # ==================== Provider Handler Protocol ====================
 
 ClientT = TypeVar("ClientT", covariant=True)
@@ -1260,6 +1490,54 @@ class ProviderHandler(Protocol):
         """
         ...
 
+    # ==================== Multi-Modal Generation ====================
+
+    async def generate_multi_modal_async(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output asynchronously.
+
+        Args:
+            config: Provider configuration with API key, model, allowed tools,
+                and optional fallback chain.
+            request: Multi-modal generation parameters (prompt or message array).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``MultiModalGenerationResponse`` with ordered output items and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support multi-modal generation.
+            TarashException: On any provider-level error.
+        """
+        ...
+
+    def generate_multi_modal(
+        self,
+        config: MultiModalGenerationConfig,
+        request: MultiModalGenerationRequest,
+        on_progress: MultiModalProgressCallback | None = None,
+    ) -> MultiModalGenerationResponse:
+        """Generate multi-modal output synchronously (blocking).
+
+        Args:
+            config: Provider configuration with API key, model, allowed tools,
+                and optional fallback chain.
+            request: Multi-modal generation parameters (prompt or message array).
+            on_progress: Optional callback invoked during generation.
+
+        Returns:
+            ``MultiModalGenerationResponse`` with ordered output items and metadata.
+
+        Raises:
+            NotImplementedError: If this provider does not support multi-modal generation.
+            TarashException: On any provider-level error.
+        """
+        ...
+
 
 # ==================== Resolve Forward References ====================
 # MockConfig is used as a string annotation ("MockConfig | None") in the config
@@ -1270,3 +1548,4 @@ from tarash.tarash_gateway.mock import MockConfig  # noqa: E402, F811
 VideoGenerationConfig.model_rebuild()
 ImageGenerationConfig.model_rebuild()
 AudioGenerationConfig.model_rebuild()
+MultiModalGenerationConfig.model_rebuild()

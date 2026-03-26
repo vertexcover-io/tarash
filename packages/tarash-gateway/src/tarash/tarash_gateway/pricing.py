@@ -230,3 +230,21 @@ OPENAI_IMAGE_TOKEN_RATES: dict[str, dict[str, Decimal]] = {
         "image_output": Decimal("8.00") / 1_000_000,
     },
 }
+
+
+# ==================== Token-Based Pricing (OpenAI Multi-Modal/Responses API) ====================
+
+# Per-token rates (USD per token) for OpenAI Responses API models.
+# These models produce text + use tools (image_generation, code_interpreter).
+OPENAI_MULTI_MODAL_TOKEN_RATES: dict[str, dict[str, Decimal]] = {
+    "gpt-4o": {
+        "text_input": Decimal("2.50") / 1_000_000,
+        "text_output": Decimal("10.00") / 1_000_000,
+        "cached_text_input": Decimal("1.25") / 1_000_000,
+    },
+    "gpt-4o-mini": {
+        "text_input": Decimal("0.15") / 1_000_000,
+        "text_output": Decimal("0.60") / 1_000_000,
+        "cached_text_input": Decimal("0.075") / 1_000_000,
+    },
+}
