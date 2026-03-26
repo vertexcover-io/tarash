@@ -29,17 +29,42 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Fetch review comments JSON
+        id: comments
+        env:
+          GH_TOKEN: ${{ secrets.HARNESS_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.issue.number || github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+
+          # Fetch all file-level review comments on this PR
+          REVIEW_COMMENTS=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/comments" \
+            --jq '[.[] | {id: .id, path: .path, line: (.line // .original_line), body: .body, diff_hunk: .diff_hunk}]' 2>/dev/null || echo "[]")
+
+          # Write to file (avoids shell escaping issues with multiline JSON)
+          echo "${REVIEW_COMMENTS}" > /tmp/review-comments.json
+          echo "comments_file=/tmp/review-comments.json" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude
         uses: anthropics/claude-code-action@v1
         with:
           base_branch: master
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.HARNESS_PAT }}
           plugin_marketplaces: 'https://github.com/vertexcover-io/harness-engineering.git'
           plugins: 'harness@main'
           prompt: |
-            You have the harness plugin installed with skills for software engineering workflows.
-            When asked to fix review comments or address PR feedback, use /review-fixer.
-            Follow the instructions in the @claude-harness comment on this PR.
+            Use /review-fixer to address the review feedback below.
+
+            PR #${{ github.event.issue.number || github.event.pull_request.number }}
+            Repository: ${{ github.repository }}
+            Reviewer: ${{ github.event.comment.user.login }}
+
+            Review body:
+            ${{ github.event.comment.body }}
+
+            Review comments (file-level):
+            Read the file at /tmp/review-comments.json for the full list of file-level review comments with paths, line numbers, diff hunks, and comment IDs.
           show_full_output: true
           claude_args: |
             --model opus
