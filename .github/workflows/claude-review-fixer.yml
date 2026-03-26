@@ -54,3 +54,4 @@ jobs:
             --model opus
             --effort high
             --max-turns 30
+            --permission-mode bypassPermissions
