@@ -29,22 +29,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Fetch review comments JSON
-        id: comments
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER="${{ github.event.issue.number || github.event.pull_request.number }}"
-          REPO="${{ github.repository }}"
-
-          # Fetch all file-level review comments on this PR
-          REVIEW_COMMENTS=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/comments" \
-            --jq '[.[] | {id: .id, path: .path, line: (.line // .original_line), body: .body, diff_hunk: .diff_hunk}]' 2>/dev/null || echo "[]")
-
-          # Write to file (avoids shell escaping issues with multiline JSON)
-          echo "${REVIEW_COMMENTS}" > /tmp/review-comments.json
-          echo "comments_file=/tmp/review-comments.json" >> "$GITHUB_OUTPUT"
-
       - name: Run Claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -63,8 +47,8 @@ jobs:
             Review body:
             ${{ github.event.comment.body }}
 
-            Review comments (file-level):
-            Read the file at /tmp/review-comments.json for the full list of file-level review comments with paths, line numbers, diff hunks, and comment IDs.
+            Fetch the file-level review comments yourself using:
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number || github.event.pull_request.number }}/comments
           show_full_output: true
           claude_args: |
             --model opus
