@@ -1244,3 +1244,110 @@ def test_kling_o3_standard_image_to_video_sync(fal_api_key):
 
     print(f"✓ Generated Kling O3 Standard image-to-video: {response.request_id}")
     print(f"  Video URL: {response.video}")
+
+
+# ==================== ByteDance Seedance 2.0 E2E Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_seedance_v2_image_to_video_async(fal_api_key):
+    """
+    Async test for Seedance 2.0 image-to-video with progress tracking.
+
+    This tests:
+    - bytedance/seedance-2.0/image-to-video endpoint
+    - Progress callback tracking
+    - image_url from image_list, generate_audio, duration, resolution
+    - Prefix matching: bytedance/seedance-2.0 -> BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
+        model="bytedance/seedance-2.0/image-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="The elephant strides through tall grass, ears flapping gently in the breeze",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+                "type": "reference",
+            }
+        ],
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        resolution="720p",
+        generate_audio=False,
+        seed=42,
+    )
+
+    print(f"\nGenerating Seedance 2.0 image-to-video with model: {config.model}")
+    response = await api.generate_video_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Seedance 2.0 image-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_seedance_v2_text_to_video_sync(fal_api_key):
+    """
+    Sync test for Seedance 2.0 text-to-video.
+
+    This tests:
+    - bytedance/seedance-2.0/text-to-video endpoint
+    - Sync generation path
+    - aspect_ratio, generate_audio, duration parameters
+    """
+    config = VideoGenerationConfig(
+        model="bytedance/seedance-2.0/text-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A serene mountain lake at dawn, mist rising from the water, cinematic wide shot",
+        duration_seconds=4,
+        aspect_ratio="16:9",
+        resolution="720p",
+        generate_audio=False,
+    )
+
+    print(f"\nGenerating Seedance 2.0 text-to-video (sync) with model: {config.model}")
+    response = api.generate_video(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated Seedance 2.0 text-to-video: {response.request_id}")
+    print(f"  Video URL: {response.video}")

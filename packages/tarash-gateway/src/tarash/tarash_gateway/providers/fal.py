@@ -606,6 +606,45 @@ BYTEDANCE_SEEDANCE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),
 }
 
+# ByteDance Seedance 2.0 - Unified mapper for all v2.0 variants
+# Supports image-to-video and text-to-video
+# Key differences from v1/v1.5:
+# - Duration range: 4-15 seconds (vs 2-12 for v1)
+# - No reference-to-video variant or camera_fixed parameter
+# - Model IDs use "bytedance/seedance-2.0" prefix (no fal-ai/ prefix)
+BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core required
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Core optional (all variants)
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"],
+        provider="fal",
+        model="bytedance-seedance-2.0",
+        add_suffix=False,  # API uses "4", "5", etc. without "s" suffix
+    ),
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    "seed": passthrough_field_mapper("seed"),
+    # Image-to-video support (required by API for I2V variant)
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # End frame control (optional for I2V)
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # User tracking (via extra_params)
+    "end_user_id": extra_params_field_mapper("end_user_id"),
+}
+
 # Pixverse (v5 and v5.5) - Unified mapper for all variants
 # Supports text-to-video, image-to-video, transition, effects, and swap
 # All variants share common fields with variant-specific optional fields
@@ -760,6 +799,9 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/wan/v2.2-a14b/": WAN_V22_A14B_FIELD_MAPPERS,
     # ByteDance Seedance - Unified mapper for all versions (v1, v1.5) and variants (text-to-video, image-to-video, reference-to-video)
     "fal-ai/bytedance/seedance": BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
+    # ByteDance Seedance 2.0 - Unified mapper for all v2.0 variants (text-to-video, image-to-video)
+    # Note: Seedance 2.0 uses "bytedance/seedance-2.0" prefix (without fal-ai/)
+    "bytedance/seedance-2.0": BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS,
     # Pixverse - All variants (text-to-video, image-to-video, transition, effects, swap) use unified mapper
     # Supports both v5 and v5.5 with same field mappings
     "fal-ai/pixverse/v5.5": PIXVERSE_FIELD_MAPPERS,  # v5.5 variants
