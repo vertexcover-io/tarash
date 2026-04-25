@@ -4,9 +4,110 @@ from tarash.tarash_gateway.models import ImageGenerationRequest
 from tarash.tarash_gateway.providers.field_mappers import apply_field_mappers
 from tarash.tarash_gateway.providers.fal import (
     FAL_IMAGE_MODEL_REGISTRY,
+    GPT_IMAGE_2_FIELD_MAPPERS,
     NANO_BANANA_2_FIELD_MAPPERS,
     get_image_field_mappers,
 )
+
+
+# ==================== GPT Image 2 Registry Tests ====================
+
+
+def test_get_field_mappers_gpt_image_2_all_variants():
+    """Test unified mapper for all GPT Image 2 variants via prefix matching."""
+    variants = [
+        "openai/gpt-image-2",
+        "openai/gpt-image-2/edit",
+    ]
+    for variant in variants:
+        mappers = get_image_field_mappers(variant)
+        assert mappers is GPT_IMAGE_2_FIELD_MAPPERS, (
+            f"Expected GPT_IMAGE_2_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_gpt_image_2_in_registry():
+    """GPT Image 2 is registered in the image model registry."""
+    assert "openai/gpt-image-2" in FAL_IMAGE_MODEL_REGISTRY
+
+
+# ==================== GPT Image 2 Conversion Tests ====================
+
+
+def test_gpt_image_2_edit_conversion_with_images():
+    """Test GPT Image 2 edit request conversion with reference images.
+
+    Tests: prompt, image_urls from image_list, n (num_images), quality, output_format.
+    """
+    request = ImageGenerationRequest(
+        prompt="Add a rainbow over the mountains",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/img1.jpg"},
+            {"type": "reference", "image": "https://example.com/img2.jpg"},
+        ],
+        n=2,
+        quality="high",
+        extra_params={
+            "output_format": "png",
+        },
+    )
+
+    result = apply_field_mappers(GPT_IMAGE_2_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "Add a rainbow over the mountains"
+    assert result["image_urls"] == [
+        "https://example.com/img1.jpg",
+        "https://example.com/img2.jpg",
+    ]
+    assert result["num_images"] == 2
+    assert result["quality"] == "high"
+    assert result["output_format"] == "png"
+
+
+def test_gpt_image_2_edit_conversion_with_mask():
+    """Test GPT Image 2 edit with mask_url for targeted region editing.
+
+    Tests: mask_url via extra_params, image_size, single reference image.
+    """
+    request = ImageGenerationRequest(
+        prompt="Replace the sky with a stormy night",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/photo.jpg"},
+        ],
+        size="square_hd",
+        extra_params={
+            "mask_url": "https://example.com/mask.png",
+            "output_format": "webp",
+        },
+    )
+
+    result = apply_field_mappers(GPT_IMAGE_2_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "Replace the sky with a stormy night"
+    assert result["image_urls"] == ["https://example.com/photo.jpg"]
+    assert result["image_size"] == "square_hd"
+    assert result["mask_url"] == "https://example.com/mask.png"
+    assert result["output_format"] == "webp"
+
+
+def test_gpt_image_2_optional_fields_excluded_when_none():
+    """Optional fields are excluded from conversion when not provided."""
+    request = ImageGenerationRequest(
+        prompt="Edit the image",
+        image_list=[
+            {"type": "reference", "image": "https://example.com/img.jpg"},
+        ],
+    )
+
+    result = apply_field_mappers(GPT_IMAGE_2_FIELD_MAPPERS, request)
+
+    assert result["prompt"] == "Edit the image"
+    assert result["image_urls"] == ["https://example.com/img.jpg"]
+    assert "num_images" not in result
+    assert "quality" not in result
+    assert "image_size" not in result
+    assert "output_format" not in result
+    assert "mask_url" not in result
 
 
 # ==================== Nano Banana 2 Registry Tests ====================

@@ -907,6 +907,24 @@ SEEDREAM_V5_LITE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
 }
 
+# GPT Image 2 (OpenAI via Fal) - image editing model
+# - openai/gpt-image-2/edit: edit images with a text prompt and reference image_urls
+# Required by API: prompt + image_urls; mask_url for targeted region edits
+GPT_IMAGE_2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # List of reference images to edit (required by API for /edit variant)
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "image_size": passthrough_field_mapper("size"),  # "auto", "square_hd", etc.
+    "num_images": passthrough_field_mapper("n"),  # 1–4 images
+    "quality": passthrough_field_mapper("quality"),  # "low", "medium", "high"
+    "output_format": extra_params_field_mapper("output_format"),  # "jpeg", "png", "webp"
+    "mask_url": extra_params_field_mapper("mask_url"),  # Optional targeted-edit mask
+}
+
 # Nano Banana 2 (Google Gemini 3.1 Flash Image) - Unified mapper for all variants:
 # - fal-ai/nano-banana-2: text-to-image generation
 # - fal-ai/nano-banana-2/edit: image editing with up to 14 reference images (image_urls required by API)
@@ -963,6 +981,8 @@ FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/bytedance/seedream/v5/lite": SEEDREAM_V5_LITE_FIELD_MAPPERS,
     # Nano Banana 2 (Google Gemini 3.1 Flash Image) - Unified mapper for text-to-image and edit variants
     "fal-ai/nano-banana-2": NANO_BANANA_2_FIELD_MAPPERS,
+    # GPT Image 2 (OpenAI via Fal) - image editing with reference images
+    "openai/gpt-image-2": GPT_IMAGE_2_FIELD_MAPPERS,
 }
 
 

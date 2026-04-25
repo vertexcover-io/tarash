@@ -36,6 +36,7 @@ from tarash.tarash_gateway.models import (
 )
 from tarash.tarash_gateway.utils import (
     download_media_from_url,
+    download_media_from_url_async,
     get_filename_from_url,
     validate_duration,
     validate_model_params,
@@ -111,6 +112,20 @@ GPT_IMAGE_15_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "background": passthrough_field_mapper("background"),
 }
 
+# GPT Image 2 field mappers
+# Image input (image_list) is NOT mapped here — it's handled as bytes in the edit API flow
+GPT_IMAGE_2_OPENAI_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "size": size_field_mapper(
+        allowed_values=["1024x1024", "1024x1792", "1792x1024", "auto"],
+        provider="openai",
+        model="gpt-image-2",
+    ),
+    "quality": quality_field_mapper(allowed_values=["low", "medium", "high", "auto"]),
+    "n": n_images_field_mapper(min_value=1, max_value=4),
+    "output_format": passthrough_field_mapper("output_format"),
+}
+
 # DALL-E 3 field mappers
 DALLE3_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "prompt": passthrough_field_mapper("prompt", required=True),
@@ -138,6 +153,7 @@ DALLE2_FIELD_MAPPERS: dict[str, FieldMapper] = {
 # Image model registry
 OPENAI_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "gpt-image-1.5": GPT_IMAGE_15_FIELD_MAPPERS,
+    "gpt-image-2": GPT_IMAGE_2_OPENAI_FIELD_MAPPERS,
     "dall-e-3": DALLE3_FIELD_MAPPERS,
     "dall-e-2": DALLE2_FIELD_MAPPERS,
 }
@@ -1078,6 +1094,72 @@ class OpenAIProviderHandler:
 
         return openai_params
 
+    def _prepare_edit_images(
+        self, request: ImageGenerationRequest
+    ) -> list[Any]:
+        """Download reference images from image_list to BytesIO for images.edit().
+
+        Returns list of BytesIO objects, one per reference image.
+        """
+        import base64
+
+        images = []
+        for img_item in request.image_list:
+            if img_item.get("type") not in ("reference", None):
+                continue
+            media = img_item["image"]
+            media_str = str(media)
+
+            if media_str.startswith(("http://", "https://")):
+                content, _ = download_media_from_url(media_str, provider="openai")
+            elif isinstance(media, dict) and "content" in media:
+                content = bytes(media["content"])
+            else:
+                # base64 data URL or raw base64 string
+                if media_str.startswith("data:"):
+                    _, _, b64_data = media_str.partition(",")
+                else:
+                    b64_data = media_str
+                content = base64.b64decode(b64_data)
+
+            images.append(io.BytesIO(content))
+
+        return images
+
+    async def _prepare_edit_images_async(
+        self, request: ImageGenerationRequest
+    ) -> list[Any]:
+        """Download reference images from image_list to BytesIO for images.edit() (async).
+
+        Returns list of BytesIO objects, one per reference image.
+        """
+        import base64
+
+        images = []
+        for img_item in request.image_list:
+            if img_item.get("type") not in ("reference", None):
+                continue
+            media = img_item["image"]
+            media_str = str(media)
+
+            if media_str.startswith(("http://", "https://")):
+                content, _ = await download_media_from_url_async(
+                    media_str, provider="openai"
+                )
+            elif isinstance(media, dict) and "content" in media:
+                content = bytes(media["content"])
+            else:
+                # base64 data URL or raw base64 string
+                if media_str.startswith("data:"):
+                    _, _, b64_data = media_str.partition(",")
+                else:
+                    b64_data = media_str
+                content = base64.b64decode(b64_data)
+
+            images.append(io.BytesIO(content))
+
+        return images
+
     def _convert_image_response(
         self,
         config: ImageGenerationConfig,
@@ -1141,7 +1223,13 @@ class OpenAIProviderHandler:
         logger.debug("Starting image generation API call")
 
         try:
-            response = await client.images.generate(**openai_params)
+            if request.image_list:
+                # Image editing: download reference images and use images.edit()
+                edit_images = await self._prepare_edit_images_async(request)
+                image_arg: Any = edit_images[0] if len(edit_images) == 1 else edit_images
+                response = await client.images.edit(image=image_arg, **openai_params)
+            else:
+                response = await client.images.generate(**openai_params)
 
             logger.info(
                 "Image generation completed", {"num_images": len(response.data)}
@@ -1177,7 +1265,13 @@ class OpenAIProviderHandler:
         logger.debug("Starting image generation API call")
 
         try:
-            response = client.images.generate(**openai_params)
+            if request.image_list:
+                # Image editing: download reference images and use images.edit()
+                edit_images = self._prepare_edit_images(request)
+                image_arg: Any = edit_images[0] if len(edit_images) == 1 else edit_images
+                response = client.images.edit(image=image_arg, **openai_params)
+            else:
+                response = client.images.generate(**openai_params)
 
             logger.info(
                 "Image generation completed", {"num_images": len(response.data)}

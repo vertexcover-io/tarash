@@ -777,3 +777,69 @@ def test_nano_banana_2_edit_sync(fal_api_key):
 
     print(f"✓ Generated Nano Banana 2 edit: {response.request_id}")
     print(f"  Image URL: {response.images[0][:80]}...")
+
+
+# ==================== GPT Image 2 Tests ====================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_gpt_image_2_edit_async(fal_api_key):
+    """
+    Test GPT Image 2 image editing via Fal (async).
+
+    This tests:
+    - Image editing with reference image input (image_urls from image_list)
+    - Progress tracking
+    - n (num_images), quality, output_format via extra_params
+    - Prefix matching: openai/gpt-image-2/edit → GPT_IMAGE_2_FIELD_MAPPERS
+    """
+    progress_updates = []
+
+    async def progress_callback(update: ImageGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = ImageGenerationConfig(
+        model="openai/gpt-image-2/edit",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=180,
+        max_poll_attempts=90,
+        poll_interval=2,
+    )
+
+    request = ImageGenerationRequest(
+        prompt="Add a dramatic rainbow arching over the elephant against a vibrant sunset sky",
+        image_list=[
+            {
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+                "type": "reference",
+            }
+        ],
+        n=1,
+        quality="high",
+        extra_params={"output_format": "png"},
+    )
+
+    response = await api.generate_image_async(
+        config, request, on_progress=progress_callback
+    )
+
+    assert isinstance(response, ImageGenerationResponse)
+    assert response.request_id is not None
+    assert response.images is not None
+    assert len(response.images) == 1
+    assert response.status == "completed"
+
+    for image_url in response.images:
+        assert isinstance(image_url, str)
+        assert image_url.startswith("http"), f"Expected HTTP URL, got: {image_url}"
+
+    assert len(progress_updates) > 0
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated GPT Image 2 edit: {response.request_id}")
+    print(f"  Image URL: {response.images[0][:80]}...")
+    print(f"  Progress updates: {len(progress_updates)}")
