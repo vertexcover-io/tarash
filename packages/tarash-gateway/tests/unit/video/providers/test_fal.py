@@ -24,6 +24,7 @@ from tarash.tarash_gateway.providers.fal import (
     FalProviderHandler,
     get_field_mappers,
     get_image_field_mappers,
+    KLING_O3_FIELD_MAPPERS,
     WAN_VIDEO_GENERATION_MAPPERS,
     WAN_ANIMATE_MAPPERS,
     WAN_V22_A14B_FIELD_MAPPERS,
@@ -3445,3 +3446,165 @@ def test_seedream_v5_lite_edit_conversion(handler):
     ]
     assert result["num_images"] == 1
     assert result["image_size"] == "auto_2K"
+
+
+# ==================== Kling O3 Tests ====================
+
+
+def test_get_field_mappers_kling_o3_all_variants():
+    """Test unified mapper for all Kling O3 variants via prefix matching."""
+    variants = [
+        "fal-ai/kling-video/o3/pro/text-to-video",
+        "fal-ai/kling-video/o3/pro/image-to-video",
+        "fal-ai/kling-video/o3/standard/text-to-video",
+        "fal-ai/kling-video/o3/standard/image-to-video",
+        "fal-ai/kling-video/o3/",
+    ]
+    for variant in variants:
+        mappers = get_field_mappers(variant)
+        assert mappers is KLING_O3_FIELD_MAPPERS, (
+            f"Expected KLING_O3_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_kling_o3_text_to_video_basic(handler):
+    """Test Kling O3 text-to-video basic conversion with prompt, duration, aspect_ratio."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A mecha lands on the ground to save the city",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A mecha lands on the ground to save the city"
+    assert result["duration"] == "5"  # No "s" suffix
+    assert result["aspect_ratio"] == "16:9"
+    # No image fields for text-to-video
+    assert "image_url" not in result
+    assert "end_image_url" not in result
+
+
+def test_kling_o3_text_to_video_with_audio_and_multi_prompt(handler):
+    """Test Kling O3 text-to-video with generate_audio, voice_ids, multi_prompt, shot_type."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o3/standard/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Two characters talking in a park",
+        duration_seconds=10,
+        generate_audio=True,
+        extra_params={
+            "voice_ids": ["voice_abc123", "voice_def456"],
+            "multi_prompt": [
+                {"prompt": "Scene 1: Characters meet", "duration": "5"},
+                {"prompt": "Scene 2: They shake hands", "duration": "5"},
+            ],
+            "shot_type": "customize",
+        },
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Two characters talking in a park"
+    assert result["duration"] == "10"
+    assert result["generate_audio"] is True
+    assert result["voice_ids"] == ["voice_abc123", "voice_def456"]
+    assert len(result["multi_prompt"]) == 2
+    assert result["multi_prompt"][0]["prompt"] == "Scene 1: Characters meet"
+    assert result["shot_type"] == "customize"
+
+
+def test_kling_o3_image_to_video_conversion(handler):
+    """Test Kling O3 image-to-video with reference image mapped to image_url."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o3/pro/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="The character walks forward slowly",
+        duration_seconds=8,
+        image_list=[
+            {"image": "https://example.com/start-frame.png", "type": "reference"},
+        ],
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "The character walks forward slowly"
+    assert result["duration"] == "8"
+    # reference image maps to image_url (o3 API field for start frame)
+    assert result["image_url"] == "https://example.com/start-frame.png"
+    assert "end_image_url" not in result
+    # No aspect_ratio for image-to-video
+    assert "aspect_ratio" not in result
+
+
+def test_kling_o3_image_to_video_with_end_frame(handler):
+    """Test Kling O3 image-to-video with both start (reference) and end (last_frame) images."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o3/standard/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Transition from sunrise to sunset",
+        duration_seconds=10,
+        generate_audio=False,
+        image_list=[
+            {"image": "https://example.com/start.png", "type": "reference"},
+            {"image": "https://example.com/end.png", "type": "last_frame"},
+        ],
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Transition from sunrise to sunset"
+    assert result["duration"] == "10"
+    assert result["image_url"] == "https://example.com/start.png"
+    assert result["end_image_url"] == "https://example.com/end.png"
+    assert result["generate_audio"] is False
+
+
+def test_kling_o3_duration_extended_range(handler):
+    """Test Kling O3 supports full duration range 3-15 seconds."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # Boundary values
+    for duration in [3, 7, 11, 15]:
+        request = VideoGenerationRequest(prompt="Test video", duration_seconds=duration)
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(duration), (
+            f"Expected duration '{duration}' for {duration}s input"
+        )
+
+
+def test_kling_o3_duration_invalid(handler):
+    """Test Kling O3 duration validation rejects values outside 3-15 seconds."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/o3/pro/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    for invalid_duration in [2, 16, 20]:
+        request = VideoGenerationRequest(
+            prompt="Test", duration_seconds=invalid_duration
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            handler._convert_request(config, request)
+        assert "Invalid duration" in str(exc_info.value), (
+            f"Expected ValidationError for duration {invalid_duration}s"
+        )
