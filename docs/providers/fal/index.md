@@ -102,6 +102,7 @@ config = VideoGenerationConfig(
 | [Grok Imagine](grok-imagine.md) | Grok Imagine | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` | Image |
 | [Seedream](seedream.md) | Seedream | `fal-ai/bytedance/seedream/v5/lite/text-to-image`, `fal-ai/bytedance/seedream/v5/lite/edit` | Image |
 | [Nano Banana 2](nano-banana-2.md) | Nano Banana 2 | `fal-ai/nano-banana-2`, `fal-ai/nano-banana-2/edit` | Image |
+| [GPT Image 2](gpt-image-2.md) | GPT Image 2 | `openai/gpt-image-2/edit` | Image |
 | [MiniMax Speech](minimax-speech.md) | MiniMax Speech | `fal-ai/minimax/speech-2.8-hd` | Audio (TTS) |
 | [Qwen 3 TTS](qwen-tts.md) | Qwen 3 TTS | `fal-ai/qwen-3-tts` | Audio (TTS) |
 
