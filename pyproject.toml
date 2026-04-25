@@ -37,7 +37,12 @@ include = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = ["packages/*", "tools/*"]
+
+[tool.tarash-lint]
+select = ["TRH1", "TRH2", "TRH3", "TRH4"]
+ignore = []
+exclude-providers = ["azure_openai", "stability"]
 
 [dependency-groups]
 dev = [

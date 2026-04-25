@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages --group dev
 
+      - name: Structural lint
+        run: uv run tarash-lint --project-root .
+
       - name: Run unit tests
         run: |
           uv run pytest packages/tarash-gateway/tests/unit \

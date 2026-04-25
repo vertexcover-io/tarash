@@ -235,3 +235,7 @@ class TestHandleMockRequestSync:
 - No need for `self` parameter clutter
 - Better pytest output with flat structure
 - Fixtures provide all the shared setup benefits of classes without the overhead
+
+### Test Coverage Enforcement
+
+- After writing or modifying code, invoke the `coverage-guard` skill to ensure test coverage meets the threshold.
