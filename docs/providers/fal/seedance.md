@@ -1,6 +1,6 @@
 # Seedance (via Fal.ai)
 
-ByteDance Seedance v1 and v1.5 models hosted on Fal.ai.
+ByteDance Seedance v1, v1.5, and v2.0 models hosted on Fal.ai.
 
 ## Quick Example
 
@@ -10,7 +10,7 @@ from tarash.tarash_gateway.models import VideoGenerationConfig, VideoGenerationR
 
 config = VideoGenerationConfig(
     provider="fal",
-    model="fal-ai/bytedance/seedance/v1/lite/text-to-video",
+    model="bytedance/seedance-2.0/text-to-video",
     api_key="YOUR_FAL_KEY",
 )
 
@@ -30,10 +30,27 @@ print(response.video)
 | Model prefix | Duration | Image-to-Video | Notes |
 |---|---|:---:|---|
 | `fal-ai/bytedance/seedance` | `2s`–`12s` | ✅ | Seedance v1/v1.5; reference-to-video |
+| `bytedance/seedance-2.0` | `4s`–`15s` | ✅ | Seedance v2.0; text-to-video and image-to-video |
 
 ---
 
 ## Parameters
+
+### Seedance v2.0 (`bytedance/seedance-2.0/*`)
+
+| Parameter | Required | Notes |
+|---|:---:|---|
+| `prompt` | ✅ | |
+| `duration_seconds` | — | `4`–`15` seconds |
+| `resolution` | — | `480p`, `720p`, `1080p` |
+| `aspect_ratio` | — | `16:9`, `9:16`, `1:1`, `21:9`, `4:3`, `3:4` |
+| `generate_audio` | — | Synchronized audio generation |
+| `seed` | — | |
+| `image_list` (reference) | — | Starting frame for image-to-video |
+| `image_list` (last_frame) | — | Ending frame for image-to-video |
+| `extra_params.end_user_id` | — | User identifier |
+
+### Seedance v1/v1.5 (`fal-ai/bytedance/seedance/*`)
 
 | Parameter | Required | Notes |
 |---|:---:|---|

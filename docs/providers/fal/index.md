@@ -94,7 +94,7 @@ config = VideoGenerationConfig(
 | [Minimax](minimax.md) | Minimax | `fal-ai/minimax` | Video |
 | [Wan](wan.md) | Wan | `wan/v2.6/`, `fal-ai/wan-25-preview/`, `fal-ai/wan/v2.2-a14b/` | Video |
 | [Sora](sora.md) | Sora | `fal-ai/sora-2` | Video |
-| [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | Video |
+| [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance`, `bytedance/seedance-2.0` | Video |
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5`, `fal-ai/pixverse/lipsync` | Video |
 | [OmniHuman](omnihuman.md) | OmniHuman | `fal-ai/bytedance/omnihuman`, `fal-ai/bytedance/omnihuman/v1.5` | Video |
 | [Sync Lipsync](sync-lipsync.md) | Sync Lipsync | `fal-ai/sync-lipsync`, `fal-ai/sync-lipsync/v2`, `fal-ai/sync-lipsync/v2/pro` | Video |

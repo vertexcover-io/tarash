@@ -29,6 +29,7 @@ from tarash.tarash_gateway.providers.fal import (
     WAN_ANIMATE_MAPPERS,
     WAN_V22_A14B_FIELD_MAPPERS,
     BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
+    BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS,
     PIXVERSE_FIELD_MAPPERS,
     SYNC_LIPSYNC_FIELD_MAPPERS,
     PIXVERSE_LIPSYNC_FIELD_MAPPERS,
@@ -1776,6 +1777,128 @@ def test_bytedance_v1_duration_validation(handler):
 
         assert "Invalid duration" in str(exc_info.value)
         assert f"{invalid_duration} seconds" in str(exc_info.value)
+
+
+# ==================== ByteDance Seedance 2.0 Field Mapper Selection Tests ====================
+
+
+def test_get_field_mappers_bytedance_seedance_v2_all_variants():
+    """Test ByteDance Seedance 2.0 unified mapper for all variants via prefix matching."""
+    variants = [
+        "bytedance/seedance-2.0/image-to-video",
+        "bytedance/seedance-2.0/text-to-video",
+        "bytedance/seedance-2.0",
+    ]
+    for variant in variants:
+        mappers = get_field_mappers(variant)
+        assert mappers is BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS, (
+            f"Expected BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS for {variant}"
+        )
+
+
+# ==================== ByteDance Seedance 2.0 Request Conversion Tests ====================
+
+
+def test_seedance_v2_text_to_video_conversion(handler):
+    """Test Seedance 2.0 text-to-video conversion with all common parameters."""
+    config = VideoGenerationConfig(
+        model="bytedance/seedance-2.0/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A cinematic drone shot over snow-capped mountains at golden hour",
+        duration_seconds=8,
+        aspect_ratio="16:9",
+        resolution="1080p",
+        seed=42,
+        generate_audio=True,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A cinematic drone shot over snow-capped mountains at golden hour"
+    assert result["duration"] == "8"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "1080p"
+    assert result["seed"] == 42
+    assert result["generate_audio"] is True
+    # Image fields should not appear for text-only request
+    assert "image_url" not in result
+    assert "end_image_url" not in result
+
+
+def test_seedance_v2_image_to_video_conversion(handler):
+    """Test Seedance 2.0 image-to-video conversion with start and end frames."""
+    config = VideoGenerationConfig(
+        model="bytedance/seedance-2.0/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A person walks forward with confident strides",
+        image_list=[
+            {"image": "https://example.com/start.jpg", "type": "reference"},
+            {"image": "https://example.com/end.jpg", "type": "last_frame"},
+        ],
+        duration_seconds=5,
+        resolution="720p",
+        generate_audio=False,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A person walks forward with confident strides"
+    assert result["image_url"] == "https://example.com/start.jpg"
+    assert result["end_image_url"] == "https://example.com/end.jpg"
+    assert result["duration"] == "5"
+    assert result["resolution"] == "720p"
+    assert result["generate_audio"] is False
+
+
+def test_seedance_v2_duration_validation(handler):
+    """Test Seedance 2.0 duration validation (4-15 seconds)."""
+    config = VideoGenerationConfig(
+        model="bytedance/seedance-2.0/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+
+    # All valid durations (4-15 seconds)
+    for valid_duration in range(4, 16):
+        request = VideoGenerationRequest(prompt="test", duration_seconds=valid_duration)
+        result = handler._convert_request(config, request)
+        assert result["duration"] == str(valid_duration)
+
+    # Invalid durations (1-3, 16+)
+    for invalid_duration in [1, 2, 3, 16, 20]:
+        request_invalid = VideoGenerationRequest(
+            prompt="test", duration_seconds=invalid_duration
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            handler._convert_request(config, request_invalid)
+
+        assert "Invalid duration" in str(exc_info.value)
+        assert f"{invalid_duration} seconds" in str(exc_info.value)
+        assert "4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15" in str(exc_info.value)
+
+
+def test_seedance_v2_extra_params(handler):
+    """Test Seedance 2.0 end_user_id passes through via extra_params."""
+    config = VideoGenerationConfig(
+        model="bytedance/seedance-2.0/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A tranquil forest scene with dappled light",
+        extra_params={"end_user_id": "user-abc-123"},
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A tranquil forest scene with dappled light"
+    assert result["end_user_id"] == "user-abc-123"
 
 
 # ==================== Pixverse Field Mapper Selection Tests ====================
