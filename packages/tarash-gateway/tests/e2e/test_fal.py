@@ -1140,3 +1140,107 @@ def test_omnihuman_v15_sync(fal_api_key):
 
     print(f"✓ Generated OmniHuman video (sync): {response.request_id}")
     print(f"  Video URL: {response.video}")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_kling_v3_pro_text_to_video_async(fal_api_key):
+    """
+    Async test for Kling V3 Pro text-to-video with progress tracking.
+
+    This tests:
+    - Kling V3 Pro text-to-video (fal-ai/kling-video/v3/pro/text-to-video)
+    - Progress callback tracking
+    - Duration in 3-15 range without "s" suffix
+    - generate_audio flag
+    - cfg_scale and negative_prompt via extra_params
+    """
+    progress_updates = []
+
+    async def progress_callback(update: VideoGenerationUpdate):
+        progress_updates.append(update)
+        print(f"  Progress: {update.status}")
+
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/pro/text-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="A serene mountain lake at golden hour, gentle ripples on the water surface",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        generate_audio=False,
+        seed=42,
+        negative_prompt="blur, distort, low quality",
+        extra_params={"cfg_scale": 0.5},
+    )
+
+    print(f"\nGenerating Kling V3 Pro text-to-video: {config.model}")
+    response = await api.generate_video_async(config, request, on_progress=progress_callback)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    assert len(progress_updates) > 0, "Should receive at least one progress update"
+    statuses = [u.status for u in progress_updates]
+    assert "completed" in statuses
+
+    print(f"✓ Generated Kling V3 Pro video: {response.request_id}")
+    print(f"  Video URL: {response.video}")
+    print(f"  Progress updates: {len(progress_updates)}")
+
+
+@pytest.mark.e2e
+def test_kling_v3_standard_image_to_video_sync(fal_api_key):
+    """
+    Sync test for Kling V3 Standard image-to-video with start frame.
+
+    This tests:
+    - Kling V3 Standard image-to-video (fal-ai/kling-video/v3/standard/image-to-video)
+    - Sync generation path
+    - start_image_url via image_list with type="first_frame"
+    - Extended duration range (8 seconds)
+    """
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/standard/image-to-video",
+        provider="fal",
+        api_key=fal_api_key,
+        timeout=600,
+        max_poll_attempts=120,
+        poll_interval=5,
+    )
+
+    request = VideoGenerationRequest(
+        prompt="The elephant walks slowly through the savanna, camera tracking its movement",
+        duration_seconds=5,
+        aspect_ratio="16:9",
+        generate_audio=False,
+        image_list=[
+            {
+                "type": "first_frame",
+                "image": "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+            }
+        ],
+    )
+
+    print(f"\nGenerating Kling V3 Standard image-to-video (sync): {config.model}")
+    response = api.generate_video(config, request)
+
+    assert isinstance(response, VideoGenerationResponse)
+    assert response.request_id is not None
+    assert response.video is not None
+    assert response.status == "completed"
+    assert isinstance(response.video, str)
+    assert response.video.startswith("http")
+
+    print(f"✓ Generated Kling V3 Standard video (sync): {response.request_id}")
+    print(f"  Video URL: {response.video}")

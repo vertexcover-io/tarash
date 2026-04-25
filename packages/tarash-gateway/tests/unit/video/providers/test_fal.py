@@ -2684,6 +2684,74 @@ def test_kling_v3_negative_prompt_and_cfg_scale(handler):
     assert result["cfg_scale"] == 0.7
 
 
+def test_get_field_mappers_kling_v3_all_variants():
+    """Test unified mapper covers all V3 variants (pro, standard, 4k) via prefix matching."""
+    from tarash.tarash_gateway.providers.fal import KLING_V3_FIELD_MAPPERS
+
+    variants = [
+        "fal-ai/kling-video/v3/pro/text-to-video",
+        "fal-ai/kling-video/v3/pro/image-to-video",
+        "fal-ai/kling-video/v3/standard/text-to-video",
+        "fal-ai/kling-video/v3/standard/image-to-video",
+        "fal-ai/kling-video/v3/4k/text-to-video",
+        "fal-ai/kling-video/v3/4k/image-to-video",
+    ]
+    for variant in variants:
+        assert get_field_mappers(variant) is KLING_V3_FIELD_MAPPERS, (
+            f"Expected KLING_V3_FIELD_MAPPERS for {variant}"
+        )
+
+
+def test_kling_v3_4k_text_to_video_conversion(handler):
+    """Test Kling V3 4K tier request conversion (verifies prefix match to unified mapper)."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/4k/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A cinematic aerial shot of a mountain range",
+        duration_seconds=10,
+        aspect_ratio="16:9",
+        generate_audio=True,
+        negative_prompt="blur, low quality",
+        extra_params={"cfg_scale": 0.5},
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A cinematic aerial shot of a mountain range"
+    assert result["duration"] == "10"
+    assert result["aspect_ratio"] == "16:9"
+    assert result["generate_audio"] is True
+    assert result["negative_prompt"] == "blur, low quality"
+    assert result["cfg_scale"] == 0.5
+
+
+def test_kling_v3_4k_image_to_video_conversion(handler):
+    """Test Kling V3 4K image-to-video conversion with start/end frames."""
+    config = VideoGenerationConfig(
+        model="fal-ai/kling-video/v3/4k/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="Cinematic dolly shot through a forest",
+        duration_seconds=8,
+        image_list=[
+            {"image": "https://example.com/frame-start.jpg", "type": "first_frame"},
+            {"image": "https://example.com/frame-end.jpg", "type": "last_frame"},
+        ],
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "Cinematic dolly shot through a forest"
+    assert result["start_image_url"] == "https://example.com/frame-start.jpg"
+    assert result["end_image_url"] == "https://example.com/frame-end.jpg"
+    assert result["duration"] == "8"
+
+
 # ==================== Image Generation Field Mapper Tests ====================
 
 
