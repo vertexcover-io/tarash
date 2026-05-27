@@ -765,6 +765,48 @@ GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
 }
 
 
+# Alibaba HappyHorse-1.0 - Per-variant field mappers.
+# The image-to-video and text-to-video endpoints accept different parameters, so
+# each variant is registered separately rather than via a shared family mapper.
+# Common to both: prompt, resolution (720p/1080p), duration (integer 3-15s),
+# seed, and enable_safety_checker (passed via extra_params).
+#
+# image-to-video: requires image_url (first frame); no aspect_ratio.
+HAPPY_HORSE_I2V_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "prompt": passthrough_field_mapper("prompt"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="int",
+        allowed_values=list(range(3, 16)),
+        provider="fal",
+        model="alibaba/happy-horse/image-to-video",
+    ),
+    "seed": passthrough_field_mapper("seed"),
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
+# text-to-video: requires prompt; supports aspect_ratio; no image input.
+HAPPY_HORSE_T2V_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="int",
+        allowed_values=list(range(3, 16)),
+        provider="fal",
+        model="alibaba/happy-horse/text-to-video",
+    ),
+    "seed": passthrough_field_mapper("seed"),
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
+
 # ==================== Model Registry ====================
 
 
@@ -814,8 +856,9 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/bytedance/omnihuman": OMNIHUMAN_FIELD_MAPPERS,
     # Sync Lipsync - All variants (v1.x, v2, v2/pro) use unified mapper
     "fal-ai/sync-lipsync": SYNC_LIPSYNC_FIELD_MAPPERS,
-    # Alibaba HappyHorse-1.0 - Register family prefix for all variants
-    "alibaba/happy-horse": HAPPY_HORSE_FIELD_MAPPERS,
+    # Alibaba HappyHorse-1.0 - Per-variant mappers (schemas differ: i2v vs t2v)
+    "alibaba/happy-horse/image-to-video": HAPPY_HORSE_I2V_FIELD_MAPPERS,
+    "alibaba/happy-horse/text-to-video": HAPPY_HORSE_T2V_FIELD_MAPPERS,
     # Future models...
     # "fal-ai/hunyuan-video": HUNYUAN_FIELD_MAPPERS,
 }
@@ -948,49 +991,6 @@ SEEDREAM_V5_LITE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),  # "auto_2K", "auto_3K", "square_hd", etc.
     "num_images": passthrough_field_mapper("n"),  # 1-6 separate generations
     "max_images": extra_params_field_mapper("max_images"),  # 1-6 images per generation
-    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
-}
-
-# Alibaba HappyHorse-1.0 - Unified mapper for all variants (text-to-video, image-to-video, video-to-video/remix)
-# Registered via family prefix: "alibaba/happy-horse" so all sub-variants resolve by prefix matching.
-# Unknown/advanced parameters can be passed via extra_params passthrough mappers below.
-HAPPY_HORSE_FIELD_MAPPERS: dict[str, FieldMapper] = {
-    # Core prompt (required for text/image/video guided generations)
-    "prompt": passthrough_field_mapper("prompt", required=True),
-    # Duration: allow generic string seconds with 's' suffix; do not validate allowed values
-    "duration": duration_field_mapper(field_type="str"),
-    # Common video controls
-    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
-    "resolution": passthrough_field_mapper("resolution"),
-    "seed": passthrough_field_mapper("seed"),
-    "negative_prompt": passthrough_field_mapper("negative_prompt"),
-    "generate_audio": passthrough_field_mapper("generate_audio"),
-    # Image/Video inputs supporting I2V and V2V/remix variants
-    "image_url": single_image_field_mapper(
-        required=False,
-        image_type="reference",
-        accepted_formats=_FAL_ACCEPTED_FORMATS,
-        provider="fal",
-    ),
-    # Optional start/end frames if the API supports transitions/constraints
-    "start_image_url": single_image_field_mapper(
-        required=False,
-        image_type="first_frame",
-        accepted_formats=_FAL_ACCEPTED_FORMATS,
-        provider="fal",
-    ),
-    "end_image_url": single_image_field_mapper(
-        required=False,
-        image_type="last_frame",
-        accepted_formats=_FAL_ACCEPTED_FORMATS,
-        provider="fal",
-    ),
-    # Video-to-video / remix support
-    "video_url": video_url_field_mapper(required=False),
-    # Common tuning controls via extra_params (provider may ignore unknowns)
-    "cfg_scale": extra_params_field_mapper("cfg_scale"),
-    "num_inference_steps": extra_params_field_mapper("num_inference_steps"),
-    "strength": extra_params_field_mapper("strength"),
     "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
 }
 
