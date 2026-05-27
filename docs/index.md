@@ -121,7 +121,7 @@ response = await generate_video_async(config, request)  # async
 | **Sora** | `sora-2`<br>`sora-2-pro`<br>`fal-ai/sora-2/text-to-video`<br>`fal-ai/sora-2/image-to-video` | [OpenAI](providers/openai.md) · [Fal.ai](providers/fal/index.md) |
 | **Minimax** | `fal-ai/minimax/video-01`<br>`fal-ai/minimax/hailuo-02-fast/image-to-video`<br>`minimax/video-01` (Replicate) | [Fal.ai](providers/fal/index.md) · [Replicate](providers/replicate.md) |
 | **WAN** | `fal-ai/wan-25-preview/text-to-video`<br>`fal-ai/wan-25-preview/image-to-video`<br>`fal-ai/wan/v2.2-14b/animate/move`<br>`fal-ai/wan/v2.2-a14b/image-to-video`<br>`fal-ai/wan/v2.2-a14b/image-to-video/lora`<br>`fal-ai/wan/v2.2-a14b/text-to-video/lora`<br>`fal-ai/wan/v2.2-a14b/video-to-video`<br>| [Fal.ai](providers/fal/index.md) · [Replicate](providers/replicate.md) |
-| **Seedance** | `fal-ai/bytedance/seedance/v1.5/pro/text-to-video`<br>`fal-ai/bytedance/seedance/v1/pro/image-to-video`<br>`fal-ai/bytedance/seedance/v1/lite/reference-to-video` | [Fal.ai](providers/fal/index.md) |
+| **Seedance** | `fal-ai/bytedance/seedance/v1.5/pro/text-to-video`<br>`fal-ai/bytedance/seedance/v1/pro/image-to-video`<br>`fal-ai/bytedance/seedance/v1/lite/reference-to-video`<br>`bytedance/seedance-2.0/text-to-video`<br>`bytedance/seedance-2.0/image-to-video` | [Fal.ai](providers/fal/index.md) |
 | **Pixverse** | `fal-ai/pixverse/v5.5/text-to-video`<br>`fal-ai/pixverse/v5.5/image-to-video`<br>`fal-ai/pixverse/v5/text-to-video`<br>`fal-ai/pixverse/lipsync` | [Fal.ai](providers/fal/index.md) |
 | **OmniHuman** | `fal-ai/bytedance/omnihuman/v1.5`<br>`fal-ai/bytedance/omnihuman` | [Fal.ai](providers/fal/index.md) |
 | **Kling Lip Sync** | `kwaivgi/kling-lip-sync` (Replicate) | [Replicate](providers/replicate.md) |
@@ -152,6 +152,7 @@ response = await generate_video_async(config, request)  # async
 | **Grok Imagine (native)** | `grok-imagine-image`<br>`grok-2-image` | [xAI](providers/xai.md) |
 | **Seedream** | `fal-ai/bytedance/seedream/v5/lite/text-to-image`<br>`fal-ai/bytedance/seedream/v5/lite/edit` | [Fal.ai](providers/fal/index.md) |
 | **Nano Banana 2** | `fal-ai/nano-banana-2`<br>`fal-ai/nano-banana-2/edit` | [Fal.ai](providers/fal/index.md) |
+| **GPT Image 2** | `openai/gpt-image-2/edit`<br>`gpt-image-2` | [Fal.ai](providers/fal/index.md), [OpenAI](providers/openai.md) |
 
 </div>
 

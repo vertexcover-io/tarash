@@ -94,7 +94,7 @@ config = VideoGenerationConfig(
 | [Minimax](minimax.md) | Minimax | `fal-ai/minimax` | Video |
 | [Wan](wan.md) | Wan | `wan/v2.6/`, `fal-ai/wan-25-preview/`, `fal-ai/wan/v2.2-a14b/` | Video |
 | [Sora](sora.md) | Sora | `fal-ai/sora-2` | Video |
-| [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance` | Video |
+| [Seedance](seedance.md) | Seedance | `fal-ai/bytedance/seedance`, `bytedance/seedance-2.0` | Video |
 | [Pixverse](pixverse.md) | Pixverse | `fal-ai/pixverse/v5`, `fal-ai/pixverse/v5.5`, `fal-ai/pixverse/lipsync` | Video |
 | [OmniHuman](omnihuman.md) | OmniHuman | `fal-ai/bytedance/omnihuman`, `fal-ai/bytedance/omnihuman/v1.5` | Video |
 | [Sync Lipsync](sync-lipsync.md) | Sync Lipsync | `fal-ai/sync-lipsync`, `fal-ai/sync-lipsync/v2`, `fal-ai/sync-lipsync/v2/pro` | Video |
@@ -102,6 +102,7 @@ config = VideoGenerationConfig(
 | [Grok Imagine](grok-imagine.md) | Grok Imagine | `xai/grok-imagine-image`, `xai/grok-imagine-image/edit` | Image |
 | [Seedream](seedream.md) | Seedream | `fal-ai/bytedance/seedream/v5/lite/text-to-image`, `fal-ai/bytedance/seedream/v5/lite/edit` | Image |
 | [Nano Banana 2](nano-banana-2.md) | Nano Banana 2 | `fal-ai/nano-banana-2`, `fal-ai/nano-banana-2/edit` | Image |
+| [GPT Image 2](gpt-image-2.md) | GPT Image 2 | `openai/gpt-image-2/edit` | Image |
 | [MiniMax Speech](minimax-speech.md) | MiniMax Speech | `fal-ai/minimax/speech-2.8-hd` | Audio (TTS) |
 | [Qwen 3 TTS](qwen-tts.md) | Qwen 3 TTS | `fal-ai/qwen-3-tts` | Audio (TTS) |
 

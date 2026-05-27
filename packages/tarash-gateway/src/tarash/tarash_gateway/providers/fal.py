@@ -606,6 +606,45 @@ BYTEDANCE_SEEDANCE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     ),
 }
 
+# ByteDance Seedance 2.0 - Unified mapper for all v2.0 variants
+# Supports image-to-video and text-to-video
+# Key differences from v1/v1.5:
+# - Duration range: 4-15 seconds (vs 2-12 for v1)
+# - No reference-to-video variant or camera_fixed parameter
+# - Model IDs use "bytedance/seedance-2.0" prefix (no fal-ai/ prefix)
+BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    # Core required
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # Core optional (all variants)
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="str",
+        allowed_values=["4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"],
+        provider="fal",
+        model="bytedance-seedance-2.0",
+        add_suffix=False,  # API uses "4", "5", etc. without "s" suffix
+    ),
+    "generate_audio": passthrough_field_mapper("generate_audio"),
+    "seed": passthrough_field_mapper("seed"),
+    # Image-to-video support (required by API for I2V variant)
+    "image_url": single_image_field_mapper(
+        required=False,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # End frame control (optional for I2V)
+    "end_image_url": single_image_field_mapper(
+        required=False,
+        image_type="last_frame",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    # User tracking (via extra_params)
+    "end_user_id": extra_params_field_mapper("end_user_id"),
+}
+
 # Pixverse (v5 and v5.5) - Unified mapper for all variants
 # Supports text-to-video, image-to-video, transition, effects, and swap
 # All variants share common fields with variant-specific optional fields
@@ -760,6 +799,9 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/wan/v2.2-a14b/": WAN_V22_A14B_FIELD_MAPPERS,
     # ByteDance Seedance - Unified mapper for all versions (v1, v1.5) and variants (text-to-video, image-to-video, reference-to-video)
     "fal-ai/bytedance/seedance": BYTEDANCE_SEEDANCE_FIELD_MAPPERS,
+    # ByteDance Seedance 2.0 - Unified mapper for all v2.0 variants (text-to-video, image-to-video)
+    # Note: Seedance 2.0 uses "bytedance/seedance-2.0" prefix (without fal-ai/)
+    "bytedance/seedance-2.0": BYTEDANCE_SEEDANCE_V2_FIELD_MAPPERS,
     # Pixverse - All variants (text-to-video, image-to-video, transition, effects, swap) use unified mapper
     # Supports both v5 and v5.5 with same field mappings
     "fal-ai/pixverse/v5.5": PIXVERSE_FIELD_MAPPERS,  # v5.5 variants
@@ -907,6 +949,24 @@ SEEDREAM_V5_LITE_FIELD_MAPPERS: dict[str, FieldMapper] = {
     "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
 }
 
+# GPT Image 2 (OpenAI via Fal) - image editing model
+# - openai/gpt-image-2/edit: edit images with a text prompt and reference image_urls
+# Required by API: prompt + image_urls; mask_url for targeted region edits
+GPT_IMAGE_2_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    # List of reference images to edit (required by API for /edit variant)
+    "image_urls": image_list_field_mapper(
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "image_size": passthrough_field_mapper("size"),  # "auto", "square_hd", etc.
+    "num_images": passthrough_field_mapper("n"),  # 1–4 images
+    "quality": passthrough_field_mapper("quality"),  # "low", "medium", "high"
+    "output_format": extra_params_field_mapper("output_format"),  # "jpeg", "png", "webp"
+    "mask_url": extra_params_field_mapper("mask_url"),  # Optional targeted-edit mask
+}
+
 # Nano Banana 2 (Google Gemini 3.1 Flash Image) - Unified mapper for all variants:
 # - fal-ai/nano-banana-2: text-to-image generation
 # - fal-ai/nano-banana-2/edit: image editing with up to 14 reference images (image_urls required by API)
@@ -963,6 +1023,8 @@ FAL_IMAGE_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/bytedance/seedream/v5/lite": SEEDREAM_V5_LITE_FIELD_MAPPERS,
     # Nano Banana 2 (Google Gemini 3.1 Flash Image) - Unified mapper for text-to-image and edit variants
     "fal-ai/nano-banana-2": NANO_BANANA_2_FIELD_MAPPERS,
+    # GPT Image 2 (OpenAI via Fal) - image editing with reference images
+    "openai/gpt-image-2": GPT_IMAGE_2_FIELD_MAPPERS,
 }
 
 
