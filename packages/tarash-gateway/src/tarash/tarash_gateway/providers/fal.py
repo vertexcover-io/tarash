@@ -765,6 +765,48 @@ GENERIC_FIELD_MAPPERS: dict[str, FieldMapper] = {
 }
 
 
+# Alibaba HappyHorse-1.0 - Per-variant field mappers.
+# The image-to-video and text-to-video endpoints accept different parameters, so
+# each variant is registered separately rather than via a shared family mapper.
+# Common to both: prompt, resolution (720p/1080p), duration (integer 3-15s),
+# seed, and enable_safety_checker (passed via extra_params).
+#
+# image-to-video: requires image_url (first frame); no aspect_ratio.
+HAPPY_HORSE_I2V_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "image_url": single_image_field_mapper(
+        required=True,
+        image_type="reference",
+        accepted_formats=_FAL_ACCEPTED_FORMATS,
+        provider="fal",
+    ),
+    "prompt": passthrough_field_mapper("prompt"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="int",
+        allowed_values=list(range(3, 16)),
+        provider="fal",
+        model="alibaba/happy-horse/image-to-video",
+    ),
+    "seed": passthrough_field_mapper("seed"),
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
+# text-to-video: requires prompt; supports aspect_ratio; no image input.
+HAPPY_HORSE_T2V_FIELD_MAPPERS: dict[str, FieldMapper] = {
+    "prompt": passthrough_field_mapper("prompt", required=True),
+    "aspect_ratio": passthrough_field_mapper("aspect_ratio"),
+    "resolution": passthrough_field_mapper("resolution"),
+    "duration": duration_field_mapper(
+        field_type="int",
+        allowed_values=list(range(3, 16)),
+        provider="fal",
+        model="alibaba/happy-horse/text-to-video",
+    ),
+    "seed": passthrough_field_mapper("seed"),
+    "enable_safety_checker": extra_params_field_mapper("enable_safety_checker"),
+}
+
+
 # ==================== Model Registry ====================
 
 
@@ -814,6 +856,9 @@ FAL_MODEL_REGISTRY: dict[str, dict[str, FieldMapper]] = {
     "fal-ai/bytedance/omnihuman": OMNIHUMAN_FIELD_MAPPERS,
     # Sync Lipsync - All variants (v1.x, v2, v2/pro) use unified mapper
     "fal-ai/sync-lipsync": SYNC_LIPSYNC_FIELD_MAPPERS,
+    # Alibaba HappyHorse-1.0 - Per-variant mappers (schemas differ: i2v vs t2v)
+    "alibaba/happy-horse/image-to-video": HAPPY_HORSE_I2V_FIELD_MAPPERS,
+    "alibaba/happy-horse/text-to-video": HAPPY_HORSE_T2V_FIELD_MAPPERS,
     # Future models...
     # "fal-ai/hunyuan-video": HUNYUAN_FIELD_MAPPERS,
 }

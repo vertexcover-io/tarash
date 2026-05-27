@@ -37,6 +37,8 @@ from tarash.tarash_gateway.providers.fal import (
     SEEDREAM_V5_LITE_FIELD_MAPPERS,
     parse_fal_status,
     parse_fal_image_status,
+    HAPPY_HORSE_I2V_FIELD_MAPPERS,
+    HAPPY_HORSE_T2V_FIELD_MAPPERS,
 )
 
 
@@ -1139,6 +1141,91 @@ def test_generate_video_handles_exceptions(
 
     with pytest.raises(TarashException, match="Unknown error"):
         handler.generate_video(base_config, base_request)
+
+
+# ==================== HappyHorse Field Mapper Tests ====================
+
+
+def test_happy_horse_field_mapper_selection():
+    """Each HappyHorse variant resolves to its own mapper via prefix matching."""
+    assert (
+        get_field_mappers("alibaba/happy-horse/image-to-video")
+        is HAPPY_HORSE_I2V_FIELD_MAPPERS
+    )
+    assert (
+        get_field_mappers("alibaba/happy-horse/text-to-video")
+        is HAPPY_HORSE_T2V_FIELD_MAPPERS
+    )
+
+
+def test_happy_horse_image_to_video_mapping(handler):
+    """image-to-video maps schema-accurate fields and omits unsupported ones."""
+    config = VideoGenerationConfig(
+        model="alibaba/happy-horse/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A horse running across a meadow",
+        duration_seconds=6,
+        image_list=[{"image": "https://example.com/horse.jpg", "type": "reference"}],
+        seed=123,
+        resolution="720p",
+        extra_params={"enable_safety_checker": False},
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["image_url"] == "https://example.com/horse.jpg"
+    assert result["prompt"] == "A horse running across a meadow"
+    # Schema requires an integer duration (3-15), not a "6s" string.
+    assert result["duration"] == 6
+    assert result["seed"] == 123
+    assert result["resolution"] == "720p"
+    assert result["enable_safety_checker"] is False
+    # Fields absent from the image-to-video schema must not be sent.
+    assert "aspect_ratio" not in result
+    assert "video_url" not in result
+    assert "negative_prompt" not in result
+    assert "generate_audio" not in result
+
+
+def test_happy_horse_image_to_video_requires_image(handler):
+    """image-to-video rejects requests with no image input."""
+    config = VideoGenerationConfig(
+        model="alibaba/happy-horse/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(prompt="A horse running across a meadow")
+
+    with pytest.raises(ValueError):
+        handler._convert_request(config, request)
+
+
+def test_happy_horse_text_to_video_mapping(handler):
+    """text-to-video maps prompt and aspect_ratio, never sends an image_url."""
+    config = VideoGenerationConfig(
+        model="alibaba/happy-horse/text-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A little girl walking on the road at sunset",
+        duration_seconds=10,
+        aspect_ratio="9:16",
+        resolution="1080p",
+        seed=7,
+    )
+
+    result = handler._convert_request(config, request)
+
+    assert result["prompt"] == "A little girl walking on the road at sunset"
+    assert result["aspect_ratio"] == "9:16"
+    assert result["resolution"] == "1080p"
+    assert result["duration"] == 10
+    assert result["seed"] == 7
+    assert "image_url" not in result
 
 
 # ==================== Wan Field Mapper Selection Tests ====================

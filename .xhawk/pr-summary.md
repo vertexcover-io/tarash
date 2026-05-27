@@ -1,0 +1,5 @@
+- Implement HAPPY_HORSE_FIELD_MAPPERS: unified field mapping for all HappyHorse variants (text-to-video, image-to-video, video-to-video/remix)
+- Register "alibaba/happy-horse" family prefix in FAL_MODEL_REGISTRY for prefix-based resolution
+- Include common controls (duration, aspect_ratio, resolution, seed, negative_prompt, audio) and inputs (image_url, start/end frames, video_url) plus extra_params passthrough (cfg_scale, steps, strength, safety)
+- Add unit tests asserting mapper selection and key behavior for HappyHorse
+- Add gated E2E test for HappyHorse image-to-video, skipped when FAL_KEY is not set
