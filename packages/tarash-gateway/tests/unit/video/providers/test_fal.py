@@ -37,6 +37,7 @@ from tarash.tarash_gateway.providers.fal import (
     SEEDREAM_V5_LITE_FIELD_MAPPERS,
     parse_fal_status,
     parse_fal_image_status,
+    HAPPY_HORSE_FIELD_MAPPERS,
 )
 
 
@@ -1139,6 +1140,56 @@ def test_generate_video_handles_exceptions(
 
     with pytest.raises(TarashException, match="Unknown error"):
         handler.generate_video(base_config, base_request)
+
+
+# ==================== HappyHorse Field Mapper Tests ====================
+
+
+def test_happy_horse_field_mapper_selection():
+    """Test unified mapper selection for Alibaba HappyHorse family via prefix matching."""
+    # Specific variant
+    assert (
+        get_field_mappers("alibaba/happy-horse/image-to-video")
+        is HAPPY_HORSE_FIELD_MAPPERS
+    )
+    # Family prefix
+    assert get_field_mappers("alibaba/happy-horse") is HAPPY_HORSE_FIELD_MAPPERS
+
+
+def test_happy_horse_mapper_keys_and_optionals(handler):
+    """Test HappyHorse unified mapper includes key fields and variant-only fields are optional."""
+    config = VideoGenerationConfig(
+        model="alibaba/happy-horse/image-to-video",
+        provider="fal",
+        api_key="test-key",
+    )
+    request = VideoGenerationRequest(
+        prompt="A horse running across a meadow",
+        duration_seconds=6,
+        image_list=[{"image": "https://example.com/horse.jpg", "type": "reference"}],
+        seed=123,
+        aspect_ratio="16:9",
+        resolution="720p",
+        extra_params={"cfg_scale": 0.8, "num_inference_steps": 20},
+    )
+
+    result = handler._convert_request(config, request)
+
+    # Core mapping
+    assert result["prompt"] == "A horse running across a meadow"
+    assert result["duration"] == "6s"
+    assert result["seed"] == 123
+    assert result["aspect_ratio"] == "16:9"
+    assert result["resolution"] == "720p"
+    # Image-to-video input
+    assert result["image_url"] == "https://example.com/horse.jpg"
+    # Extra params passthrough
+    assert result["cfg_scale"] == 0.8
+    assert result["num_inference_steps"] == 20
+    # Variant-only fields are optional and absent unless provided
+    assert "video_url" not in result
+    assert "start_image_url" not in result
+    assert "end_image_url" not in result
 
 
 # ==================== Wan Field Mapper Selection Tests ====================
